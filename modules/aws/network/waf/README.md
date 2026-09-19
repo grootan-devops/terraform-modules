@@ -29,7 +29,7 @@ The `waf` module provisions AWS WAFv2 Web Access Control Lists (Web ACLs) with A
 ### Minimal Working Example
 ```hcl
 module "waf" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/network/waf?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/waf?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -46,7 +46,7 @@ module "waf" {
 ### Complete Production Example
 ```hcl
 module "waf" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/network/waf?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/waf?ref=1.0.0"
 
   application = "enterprise"
   environment = "prod"

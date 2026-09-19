@@ -28,7 +28,7 @@ The `rds/proxy` module manages Amazon RDS Proxy connection pooling pools for Pos
 ### Minimal Working Example
 ```hcl
 module "rds_proxy" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/rds/proxy?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=1.0.0"
 
   application   = "core"
   environment   = "prod"
@@ -46,7 +46,7 @@ module "rds_proxy" {
 ### Complete Production Example
 ```hcl
 module "rds_proxy" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/rds/proxy?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=1.0.0"
 
   application   = "billing"
   environment   = "prod"

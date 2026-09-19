@@ -28,7 +28,7 @@ The `cognito` module provisions Amazon Cognito User Pools, App Clients, risk con
 ### Minimal Working Example
 ```hcl
 module "cognito" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/security/cognito"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/cognito?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -40,7 +40,7 @@ module "cognito" {
 ### Complete Production Example
 ```hcl
 module "cognito" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/security/cognito"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/cognito?ref=1.0.0"
 
   application = "identity"
   environment = "prod"
@@ -98,7 +98,7 @@ module "cognito" {
 | `clients` | Map of user pool clients to create | `map(object({...}))` | `{}` | No |
 | `groups` | List of user groups to create | `list(object({...}))` | `[]` | No |
 | `custom_schema_attributes` | List of custom schema attributes to append to the default ones | `list(object({...}))` | `[]` | No |
-| `web_authn_relying_party_id` | The relying party ID for WebAuthn (e.g. localhost or example.com) | `string` | `"localhost"` | No |
+| `web_authn_relying_party_id` | The relying party ID for WebAuthn (e.g. localhost or contoso.com) | `string` | `"localhost"` | No |
 | `web_authn_user_verification` | WebAuthn user verification requirement: required, preferred, or discouraged. | `string` | `"required"` | No |
 | `allow_admin_create_user_only` | Set to true to only allow administrators to create user profiles. When false, self-registration is allowed. | `bool` | `true` | No |
 | `allowed_first_auth_factors` | The list of allowed first authentication factors for user pool sign-in policy. | `list(string)` | `["PASSWORD", "EMAIL_OTP", "WEB_AUTHN"]` | No |

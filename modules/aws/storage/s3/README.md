@@ -34,7 +34,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 ### Minimal Working Example
 ```hcl
 module "s3_bucket" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/storage/s3?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -46,7 +46,7 @@ module "s3_bucket" {
 ### Complete Production Example
 ```hcl
 module "s3_bucket" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/storage/s3?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
 
   application          = "analytics"
   environment          = "prod"

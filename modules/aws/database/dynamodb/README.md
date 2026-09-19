@@ -27,7 +27,7 @@ The `dynamodb` module manages Amazon DynamoDB NoSQL tables featuring Global Seco
 ### Minimal Working Example
 ```hcl
 module "dynamodb" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/dynamodb"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/dynamodb?ref=1.0.0"
 
   application  = "core"
   environment  = "prod"
@@ -46,7 +46,7 @@ module "dynamodb" {
 ### Complete Production Example
 ```hcl
 module "dynamodb" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/dynamodb"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/dynamodb?ref=1.0.0"
 
   application  = "orders"
   environment  = "prod"

@@ -32,7 +32,7 @@ The `rds/postgres` module provisions enterprise-grade Amazon Relational Database
 ### Minimal Working Example
 ```hcl
 module "postgres" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/rds/postgres?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
 
   providers = {
     aws         = aws
@@ -72,7 +72,7 @@ module "postgres" {
 ### Complete Production Example
 ```hcl
 module "postgres" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/rds/postgres?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
 
   providers = {
     aws         = aws

@@ -1,5 +1,7 @@
 # Terraform Modules Library
 
+Release `1.0.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
+
 Production-grade, modular Terraform library for provisioning secure, compliant cloud infrastructure.
 
 ---
@@ -33,7 +35,7 @@ Reference modules using semantic version tags in Git (recommended for remote rep
 ```hcl
 # Remote Git reference (Semantic Tagging)
 module "s3" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/storage/s3?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -41,15 +43,6 @@ module "s3" {
   kms_key_arn = module.kms.key_arn
 }
 
-# Local relative reference
-module "s3" {
-  source = "../../modules/aws/storage/s3"
-
-  application = "core"
-  environment = "prod"
-  name        = "assets"
-  kms_key_arn = module.kms.key_arn
-}
 ```
 
 ---
@@ -62,19 +55,19 @@ The recommended Terragrunt pattern pairs a single canonical Terraform compositio
 infra-live/
 ├── root.hcl                          # Remote state (S3/DynamoDB) and provider generator
 ├── resources/                        # Single Terraform stack composing modules
-│   ├── kms.tf                        # module "kms" { source = "../modules/aws/security/kms" }
-│   ├── vpc.tf                        # module "vpc" { source = "../modules/aws/network/vpc" }
-│   ├── rds.tf                        # module "rds" { source = "../modules/aws/database/rds/postgres" }
+│   ├── kms.tf                        # KMS module pinned to the public Git release
+│   ├── vpc.tf                        # VPC module pinned to the public Git release
+│   ├── rds.tf                        # RDS module pinned to the public Git release
 │   ├── iam.tf                        # Direct IAM roles / policies
 │   ├── route53.tf                    # Direct DNS records
 │   ├── variables.tf                  # Parameterized inputs
 │   └── outputs.tf
 ├── dev/
-│   └── terragrunt.hcl                # source = "..//resources", dev inputs
+│   └── terragrunt.hcl                # immutable Git source for resources, dev inputs
 ├── qa/
-│   └── terragrunt.hcl                # source = "..//resources", qa inputs
+│   └── terragrunt.hcl                # immutable Git source for resources, qa inputs
 └── prod/
-    └── terragrunt.hcl                # source = "..//resources", prod inputs
+    └── terragrunt.hcl                # immutable Git source for resources, prod inputs
 ```
 
 ### 3.1. `root.hcl`
@@ -135,7 +128,7 @@ EOF
 ```hcl
 # resources/kms.tf
 module "kms" {
-  source = "../modules/aws/security/kms"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
 
   application             = var.application
   environment             = var.environment
@@ -146,7 +139,7 @@ module "kms" {
 
 # resources/vpc.tf
 module "vpc" {
-  source = "../modules/aws/network/vpc"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
 
   application                 = var.application
   environment                 = var.environment
@@ -161,7 +154,7 @@ module "vpc" {
 
 # resources/rds.tf
 module "rds" {
-  source = "../modules/aws/database/rds/postgres"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
 
   application    = var.application
   environment    = var.environment
@@ -195,7 +188,7 @@ include "root" {
 }
 
 terraform {
-  source = "..//resources"
+  source = "git::https://github.com/contoso-corporation/infra-live.git//resources?ref=1.0.0"
 }
 
 inputs = {
@@ -224,7 +217,7 @@ include "root" {
 }
 
 terraform {
-  source = "..//resources"
+  source = "git::https://github.com/contoso-corporation/infra-live.git//resources?ref=1.0.0"
 }
 
 inputs = {
@@ -280,4 +273,12 @@ terraform init -backend=false
 terraform validate
 ```
 
-Detailed AWS resource catalogs and baseline specifications are documented in **[AWS.md](AWS.md)**.
+Detailed AWS resource catalogs and baseline specifications are documented in **[AWS.md](docs/AWS.md)**.
+
+## License
+
+Copyright 2026 Grootan Technologies Pvt Ltd.
+
+Licensed under the [GNU Affero General Public License v3.0](./LICENSE.md)
+(`AGPL-3.0-only`). External contributions are not accepted; see
+[CONTRIBUTING.md](./CONTRIBUTING.md) for bug and security reporting.

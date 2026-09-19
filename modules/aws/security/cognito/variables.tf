@@ -166,7 +166,7 @@ variable "custom_schema_attributes" {
 }
 
 variable "web_authn_relying_party_id" {
-  description = "The relying party ID for WebAuthn (e.g. localhost or example.com)"
+  description = "The relying party ID for WebAuthn (e.g. localhost or contoso.com)"
   type        = string
   default     = "localhost"
 }

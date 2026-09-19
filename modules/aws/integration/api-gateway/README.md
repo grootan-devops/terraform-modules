@@ -27,7 +27,7 @@ The `api-gateway` module manages Amazon API Gateway REST APIs featuring Lambda a
 ### Minimal Working Example
 ```hcl
 module "api_gateway" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/integration/api-gateway"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -39,7 +39,7 @@ module "api_gateway" {
 ### Complete Production Example
 ```hcl
 module "api_gateway" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/integration/api-gateway"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.0.0"
 
   application = "portal"
   environment = "prod"

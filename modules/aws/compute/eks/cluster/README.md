@@ -28,7 +28,7 @@ Standalone Amazon Elastic Kubernetes Service (EKS) control plane submodule manag
 ### Minimal Working Example
 ```hcl
 module "eks_cluster" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/eks/cluster?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/cluster?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -43,7 +43,7 @@ module "eks_cluster" {
 ### Complete Production Example
 ```hcl
 module "eks_cluster" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/eks/cluster?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/cluster?ref=1.0.0"
 
   application = "platform"
   environment = "prod"

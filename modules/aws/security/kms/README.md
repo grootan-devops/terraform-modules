@@ -29,7 +29,7 @@ The `kms` module provisions symmetric and asymmetric AWS Key Management Service 
 ### Minimal Working Example
 ```hcl
 module "kms" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/security/kms?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -40,7 +40,7 @@ module "kms" {
 ### Complete Production Example
 ```hcl
 module "kms" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/security/kms?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
 
   providers = {
     aws         = aws

@@ -27,7 +27,7 @@ The `step-functions` module manages AWS Step Functions state machines with Custo
 ### Minimal Working Example
 ```hcl
 module "state_machine" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/integration/step-functions"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -50,7 +50,7 @@ module "state_machine" {
 ### Complete Production Example
 ```hcl
 module "state_machine" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/integration/step-functions"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=1.0.0"
 
   application = "fulfillment"
   environment = "prod"

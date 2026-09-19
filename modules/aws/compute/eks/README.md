@@ -28,7 +28,7 @@ The `eks` module provides an enterprise-grade Kubernetes control plane orchestra
 ### Minimal Working Example
 ```hcl
 module "eks" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/eks?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -44,7 +44,7 @@ module "eks" {
 ### Complete Production Example
 ```hcl
 module "eks" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/eks?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks?ref=1.0.0"
 
   application = "platform"
   environment = "prod"

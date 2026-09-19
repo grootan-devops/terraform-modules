@@ -5,8 +5,8 @@ resource "aws_sfn_state_machine" "this" {
   definition = var.definition
 
   encryption_configuration {
-    type        = "CUSTOMER_MANAGED_KMS_KEY"
-    kms_key_id  = var.kms_key_arn
+    type       = "CUSTOMER_MANAGED_KMS_KEY"
+    kms_key_id = var.kms_key_arn
   }
 
   logging_configuration {

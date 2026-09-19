@@ -2,7 +2,7 @@
 
 This document defines the architecture, compliance baselines, cryptographic standards, module catalog, and consumption patterns for Amazon Web Services (AWS) infrastructure modules within this repository.
 
-Every AWS module is located under [`modules/aws/`](modules/aws/) and engineered in strict alignment with the **AWS Well-Architected Framework**, **CIS AWS Foundations Benchmarks (v3.0)**, and organizational security policies.
+Every AWS module is located under [`modules/aws/`](../modules/aws/) and engineered in strict alignment with the **AWS Well-Architected Framework**, **CIS AWS Foundations Benchmarks (v3.0)**, and organizational security policies.
 
 ---
 
@@ -12,30 +12,30 @@ All AWS modules are organized into functional domain categories under `modules/a
 
 | Domain | Module Directory | Primary AWS Resources Managed | Compliance Baseline |
 |---|---|---|:---:|
-| **Compute** | [`modules/aws/compute/batch`](modules/aws/compute/batch) | `aws_batch_compute_environment`, `aws_batch_job_queue`, `aws_batch_job_definition` | SOC2 Type II |
-| | [`modules/aws/compute/ecs`](modules/aws/compute/ecs) | `aws_ecs_cluster`, `aws_ecs_task_definition`, `aws_ecs_service` | AWS Container Security |
-| | [`modules/aws/compute/eks`](modules/aws/compute/eks) | `aws_eks_cluster`, `aws_eks_node_group`, `aws_eks_addon` | CIS EKS Benchmark v1.4 |
-| | [`modules/aws/compute/eks/cluster`](modules/aws/compute/eks/cluster) | Standalone Control Plane, Secrets Envelope Encryption, OIDC Provider | CIS EKS Control Plane |
-| | [`modules/aws/compute/eks/node_group`](modules/aws/compute/eks/node_group) | Managed Node Group, IMDSv2 Launch Template, KMS EBS Encryption | CIS EKS Worker Nodes |
-| | [`modules/aws/compute/lambda`](modules/aws/compute/lambda) | `aws_lambda_function`, `aws_lambda_alias`, `aws_cloudwatch_log_group` | CIS Serverless 1.1 |
-| **Database** | [`modules/aws/database/dynamodb`](modules/aws/database/dynamodb) | `aws_dynamodb_table`, `aws_dynamodb_contributor_insights` | CIS DynamoDB 1.1 |
-| | [`modules/aws/database/elasticache/valkey`](modules/aws/database/elasticache/valkey) | `aws_elasticache_replication_group`, `aws_elasticache_parameter_group` | PCI-DSS In-Transit |
-| | [`modules/aws/database/rds/postgres`](modules/aws/database/rds/postgres) | `aws_db_instance`, `aws_db_parameter_group`, `aws_db_subnet_group` | CIS RDS 2.3.1 - 2.3.3 |
-| | [`modules/aws/database/rds/proxy`](modules/aws/database/rds/proxy) | `aws_db_proxy`, `aws_db_proxy_default_target_group`, `aws_iam_role` | Connection Resilience |
-| **Integration** | [`modules/aws/integration/api-gateway`](modules/aws/integration/api-gateway) | `aws_api_gateway_rest_api`, `aws_api_gateway_stage`, `aws_cloudwatch_log_group` | API Security Top 10 |
-| | [`modules/aws/integration/eventbridge`](modules/aws/integration/eventbridge) | `aws_cloudwatch_event_bus`, `aws_cloudwatch_event_rule`, `aws_cloudwatch_event_target` | Enterprise Event Mesh |
-| | [`modules/aws/integration/sqs`](modules/aws/integration/sqs) | `aws_sqs_queue`, `aws_sqs_queue_redrive_policy`, `aws_sqs_queue_policy` | Resilient Messaging |
-| | [`modules/aws/integration/step-functions`](modules/aws/integration/step-functions) | `aws_sfn_state_machine`, `aws_cloudwatch_log_group`, `aws_iam_role` | Orchestration Security |
-| **Network** | [`modules/aws/network/alb`](modules/aws/network/alb) | `aws_lb`, `aws_lb_listener`, `aws_lb_target_group` | AWS Well-Architected |
-| | [`modules/aws/network/cloudfront`](modules/aws/network/cloudfront) | `aws_cloudfront_distribution`, `aws_cloudfront_origin_access_control` | CIS CloudFront 1.1 |
-| | [`modules/aws/network/vpc`](modules/aws/network/vpc) | `aws_vpc`, `aws_subnet`, `aws_flow_log`, `aws_vpc_endpoint` | CIS VPC 3.1 - 3.9 |
-| | [`modules/aws/network/waf`](modules/aws/network/waf) | `aws_wafv2_web_acl`, `aws_wafv2_ip_set`, `aws_wafv2_logging_configuration` | OWASP Top 10 |
-| **Security** | [`modules/aws/security/cognito`](modules/aws/security/cognito) | `aws_cognito_user_pool`, `aws_cognito_user_pool_risk_configuration` | NIST SP 800-63B |
-| | [`modules/aws/security/kms`](modules/aws/security/kms) | `aws_kms_key`, `aws_kms_alias`, `aws_kms_replica_key` | CIS KMS 2.8, 2.9 |
-| | [`modules/aws/security/secrets-manager`](modules/aws/security/secrets-manager) | `aws_secretsmanager_secret`, `aws_secretsmanager_secret_rotation` | CIS Secrets 1.1 |
-| **Storage** | [`modules/aws/storage/amplify`](modules/aws/storage/amplify) | `aws_amplify_app`, `aws_amplify_branch`, `aws_amplify_domain_association` | Static Web Baseline |
-| | [`modules/aws/storage/efs`](modules/aws/storage/efs) | `aws_efs_file_system`, `aws_efs_mount_target`, `aws_efs_file_system_policy` | CIS EFS 1.1 |
-| | [`modules/aws/storage/s3`](modules/aws/storage/s3) | `aws_s3_bucket`, `aws_s3_bucket_public_access_block`, `aws_s3_bucket_policy` | CIS S3 2.1.1 - 2.1.5 |
+| **Compute** | [`modules/aws/compute/batch`](../modules/aws/compute/batch) | `aws_batch_compute_environment`, `aws_batch_job_queue`, `aws_batch_job_definition` | SOC2 Type II |
+| | [`modules/aws/compute/ecs`](../modules/aws/compute/ecs) | `aws_ecs_cluster`, `aws_ecs_task_definition`, `aws_ecs_service` | AWS Container Security |
+| | [`modules/aws/compute/eks`](../modules/aws/compute/eks) | `aws_eks_cluster`, `aws_eks_node_group`, `aws_eks_addon` | CIS EKS Benchmark v1.4 |
+| | [`modules/aws/compute/eks/cluster`](../modules/aws/compute/eks/cluster) | Standalone Control Plane, Secrets Envelope Encryption, OIDC Provider | CIS EKS Control Plane |
+| | [`modules/aws/compute/eks/node_group`](../modules/aws/compute/eks/node_group) | Managed Node Group, IMDSv2 Launch Template, KMS EBS Encryption | CIS EKS Worker Nodes |
+| | [`modules/aws/compute/lambda`](../modules/aws/compute/lambda) | `aws_lambda_function`, `aws_lambda_alias`, `aws_cloudwatch_log_group` | CIS Serverless 1.1 |
+| **Database** | [`modules/aws/database/dynamodb`](../modules/aws/database/dynamodb) | `aws_dynamodb_table`, `aws_dynamodb_contributor_insights` | CIS DynamoDB 1.1 |
+| | [`modules/aws/database/elasticache/valkey`](../modules/aws/database/elasticache/valkey) | `aws_elasticache_replication_group`, `aws_elasticache_parameter_group` | PCI-DSS In-Transit |
+| | [`modules/aws/database/rds/postgres`](../modules/aws/database/rds/postgres) | `aws_db_instance`, `aws_db_parameter_group`, `aws_db_subnet_group` | CIS RDS 2.3.1 - 2.3.3 |
+| | [`modules/aws/database/rds/proxy`](../modules/aws/database/rds/proxy) | `aws_db_proxy`, `aws_db_proxy_default_target_group`, `aws_iam_role` | Connection Resilience |
+| **Integration** | [`modules/aws/integration/api-gateway`](../modules/aws/integration/api-gateway) | `aws_api_gateway_rest_api`, `aws_api_gateway_stage`, `aws_cloudwatch_log_group` | API Security Top 10 |
+| | [`modules/aws/integration/eventbridge`](../modules/aws/integration/eventbridge) | `aws_cloudwatch_event_bus`, `aws_cloudwatch_event_rule`, `aws_cloudwatch_event_target` | Enterprise Event Mesh |
+| | [`modules/aws/integration/sqs`](../modules/aws/integration/sqs) | `aws_sqs_queue`, `aws_sqs_queue_redrive_policy`, `aws_sqs_queue_policy` | Resilient Messaging |
+| | [`modules/aws/integration/step-functions`](../modules/aws/integration/step-functions) | `aws_sfn_state_machine`, `aws_cloudwatch_log_group`, `aws_iam_role` | Orchestration Security |
+| **Network** | [`modules/aws/network/alb`](../modules/aws/network/alb) | `aws_lb`, `aws_lb_listener`, `aws_lb_target_group` | AWS Well-Architected |
+| | [`modules/aws/network/cloudfront`](../modules/aws/network/cloudfront) | `aws_cloudfront_distribution`, `aws_cloudfront_origin_access_control` | CIS CloudFront 1.1 |
+| | [`modules/aws/network/vpc`](../modules/aws/network/vpc) | `aws_vpc`, `aws_subnet`, `aws_flow_log`, `aws_vpc_endpoint` | CIS VPC 3.1 - 3.9 |
+| | [`modules/aws/network/waf`](../modules/aws/network/waf) | `aws_wafv2_web_acl`, `aws_wafv2_ip_set`, `aws_wafv2_logging_configuration` | OWASP Top 10 |
+| **Security** | [`modules/aws/security/cognito`](../modules/aws/security/cognito) | `aws_cognito_user_pool`, `aws_cognito_user_pool_risk_configuration` | NIST SP 800-63B |
+| | [`modules/aws/security/kms`](../modules/aws/security/kms) | `aws_kms_key`, `aws_kms_alias`, `aws_kms_replica_key` | CIS KMS 2.8, 2.9 |
+| | [`modules/aws/security/secrets-manager`](../modules/aws/security/secrets-manager) | `aws_secretsmanager_secret`, `aws_secretsmanager_secret_rotation` | CIS Secrets 1.1 |
+| **Storage** | [`modules/aws/storage/amplify`](../modules/aws/storage/amplify) | `aws_amplify_app`, `aws_amplify_branch`, `aws_amplify_domain_association` | Static Web Baseline |
+| | [`modules/aws/storage/efs`](../modules/aws/storage/efs) | `aws_efs_file_system`, `aws_efs_mount_target`, `aws_efs_file_system_policy` | CIS EFS 1.1 |
+| | [`modules/aws/storage/s3`](../modules/aws/storage/s3) | `aws_s3_bucket`, `aws_s3_bucket_public_access_block`, `aws_s3_bucket_policy` | CIS S3 2.1.1 - 2.1.5 |
 
 ---
 
@@ -110,7 +110,7 @@ provider "aws" {
 
 # 1. Primary Encryption Key (Security)
 module "kms" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/security/kms?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
 
   application             = "core"
   environment             = "prod"
@@ -122,7 +122,7 @@ module "kms" {
 
 # 2. Network Infrastructure (Network)
 module "vpc" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/network/vpc?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -146,7 +146,7 @@ module "vpc" {
 
 # 3. Encrypted Object Storage (Storage)
 module "app_storage" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/storage/s3?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -158,7 +158,7 @@ module "app_storage" {
 
 # 4. Managed Relational Database (Database)
 module "db" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/database/rds/postgres?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -194,7 +194,7 @@ module "db" {
 
 # 5. Containerized Compute Workload (Compute)
 module "ecs" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/ecs?ref=v1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -327,7 +327,7 @@ The `resources/` directory wires together the modular building blocks from `modu
 #### `resources/kms.tf`
 ```hcl
 module "kms" {
-  source = "../modules/aws/security/kms"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
 
   application             = var.application
   environment             = var.environment
@@ -341,7 +341,7 @@ module "kms" {
 #### `resources/vpc.tf`
 ```hcl
 module "vpc" {
-  source = "../modules/aws/network/vpc"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
 
   application                 = var.application
   environment                 = var.environment
@@ -365,7 +365,7 @@ module "vpc" {
 #### `resources/rds.tf`
 ```hcl
 module "rds" {
-  source = "../modules/aws/database/rds/postgres"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
 
   application    = var.application
   environment    = var.environment
@@ -412,7 +412,7 @@ include "root" {
 }
 
 terraform {
-  source = "..//resources"
+  source = "git::https://github.com/contoso-corporation/infra-live.git//resources?ref=1.0.0"
 }
 
 inputs = {
@@ -446,7 +446,7 @@ include "root" {
 }
 
 terraform {
-  source = "..//resources"
+  source = "git::https://github.com/contoso-corporation/infra-live.git//resources?ref=1.0.0"
 }
 
 inputs = {

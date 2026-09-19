@@ -28,7 +28,7 @@ The `batch` module manages AWS Batch compute environments (Fargate), job queues 
 ### Minimal Working Example
 ```hcl
 module "batch" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/batch"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/batch?ref=1.0.0"
 
   application = "core"
   environment = "prod"
@@ -43,7 +43,7 @@ module "batch" {
 ### Complete Production Example
 ```hcl
 module "batch" {
-  source = "git::https://github.com/organization/terraform-modules.git//modules/aws/compute/batch"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/batch?ref=1.0.0"
 
   application = "analytics"
   environment = "prod"
