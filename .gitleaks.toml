@@ -1,0 +1,13 @@
+# betterleaks / gitleaks configuration.
+# The secrets-manager README contains a deliberately synthetic module example;
+# it is documentation, not a credential-bearing configuration.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic secrets-manager documentation example"
+targetRules = ["generic-username", "generic-password"]
+paths = [
+  '''^modules/aws/security/secrets-manager/README\.md$''',
+]
