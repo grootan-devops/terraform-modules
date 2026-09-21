@@ -2,13 +2,15 @@
 
 The `elasticache/valkey` module manages Valkey replication groups for low-latency caching and session persistence with mandatory in-transit TLS and at-rest KMS encryption.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_elasticache_replication_group.this`: Valkey cluster instances.
 - `aws_elasticache_subnet_group.this`: VPC cache subnet placement.
 - `aws_elasticache_parameter_group.this`: Engine parameter tuning.
 - `aws_security_group.this`: Firewall controlling ingress to port 6379.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory In-Transit & At-Rest Encryption**: `transit_encryption_enabled = true` and `at_rest_encryption_enabled = true` enforced.
 - **Mandatory KMS CMK**: Data at rest encrypted via Customer Managed Key (`kms_key_id`).
 - **Isolated Network Placement**: Subnet group deployed exclusively across internal subnets.
@@ -18,7 +20,7 @@ The `elasticache/valkey` module manages Valkey replication groups for low-latenc
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -27,6 +29,7 @@ The `elasticache/valkey` module manages Valkey replication groups for low-latenc
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "valkey" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=1.0.0"
@@ -42,6 +45,7 @@ module "valkey" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "valkey" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=1.0.0"
@@ -75,7 +79,7 @@ module "valkey" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | The name of the Valkey cluster | `string` | `null` | No |
 | `application` | The name of the product/application | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
@@ -92,14 +96,12 @@ module "valkey" {
 | `port` | The port number on which each of the cache nodes accepts connections | `number` | `6379` | No |
 | `kms_key_id` | The ARN of the KMS key to use for encrypting data at rest | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `primary_endpoint_address` | The DNS endpoint of the primary node in the replication group | No |
 | `reader_endpoint_address` | The DNS endpoint of the reader node(s) in the replication group | No |
 | `configuration_endpoint_address` | The configuration endpoint address for cluster mode | No |
-

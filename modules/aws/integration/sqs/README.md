@@ -2,7 +2,8 @@
 
 The `sqs` module manages Amazon Simple Queue Service (SQS) standard and FIFO queues with Customer Managed KMS Key encryption, dead-letter queue (DLQ) redrive automation, and EventBridge publishing policies.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_sqs_queue.this`: Primary SQS queue.
 - `aws_sqs_queue.dlq`: Automatically provisioned Dead Letter Queue.
 - `aws_sqs_queue_redrive_policy.this`: Attaches redrive threshold policy.
@@ -10,6 +11,7 @@ The `sqs` module manages Amazon Simple Queue Service (SQS) standard and FIFO que
 - `aws_sqs_queue_policy.this`: Access policy granting publish permissions to EventBridge.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Enforces encryption with `kms_master_key_id = var.kms_key_arn`.
 - **SSE-SQS Prohibited**: `sqs_managed_sse_enabled = false` ensures AWS-managed default encryption cannot be substituted.
 - **Automated DLQ**: Defaults to `create_dlq = true` with a 14-day retention window on dead letters.
@@ -19,7 +21,7 @@ The `sqs` module manages Amazon Simple Queue Service (SQS) standard and FIFO que
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -28,6 +30,7 @@ The `sqs` module manages Amazon Simple Queue Service (SQS) standard and FIFO que
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "sqs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=1.0.0"
@@ -40,6 +43,7 @@ module "sqs" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "sqs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=1.0.0"
@@ -70,7 +74,7 @@ module "sqs" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | The name of the application. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `name` | The name suffix for SQS resources. | `string` | **Required** | Yes |
@@ -91,13 +95,11 @@ module "sqs" {
 | `create_dlq` | Controls whether to create a Dead Letter Queue (DLQ) for this SQS queue. | `bool` | `true` | No |
 | `max_receive_count` | The number of times a message is delivered to the source queue before being moved to the dead-letter queue. | `number` | `3` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `queue_arn` | The ARN of the SQS queue. | No |
 | `queue_url` | The URL for the created Amazon SQS queue. | No |
-

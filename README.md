@@ -254,7 +254,7 @@ the mechanical subset of them — run it with `make verify`.
 ### 4.1. Variables
 
 | Attribute | Status | Rule |
-|---|:---:|---|
+| --- | :---: | --- |
 | `description` | **Mandatory** | States purpose and operational impact. Never empty, never a restatement of the name. |
 | `type` | **Mandatory** | An explicit constraint: `string`, `number`, `bool`, `list(…)`, `map(…)`, `set(…)`, `object(…)`. Bare `any` only as a documented escape hatch. |
 | `default` | Conditional | On optional variables only; omitted on mandatory ones. Never a password, token, key, or placeholder credential. |
@@ -364,7 +364,7 @@ destructively when a name changes. Blind concatenation is therefore unsafe on th
 ones:
 
 | Resource | Limit | Valid characters | Mitigation |
-|---|:---:|---|---|
+| --- | :---: | --- | --- |
 | `aws_lb`, `aws_lb_target_group` | 1–32 | `^[a-zA-Z0-9-]+$`, no leading/trailing hyphen | Truncate to 27 chars + `-` + 4-char MD5 of the full name |
 | `aws_s3_bucket` | 3–63 | lowercase, digits, hyphen, period | Global namespace — use `bucket_name_override`, or append a deterministic account/region hash |
 | `aws_iam_role` | 1–64 | `^[a-zA-Z0-9+=,.@_-]+$` | Truncate to 58 chars + 5-char hash |
@@ -390,7 +390,7 @@ locals {
 Four tags are reserved for cost allocation, ownership, and audit:
 
 | Tag | Value |
-|---|---|
+| --- | --- |
 | `Application` | `var.application` |
 | `Environment` | `var.environment`, validated against `^[a-z0-9-]+$` |
 | `Name` | `local.rendered_name`, or the sub-resource name |
@@ -438,7 +438,7 @@ Security is matched to what the cloud API actually supports, rather than applied
 blanket mandate. Every control on every resource resolves to one of six statuses:
 
 | Status | Meaning | What a module does |
-|---|---|---|
+| --- | --- | --- |
 | `required` | Natively supported and non-negotiable. | Enforce it, with a production default. |
 | `recommended` | Best practice with a real cost or operational trade-off. | Secure default, caller may override. |
 | `optional` | Advanced or niche. | Opt-in sub-block, disabled by default. |
@@ -525,7 +525,7 @@ Modules follow [Semantic Versioning 2.0.0](https://semver.org/) as one library: 
 repository tag is the version, and every module moves with it.
 
 | Level | Triggers | Examples |
-|:---:|---|---|
+| :---: | --- | --- |
 | **PATCH** `x.y.Z` | Fixes and internal refactors with zero behavioural or state change for callers. | Documentation fix; `terraform fmt`; a local expression rewritten. |
 | **MINOR** `x.Y.0` | Backward-compatible additions. | A new optional variable with a safe default; a new output; dropping an artificial upper version bound. |
 | **MAJOR** `X.0.0` | Any break in the public surface. | Renaming or removing a variable or output; changing a default that alters live infrastructure; moving a resource address without a `moved` block; raising the minimum provider to an incompatible major. |
@@ -566,7 +566,7 @@ terraform test          # requires tests/*.tftest.hcl and Terraform >= 1.6
 ### 9.1. Test levels
 
 | Level | What it covers | State today |
-|:---:|---|---|
+| :---: | --- | --- |
 | 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on all 24 modules |
 | 1 | Static security and secret scanning | Not wired into this repository |
 | 2 | `terraform test` with `mock_provider`, no credentials | `modules/aws/security/secrets-manager/tests/unit.tftest.hcl` only |

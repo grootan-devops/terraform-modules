@@ -2,13 +2,15 @@
 
 The `waf` module provisions AWS WAFv2 Web Access Control Lists (Web ACLs) with AWS Managed Rule Groups, custom rate-limiting, IP set filters, and KMS-encrypted CloudWatch logging.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_wafv2_web_acl.this`: Web ACL evaluation engine.
 - `aws_wafv2_ip_set.this`: Managed IP allow/block sets.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted WAF activity log group (`aws-waf-logs-*`).
 - `aws_wafv2_web_acl_logging_configuration.this`: Connects WAF metrics and sample requests to CloudWatch.
 
 ### Security & Compliance Guardrails
+
 - **AWS Managed Rule Sets**: Pre-configured with Common Rule Set, Known Bad Inputs, and Amazon IP Reputation list.
 - **Mandatory KMS Logging**: Log group enforces Customer Managed Key encryption (`kms_key_arn`).
 - **Scope Flexibility**: Operates in `REGIONAL` mode (ALBs, API Gateways) or `CLOUDFRONT` mode.
@@ -18,7 +20,7 @@ The `waf` module provisions AWS WAFv2 Web Access Control Lists (Web ACLs) with A
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -27,6 +29,7 @@ The `waf` module provisions AWS WAFv2 Web Access Control Lists (Web ACLs) with A
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "waf" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/waf?ref=1.0.0"
@@ -44,6 +47,7 @@ module "waf" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "waf" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/waf?ref=1.0.0"
@@ -82,7 +86,7 @@ module "waf" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | Application name | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `scope` | Specifies whether this is for an AWS CloudFront distribution or for a regional application. Valid values are CLOUDFRONT or REGIONAL. | `string` | `"REGIONAL"` | No |
@@ -101,14 +105,12 @@ module "waf" {
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting WAF CloudWatch log groups. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `web_acl_arn` | ARN of the WAFv2 Web ACL. | No |
 | `web_acl_id` | ID of the WAFv2 Web ACL. | No |
 | `web_acl_capacity` | Web ACL capacity units (WCU) currently used by this Web ACL. | No |
-

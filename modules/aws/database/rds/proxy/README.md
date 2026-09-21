@@ -2,13 +2,15 @@
 
 The `rds/proxy` module manages Amazon RDS Proxy connection pooling pools for PostgreSQL workloads, mitigating connection exhaustion and reducing failover recovery times.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_db_proxy.this`: RDS Proxy endpoint.
 - `aws_db_proxy_default_target_group.this`: Manages connection pools and timeouts.
 - `aws_db_proxy_target.this`: Associates the proxy with primary DB instances.
 - `aws_iam_role.proxy`: IAM execution role authorized to decrypt Secrets Manager credentials.
 
 ### Security & Compliance Guardrails
+
 - **TLS Enforced**: `require_tls = true` hardcoded.
 - **Mandatory KMS Decrypt Authorization**: IAM role policy strictly scoped to decrypt with `kms_key_arn`.
 
@@ -17,7 +19,7 @@ The `rds/proxy` module manages Amazon RDS Proxy connection pooling pools for Pos
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -26,6 +28,7 @@ The `rds/proxy` module manages Amazon RDS Proxy connection pooling pools for Pos
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "rds_proxy" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=1.0.0"
@@ -44,6 +47,7 @@ module "rds_proxy" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "rds_proxy" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=1.0.0"
@@ -76,7 +80,7 @@ module "rds_proxy" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | The name of the product | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `name` | The name of the RDS proxy (optional). Will be used in combination with application and environment. | `string` | `null` | No |
@@ -96,13 +100,11 @@ module "rds_proxy" {
 | `db_instance_identifier` | DB instance identifier to register as a target. Either db_instance_identifier or db_cluster_identifier should be specified. | `string` | **Required** | Yes |
 | `endpoints` | Map of endpoints to create for the proxy. | `map(object({...}))` | `{}` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `endpoint` | Default RDS Proxy endpoint. | No |
 | `arn` | RDS Proxy ARN. | No |
-

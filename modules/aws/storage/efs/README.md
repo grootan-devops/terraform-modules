@@ -2,7 +2,8 @@
 
 The `efs` module provisions scalable Amazon Elastic File System (EFS) resources with POSIX compliance, in-transit transport encryption policies, and automated AWS Backup integration.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_efs_file_system.this`: Encrypted primary file system.
 - `aws_efs_mount_target.this`: Network mount targets placed across VPC private subnets.
 - `aws_efs_file_system_policy.this`: Enforces mandatory TLS for all client mount connections.
@@ -10,6 +11,7 @@ The `efs` module provisions scalable Amazon Elastic File System (EFS) resources 
 - `aws_security_group.this`: Dedicated security group controlling inbound NFS (TCP 2049) traffic.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: File system encryption at rest is strictly enforced (`encrypted = true`, `kms_key_id = var.kms_key_arn`).
 - **In-Transit TLS Deny Policy**: Resource policy explicitly denies all NFS actions when `aws:SecureTransport = false`.
 - **Private Subnet Isolation**: Mount targets are strictly restricted to internal VPC subnets.
@@ -19,7 +21,7 @@ The `efs` module provisions scalable Amazon Elastic File System (EFS) resources 
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -28,6 +30,7 @@ The `efs` module provisions scalable Amazon Elastic File System (EFS) resources 
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "efs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=1.0.0"
@@ -43,6 +46,7 @@ module "efs" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "efs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=1.0.0"
@@ -76,7 +80,7 @@ module "efs" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | Logical application or product name used for resource naming and tagging. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod) used for isolation and tagging. | `string` | **Required** | Yes |
 | `name` | Optional additional identifier appended to the resource name. | `string` | `null` | No |
@@ -96,17 +100,15 @@ module "efs" {
 | `allowed_client_role_arns` | List of IAM role ARNs allowed to mount and write to the file system. | `list(string)` | `[]` | No |
 | `access_points` | Map of access point configurations to create for this file system. | `map(object({...}))` | `{}` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `id` | ID of the EFS file system. | No |
 | `arn` | ARN of the EFS file system. | No |
 | `dns_name` | DNS name of the EFS file system. | No |
 | `mount_target_ids` | Map of subnet IDs to mount target IDs. | No |
 | `security_group_id` | ID of the created EFS security group (if created). | No |
 | `access_points` | Map of created EFS access points. | No |
-

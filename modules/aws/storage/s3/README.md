@@ -2,7 +2,8 @@
 
 The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buckets tailored for enterprise workloads. It enforces strict public access blocking, mandatory customer-managed KMS key encryption, automated TLS 1.2+ transport policies, and lifecycle management to optimize storage costs over time.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_s3_bucket.this`: Primary S3 storage bucket.
 - `aws_s3_bucket_public_access_block.this`: Hardcoded boundary blocking all public ACLs and bucket policies.
 - `aws_s3_bucket_ownership_controls.this`: Enforces bucket-owner object ownership (`BucketOwnerEnforced`).
@@ -13,6 +14,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 - `aws_s3_bucket_replication_configuration.this`: Optional cross-region replication setup with dedicated IAM role.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Requires `kms_key_arn`. S3 Bucket Keys are enabled to reduce KMS API costs by up to 99%.
 - **Hardcoded Public Access Block**: `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` are hardcoded to `true`.
 - **TLS 1.2+ Enforcement**: Injects explicit `Deny` statements for `aws:SecureTransport = false` and `s3:TlsVersion < 1.2`.
@@ -23,7 +25,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -32,6 +34,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "s3_bucket" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
@@ -44,6 +47,7 @@ module "s3_bucket" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "s3_bucket" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
@@ -112,7 +116,7 @@ module "s3_bucket" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | The name of the S3 bucket | `string` | `null` | No |
 | `bucket_name_override` | Override the default S3 bucket name format with this exact string | `string` | `null` | No |
 | `application` | Name of the product | `string` | **Required** | Yes |
@@ -128,13 +132,11 @@ module "s3_bucket" {
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `cors_rules` | List of CORS rules to configure for the bucket | `list(object({...}))` | `[]` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `bucket_arn` | The ARN of the bucket | No |
 | `bucket_name` | The name of the bucket | No |
-

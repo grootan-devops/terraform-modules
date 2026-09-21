@@ -2,11 +2,13 @@
 
 The `dynamodb` module manages Amazon DynamoDB NoSQL tables featuring Global Secondary Indexes (GSIs), Local Secondary Indexes (LSIs), Point-in-Time Recovery (PITR), and Customer Managed KMS Key encryption.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_dynamodb_table.this`: Primary DynamoDB table definition.
 - `aws_dynamodb_contributor_insights.this`: Optional CloudWatch Contributor Insights monitoring.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Server-side encryption strictly enforced with `kms_key_arn`.
 - **Point-in-Time Recovery**: Continuous backup enabled by default (`pitr_recovery_period_in_days = 35`).
 - **Deletion Protection**: Enabled by default (`deletion_protection_enabled = true`).
@@ -16,7 +18,7 @@ The `dynamodb` module manages Amazon DynamoDB NoSQL tables featuring Global Seco
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -25,6 +27,7 @@ The `dynamodb` module manages Amazon DynamoDB NoSQL tables featuring Global Seco
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "dynamodb" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/dynamodb?ref=1.0.0"
@@ -44,6 +47,7 @@ module "dynamodb" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "dynamodb" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/dynamodb?ref=1.0.0"
@@ -93,7 +97,7 @@ module "dynamodb" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | The name of the table | `string` | **Required** | Yes |
 | `billing_mode` | Controls how you are charged for read and write throughput and how you manage capacity. Valid values are PROVISIONED and PAY_PER_REQUEST. | `string` | **Required** | Yes |
 | `hash_key` | The attribute to use as the hash (partition) key. Must also be defined as an attribute. | `string` | **Required** | Yes |
@@ -118,13 +122,11 @@ module "dynamodb" {
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `table_name` | DynamoDB table name. | No |
 | `table_arn` | DynamoDB table ARN. | No |
-

@@ -2,12 +2,14 @@
 
 The `cloudfront` module provisions Amazon CloudFront Content Delivery Network (CDN) distributions with Origin Access Control (OAC), modern TLS 1.2+ viewers, and KMS-encrypted CloudWatch delivery logs.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_cloudfront_distribution.this`: Primary CDN distribution.
 - `aws_cloudfront_origin_access_control.this`: Origin Access Control for S3 bucket origin authorization.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted delivery log group.
 
 ### Security & Compliance Guardrails
+
 - **TLS 1.2+ Enforced**: Minimum protocol version hardcoded to `TLSv1.2_2021`.
 - **Redirect to HTTPS**: All cache behaviors enforce `viewer_protocol_policy = "redirect-to-https"`.
 - **Mandatory KMS Logging**: CloudWatch delivery log group requires `kms_key_arn`.
@@ -17,7 +19,7 @@ The `cloudfront` module provisions Amazon CloudFront Content Delivery Network (C
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -26,6 +28,7 @@ The `cloudfront` module provisions Amazon CloudFront Content Delivery Network (C
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "cdn" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=1.0.0"
@@ -53,6 +56,7 @@ module "cdn" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "cdn" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=1.0.0"
@@ -113,7 +117,7 @@ module "cdn" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | Application name | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `aliases` | List of aliases (CNAMEs) for the CloudFront distribution | `list(string)` | **Required** | Yes |
@@ -133,15 +137,13 @@ module "cdn" {
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting CloudFront CloudWatch delivery logs. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `id` | Identifier of the CloudFront distribution. | No |
 | `arn` | ARN of the CloudFront distribution. | No |
 | `domain_name` | Domain name corresponding to the distribution. | No |
 | `hosted_zone_id` | CloudFront Route 53 zone ID that can be used to route an Alias resource to. | No |
-

@@ -2,13 +2,15 @@
 
 The `eventbridge` module provisions custom Amazon EventBridge event buses with KMS encryption, event routing rules, dead-letter queue (DLQ) integration, and cross-service invocation targets.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_cloudwatch_event_bus.this`: Primary custom event bus.
 - `aws_cloudwatch_event_rule.this`: Pattern-matching and scheduled event rules.
 - `aws_cloudwatch_event_target.this`: Invocation targets (Lambda, SQS, Batch, Step Functions).
 - `aws_cloudwatch_event_bus_policy.this`: IAM bus permission policies.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Custom event bus encryption at rest is strictly required (`kms_key_arn`).
 - **Dead-Letter Resiliency**: Supports dead-letter queue routing for unprocessed events.
 
@@ -17,7 +19,7 @@ The `eventbridge` module provisions custom Amazon EventBridge event buses with K
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -26,6 +28,7 @@ The `eventbridge` module provisions custom Amazon EventBridge event buses with K
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "eventbridge" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=1.0.0"
@@ -38,6 +41,7 @@ module "eventbridge" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "eventbridge" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=1.0.0"
@@ -81,7 +85,7 @@ module "eventbridge" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | The name of the application. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `name` | The name suffix for EventBridge resources. | `string` | `""` | No |
@@ -95,14 +99,12 @@ module "eventbridge" {
 | `tags` | Common tags to apply to all resources. | `map(string)` | `{}` | No |
 | `cloudwatch_logs` | CloudWatch logs configuration for EventBridge. | `object({...})` | `null` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `event_rules` | Map of created EventBridge rules containing their ARNs. | No |
 | `bus_arn` | The ARN of the EventBridge bus. | No |
 | `bus_name` | The name of the EventBridge bus. | No |
-

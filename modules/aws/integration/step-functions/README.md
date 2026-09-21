@@ -2,12 +2,14 @@
 
 The `step-functions` module manages AWS Step Functions state machines with Customer Managed KMS Key encryption for execution data, CloudWatch execution logs, and automated least-privilege IAM execution roles.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_sfn_state_machine.this`: Core state machine definition.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted execution log group.
 - `aws_iam_role.this`: IAM execution role with CloudWatch and KMS permissions.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Execution history encrypted via Customer Managed KMS Key (`kms_key_id = var.kms_key_arn`).
 - **Encrypted Logging**: CloudWatch log group requires `kms_key_arn` and customizable retention.
 
@@ -16,7 +18,7 @@ The `step-functions` module manages AWS Step Functions state machines with Custo
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -25,6 +27,7 @@ The `step-functions` module manages AWS Step Functions state machines with Custo
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "state_machine" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=1.0.0"
@@ -48,6 +51,7 @@ module "state_machine" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "state_machine" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=1.0.0"
@@ -88,7 +92,7 @@ module "state_machine" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | The name of the application. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `name` | Name suffix for the state machine (e.g. document-pipeline). | `string` | **Required** | Yes |
@@ -100,14 +104,12 @@ module "state_machine" {
 | `tags` | Common tags to apply to all resources. | `map(string)` | `{}` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting State Machine execution history and CloudWatch logs. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `state_machine_arn` | ARN of the created state machine. | No |
 | `state_machine_name` | Name of the created state machine. | No |
 | `role_arn` | ARN of the state machine execution role. | No |
-

@@ -2,7 +2,8 @@
 
 The `ecs` module provisions Amazon Elastic Container Service (ECS) clusters with Fargate launch types, multi-service task definitions, Cloud Map service discovery, and KMS-encrypted CloudWatch log groups.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_ecs_cluster.this`: Fargate cluster.
 - `aws_ecs_task_definition.this`: Task definitions.
 - `aws_ecs_service.this`: ECS services.
@@ -10,6 +11,7 @@ The `ecs` module provisions Amazon Elastic Container Service (ECS) clusters with
 - `aws_service_discovery_private_dns_namespace.this`: Cloud Map internal DNS namespace.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS Logging**: CloudWatch logs encrypted with `kms_key_arn`.
 - **Encrypted Secrets Resolution**: Automatically generates IAM execution roles with `kms:Decrypt` permissions.
 
@@ -18,7 +20,7 @@ The `ecs` module provisions Amazon Elastic Container Service (ECS) clusters with
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -27,6 +29,7 @@ The `ecs` module provisions Amazon Elastic Container Service (ECS) clusters with
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "ecs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.0.0"
@@ -51,6 +54,7 @@ module "ecs" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "ecs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.0.0"
@@ -97,7 +101,7 @@ module "ecs" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | Name prefix for the ECS Cluster. If not provided, will be derived from application and environment. | `string` | `null` | No |
 | `application` | Logical application or product name used for resource naming and tagging | `string` | `""` | No |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
@@ -118,13 +122,12 @@ module "ecs" {
 | `kms_key_arn` | KMS Key ARN used to decrypt secrets and encrypt CloudWatch log groups. Strictly required. | `string` | **Required** | Yes |
 | `services` | A map of services to deploy in the ECS cluster | `map(object({...}))` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `cluster_id` | ID of the ECS cluster. | No |
 | `cluster_arn` | ARN that identifies the cluster. | No |
 | `service_names` | Map of service names. | No |
@@ -133,4 +136,3 @@ module "ecs" {
 | `task_execution_role_arn` | ARN of the task execution role. | No |
 | `service_task_role_arns` | Map of service task role ARNs. | No |
 | `security_group_id` | Security group ID attached to the ECS service. | No |
-

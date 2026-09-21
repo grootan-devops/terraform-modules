@@ -2,7 +2,8 @@
 
 The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) with multi-tier subnet architectures (Public, Private, Intra), NAT Gateway topologies, Network ACLs, and automated VPC Flow Logs.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_vpc.main`: Core VPC with DNS hostnames and resolution enabled.
 - `aws_subnet.public`: Public ingress subnets with Internet Gateway route tables.
 - `aws_subnet.private`: Private application subnets routed through NAT Gateways.
@@ -11,6 +12,7 @@ The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) w
 - `aws_vpc_endpoint`: Gateway and Interface private endpoints to keep AWS API traffic off the public internet.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory Flow Logs Encryption**: CloudWatch log group encrypted with mandatory `kms_key_arn` and 90-day retention.
 - **CIDR Block Validation**: Strictly validated with `cidrnetmask` to prevent invalid IPv4 prefix allocations.
 - **Subnet Tier Isolation**: Dedicated route tables and Network ACLs per tier prevent unexpected cross-tier exposure.
@@ -20,7 +22,7 @@ The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) w
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -29,6 +31,7 @@ The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) w
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "vpc" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
@@ -47,6 +50,7 @@ module "vpc" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "vpc" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
@@ -89,7 +93,7 @@ module "vpc" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | Name for the VPC. If not provided, will be derived from application and environment. | `string` | `null` | No |
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `application` | Logical application or product name used for resource naming and tagging | `string` | **Required** | Yes |
@@ -101,25 +105,23 @@ module "vpc" {
 | `intra_subnet_cidrs` | CIDR blocks for intra subnets with no outbound internet access | `list(string)` | **Required** | Yes |
 | `private_subnet_internet_gateway` | If true, routes 0.0.0.0/0 in private subnets to the Internet Gateway instead of a NAT Gateway (requires instances to have public IPs). | `bool` | `false` | No |
 | `intra_subnet_internet_gateway` | If true, routes 0.0.0.0/0 in intra subnets to the Internet Gateway. | `bool` | `false` | No |
-| `dns` |  | `object({...})` | `{}` | No |
-| `nat` |  | `object({...})` | `{}` | No |
-| `dhcp_options` |  | `object({...})` | `{}` | No |
-| `cloudwatch_logs` |  | `object({...})` | `{...}` | No |
-| `vpc_endpoints` |  | `object({...})` | `{}` | No |
-| `nacl` |  | `object({...})` | `{}` | No |
-| `additional_routes` |  | `object({...})` | `{}` | No |
+| `dns` | | `object({...})` | `{}` | No |
+| `nat` | | `object({...})` | `{}` | No |
+| `dhcp_options` | | `object({...})` | `{}` | No |
+| `cloudwatch_logs` | | `object({...})` | `{...}` | No |
+| `vpc_endpoints` | | `object({...})` | `{}` | No |
+| `nacl` | | `object({...})` | `{}` | No |
+| `additional_routes` | | `object({...})` | `{}` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting VPC Flow Logs in CloudWatch. Strictly required. | `string` | **Required** | Yes |
-
 
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `vpc_id` | The ID of the VPC | No |
 | `cidr_block` | The CIDR block of the VPC | No |
 | `public_subnets` | List of IDs of public subnets | No |
 | `private_subnets` | List of IDs of private subnets | No |
 | `intra_subnets` | List of IDs of intra subnets | No |
-

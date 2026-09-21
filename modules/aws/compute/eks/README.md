@@ -2,12 +2,14 @@
 
 The `eks` module provides an enterprise-grade Kubernetes control plane orchestrating managed node groups, Pod Identity add-ons, and KMS envelope encryption.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - Invokes `modules/eks/cluster` for the hardened control plane.
 - Invokes `modules/eks/node_group` for launch template-backed worker pools.
 - Integrates VPC CNI, EBS CSI Driver, EFS CSI Driver, and CoreDNS.
 
 ### Security & Compliance Guardrails
+
 - **KMS Secrets Envelope Encryption**: Kubernetes secrets encrypted with `kms_key_arn`.
 - **IMDSv2 Enforced**: Node groups enforce `http_tokens = "required"`.
 - **Private API Endpoints**: Supports private-only or restricted CIDR public access.
@@ -17,7 +19,7 @@ The `eks` module provides an enterprise-grade Kubernetes control plane orchestra
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -26,6 +28,7 @@ The `eks` module provides an enterprise-grade Kubernetes control plane orchestra
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "eks" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks?ref=1.0.0"
@@ -42,6 +45,7 @@ module "eks" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "eks" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks?ref=1.0.0"
@@ -91,7 +95,7 @@ module "eks" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | Logical application or product name used for resource naming and tagging. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod) used for isolation and tagging. | `string` | **Required** | Yes |
 | `name` | Optional additional identifier appended to the cluster name. | `string` | `null` | No |
@@ -104,13 +108,12 @@ module "eks" {
 | `public_access_cidrs` | List of CIDR blocks permitted to access the public API server endpoint when endpoint_public_access is true. | `list(string)` | `[]` | No |
 | `node_groups` | Configuration map of managed node groups to create. | `map(object({...}))` | `{}` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `cluster_name` | Name of the EKS cluster. | No |
 | `cluster_arn` | ARN of the EKS cluster. | No |
 | `cluster_endpoint` | Endpoint URL for the Kubernetes API server. | No |
@@ -120,4 +123,3 @@ module "eks" {
 | `node_group_arns` | Map of node group keys to their resource ARNs. | No |
 | `node_group_ids` | Map of node group keys to their resource IDs. | No |
 | `node_role_arn` | ARN of the IAM role used by the worker nodes. | No |
-

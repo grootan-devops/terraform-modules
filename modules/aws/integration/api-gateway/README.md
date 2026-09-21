@@ -2,12 +2,14 @@
 
 The `api-gateway` module manages Amazon API Gateway REST APIs featuring Lambda authorizers, OpenAPI definition stitching, stage deployment governance, and KMS-encrypted CloudWatch access logging.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_api_gateway_rest_api.this`: Core REST API definition.
 - `aws_api_gateway_stage.this`: Deployed execution stage with throttling parameters.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted API Gateway access log group.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS Logging**: Access logs CloudWatch group requires `kms_key_arn`.
 - **Throttling Governance**: Configures default burst and rate limits to protect backend services from DDoS.
 
@@ -16,7 +18,7 @@ The `api-gateway` module manages Amazon API Gateway REST APIs featuring Lambda a
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -25,6 +27,7 @@ The `api-gateway` module manages Amazon API Gateway REST APIs featuring Lambda a
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "api_gateway" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.0.0"
@@ -37,6 +40,7 @@ module "api_gateway" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "api_gateway" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.0.0"
@@ -75,7 +79,7 @@ module "api_gateway" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | The name of the product/application. | `string` | **Required** | Yes |
 | `environment` | The environment suffix for resources, for example dev, staging, or prod. | `string` | **Required** | Yes |
 | `minimum_compression_size` | Minimum response size in bytes before API Gateway compression is applied. Use null to disable. | `number` | `null` | No |
@@ -98,15 +102,13 @@ module "api_gateway" {
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting API Gateway CloudWatch logs. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `rest_api_id` | The ID of the REST API Gateway | No |
 | `stage_name` | The deployed stage name | No |
 | `execution_arn` | The execution ARN of the REST API Gateway | No |
 | `invoke_url` | The URL to invoke the API pointing to the stage. | No |
-

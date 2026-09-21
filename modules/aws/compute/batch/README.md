@@ -2,13 +2,15 @@
 
 The `batch` module manages AWS Batch compute environments (Fargate), job queues with fair-share scheduling, containerized job definitions, and scheduled EventBridge triggers.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_batch_compute_environment.this`: Managed Fargate batch compute.
 - `aws_batch_job_queue.this`: Priority and fair-share job queues.
 - `aws_batch_job_definition.this`: Containerized task execution specs.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted batch execution log group.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS Logging**: CloudWatch logs encrypted with `kms_key_arn`.
 - **Private Subnet Placement**: Tasks run exclusively across private subnets.
 
@@ -17,7 +19,7 @@ The `batch` module manages AWS Batch compute environments (Fargate), job queues 
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -26,6 +28,7 @@ The `batch` module manages AWS Batch compute environments (Fargate), job queues 
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "batch" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/batch?ref=1.0.0"
@@ -41,6 +44,7 @@ module "batch" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "batch" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/batch?ref=1.0.0"
@@ -92,7 +96,7 @@ module "batch" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | The name of the application. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `name` | The name suffix for AWS Batch resources. | `string` | `""` | No |
@@ -111,14 +115,12 @@ module "batch" {
 | `cloudwatch_logs` | CloudWatch logs configuration for AWS Batch containers. | `object({...})` | `null` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting AWS Batch CloudWatch logs and compute storage. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `job_queue_arns` | Map of Job Queue ARNs to be used with EventBridge targets. | No |
 | `job_definition_arns` | Map of Job Definition ARNs to be used with EventBridge targets. | No |
 | `eventbridge_role_arn` | The IAM Role ARN required by EventBridge / Scheduler to trigger these Batch jobs. | No |
-

@@ -2,7 +2,8 @@
 
 The `alb` module provisions external or internal AWS Application Load Balancers (ALBs) with HTTP-to-HTTPS automated redirection, path-based routing rules, health checks, and HTTP smuggling protections.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_lb.this`: Application Load Balancer.
 - `aws_lb_target_group.default`: Primary baseline target group.
 - `aws_lb_target_group.extra`: Path-routed secondary service target groups.
@@ -11,6 +12,7 @@ The `alb` module provisions external or internal AWS Application Load Balancers 
 - `aws_security_group.alb`: Load balancer security group controlling inbound traffic.
 
 ### Security & Compliance Guardrails
+
 - **HTTP Desync Protection**: `drop_invalid_header_fields = true` hardcoded to mitigate HTTP request smuggling attacks.
 - **TLS 1.2+ Enforced**: Listener uses `ELBSecurityPolicy-TLS13-1-2-2021-06`.
 - **Accidental Deletion Protection**: `deletion_protection_enabled` defaults to `true`.
@@ -21,7 +23,7 @@ The `alb` module provisions external or internal AWS Application Load Balancers 
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -30,6 +32,7 @@ The `alb` module provisions external or internal AWS Application Load Balancers 
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "alb" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=1.0.0"
@@ -46,6 +49,7 @@ module "alb" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "alb" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=1.0.0"
@@ -93,7 +97,7 @@ module "alb" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | Name prefix for the ALB. If not provided, will be derived from application and environment. | `string` | `null` | No |
 | `application` | Logical application or product name used for resource naming and tagging | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
@@ -122,17 +126,15 @@ module "alb" {
 | `cloudwatch_logs` | CloudWatch logs configuration for the ALB log group. | `object({...})` | `null` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting ALB access logs and CloudWatch logs. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `default_target_group_arn` | The ARN of the default target group | No |
 | `extra_target_group_arns` | Map of extra route names to target group ARNs | No |
 | `lb_dns` | DNS endpoint of load balancer | No |
 | `security_group_id` | Security group ID of the ALB (managed or first external) | No |
 | `lb_arn` | The ARN of the load balancer | No |
 | `listener_arn` | The ARN of the primary load balancer listener | No |
-

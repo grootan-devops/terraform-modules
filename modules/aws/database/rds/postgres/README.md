@@ -2,7 +2,8 @@
 
 The `rds/postgres` module provisions enterprise-grade Amazon Relational Database Service (RDS) PostgreSQL instances compliant with CIS AWS Foundations Benchmarks. It enforces network isolation, mandatory KMS storage and log encryption, parameter-group SSL enforcement, and automated cross-region backup replication.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_db_instance.this`: PostgreSQL primary instance.
 - `aws_db_subnet_group.this`: Private DB subnet group.
 - `aws_db_parameter_group.this`: Engine configuration with `rds.force_ssl = 1`.
@@ -11,6 +12,7 @@ The `rds/postgres` module provisions enterprise-grade Amazon Relational Database
 - `aws_db_instance_automated_backups_replication.this`: Optional cross-region backup replication.
 
 ### Security & Compliance Guardrails
+
 - **Zero Public Access**: `publicly_accessible = false` hardcoded.
 - **SSL Enforced**: `rds.force_ssl = "1"` hardcoded in DB parameter group.
 - **Mandatory KMS CMK**: Storage (`storage_encrypted = true`), Performance Insights, and CloudWatch logs encrypted with `kms_key_id`.
@@ -21,7 +23,7 @@ The `rds/postgres` module provisions enterprise-grade Amazon Relational Database
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -30,6 +32,7 @@ The `rds/postgres` module provisions enterprise-grade Amazon Relational Database
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "postgres" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
@@ -70,6 +73,7 @@ module "postgres" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "postgres" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
@@ -141,7 +145,7 @@ module "postgres" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | The name of the RDS instance | `string` | `null` | No |
 | `application` | The name of the product | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
@@ -166,15 +170,13 @@ module "postgres" {
 | `cloudwatch_logs` | CloudWatch logs configuration for RDS PostgreSQL. | `object({...})` | **Required** | Yes |
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `id` | The RDS instance identifier | No |
 | `username` | The master username for the database | No |
 | `address` | The RDS instance hostname. | No |
 | `port` | The RDS instance port. | No |
-

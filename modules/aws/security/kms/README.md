@@ -2,13 +2,15 @@
 
 The `kms` module provisions symmetric and asymmetric AWS Key Management Service (KMS) Customer Managed Keys (CMKs), alias namespaces, and multi-region replica keys.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_kms_key.this`: Primary cryptographic key resource.
 - `aws_kms_alias.this`: Standardized alias namespace (`alias/${application}-${environment}-${name}-key`).
 - `aws_kms_key_policy.this`: Custom or default IAM administrative key policy document.
 - `aws_kms_replica_key.this`: Optional cross-region replica key for multi-region active-active architectures.
 
 ### Security & Compliance Guardrails
+
 - **Automatic Key Rotation**: Enabled by default (`enable_key_rotation = true`) with a 365-day rotation cadence.
 - **Deletion Safeguards**: Enforces a 30-day deletion waiting window (`deletion_window_in_days = 30`).
 - **Policy Lockout Safety Check**: Prevents policy updates that would permanently orphan administrative access.
@@ -18,7 +20,7 @@ The `kms` module provisions symmetric and asymmetric AWS Key Management Service 
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -27,6 +29,7 @@ The `kms` module provisions symmetric and asymmetric AWS Key Management Service 
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "kms" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
@@ -38,6 +41,7 @@ module "kms" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "kms" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
@@ -76,7 +80,7 @@ module "kms" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | Name identifier for the KMS key | `string` | `null` | No |
 | `description` | Optional custom description for the KMS key. Overrides the default computed description. | `string` | `null` | No |
 | `application` | Name of the product | `string` | **Required** | Yes |
@@ -92,14 +96,12 @@ module "kms" {
 | `replica_key` | Configuration for creating a replica key in a secondary region. multi_region must be true. | `object({...})` | `{ create = false }` | No |
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `key_arn` | The ARN of the KMS key | No |
 | `key_id` | The globally unique identifier for the key | No |
 | `replica_key_arn` | The ARN of the KMS replica key if created | No |
-

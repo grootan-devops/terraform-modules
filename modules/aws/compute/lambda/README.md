@@ -2,13 +2,15 @@
 
 The `lambda` module manages AWS Lambda serverless functions supporting container and zip packaging, stable release aliases, CloudWatch logging with KMS encryption, and secure VPC integration.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_lambda_function.this`: Serverless execution function.
 - `aws_lambda_alias.this`: Release alias for safe traffic shifting.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted function execution log group.
 - `aws_iam_role.this`: Execution role with least-privilege KMS Decrypt and VPC policies.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Environment variables encrypted at rest with `kms_key_arn`.
 - **Encrypted Logging**: CloudWatch logs encrypted with `kms_key_arn`.
 - **Private Subnet Attachments**: Executes securely within private subnets when VPC configured.
@@ -18,7 +20,7 @@ The `lambda` module manages AWS Lambda serverless functions supporting container
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -27,6 +29,7 @@ The `lambda` module manages AWS Lambda serverless functions supporting container
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "lambda" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=1.0.0"
@@ -42,6 +45,7 @@ module "lambda" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "lambda" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=1.0.0"
@@ -82,7 +86,7 @@ module "lambda" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | Name of the Lambda function | `string` | `null` | No |
 | `application` | Name of the product | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
@@ -124,16 +128,14 @@ module "lambda" {
 | `enable_lambda_insights` | Enable CloudWatch Lambda Insights. | `bool` | `false` | No |
 | `bootstrap_status_code` | HTTP status code returned by the bootstrap placeholder handler before actual application code is deployed. | `number` | `200` | No |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `function_arn` | The Amazon Resource Name (ARN) identifying your Lambda Function. | No |
 | `alias_arn` | The ARN of the stable Lambda release alias. | No |
 | `function_name` | The unique name of the Lambda Function. | No |
 | `role_arn` | The ARN of the IAM role attached to the Lambda Function. | No |
 | `role_name` | The name of the IAM role attached to the Lambda Function. | No |
-

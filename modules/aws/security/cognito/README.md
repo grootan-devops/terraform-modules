@@ -2,13 +2,15 @@
 
 The `cognito` module provisions Amazon Cognito User Pools, App Clients, risk configuration for adaptive authentication, SES custom email integration, and KMS-encrypted CloudWatch logs.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_cognito_user_pool.this`: Primary user directory.
 - `aws_cognito_user_pool_client.this`: Configured application clients with OAuth grants.
 - `aws_cognito_user_pool_risk_configuration.this`: Advanced Security Features (ASF) risk engine.
 - `aws_cloudwatch_log_group.this`: KMS-encrypted user activity log group.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS Logging**: CloudWatch logs require `kms_key_arn`.
 - **Advanced Security Features**: Configurable risk actions and compromised credential blocking.
 
@@ -17,7 +19,7 @@ The `cognito` module provisions Amazon Cognito User Pools, App Clients, risk con
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -26,6 +28,7 @@ The `cognito` module provisions Amazon Cognito User Pools, App Clients, risk con
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "cognito" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/cognito?ref=1.0.0"
@@ -38,6 +41,7 @@ module "cognito" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "cognito" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/cognito?ref=1.0.0"
@@ -84,7 +88,7 @@ module "cognito" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `name` | Name of the Cognito User Pool | `string` | **Required** | Yes |
 | `application` | Application name | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
@@ -112,15 +116,13 @@ module "cognito" {
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `kms_key_arn` | KMS Key ARN used for encrypting Cognito user pool CloudWatch logs and custom triggers. Strictly required. | `string` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `user_pool_id` | Cognito user pool identifier. | No |
 | `user_pool_arn` | Cognito user pool ARN. | No |
 | `client_ids` | Map of client key (from var.clients) -> Cognito app client id. | No |
 | `user_pool_endpoint` | The endpoint name of the user pool. | No |
-

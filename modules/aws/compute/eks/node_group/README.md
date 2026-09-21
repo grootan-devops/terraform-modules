@@ -2,12 +2,14 @@
 
 Standalone Amazon EKS Managed Node Group submodule providing EC2 launch templates with IMDSv2 enforcement, KMS-encrypted EBS volumes, and node autoscaling.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_eks_node_group.this`: Managed node group instance pool.
 - `aws_launch_template.this`: EC2 launch template enforcing IMDSv2 and EBS encryption.
 - `aws_iam_role.node`: Worker node IAM role.
 
 ### Security & Compliance Guardrails
+
 - **IMDSv2 Enforced**: `http_tokens = "required"`, `http_put_response_hop_limit = 1`.
 - **Encrypted Storage**: Root volumes encrypted with `kms_key_arn`.
 
@@ -16,7 +18,7 @@ Standalone Amazon EKS Managed Node Group submodule providing EC2 launch template
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.5.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
@@ -25,6 +27,7 @@ Standalone Amazon EKS Managed Node Group submodule providing EC2 launch template
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "eks_node_group" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/node_group?ref=1.0.0"
@@ -39,6 +42,7 @@ module "eks_node_group" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "eks_node_group" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/node_group?ref=1.0.0"
@@ -75,7 +79,7 @@ module "eks_node_group" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | Logical application or product name used for resource naming and tagging. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod) used for isolation and tagging. | `string` | **Required** | Yes |
 | `name` | Optional additional identifier appended to node group resources. | `string` | `null` | No |
@@ -84,15 +88,13 @@ module "eks_node_group" {
 | `kms_key_arn` | ARN of the customer-managed KMS key used to encrypt node group EBS root volumes. | `string` | **Required** | Yes |
 | `node_groups` | Configuration map of managed node groups to create. | `map(object({...}))` | **Required** | Yes |
 
-
 ---
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `node_group_arns` | Map of node group keys to their resource ARNs. | No |
 | `node_group_ids` | Map of node group keys to their resource IDs. | No |
 | `node_role_arn` | ARN of the IAM role used by the worker nodes. | No |
 | `launch_template_ids` | Map of launch template IDs created for the node groups. | No |
-

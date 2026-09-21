@@ -2,13 +2,15 @@
 
 The `secrets-manager` module manages AWS Secrets Manager secrets, automatic versioning payloads, resource policies, and automated Lambda rotation schedules.
 
-### Architecture & Managed Resources
+## Architecture & Managed Resources
+
 - `aws_secretsmanager_secret.this`: Primary encrypted secret container.
 - `aws_secretsmanager_secret_version.this`: Initial secret string / binary payload.
 - `aws_secretsmanager_secret_policy.this`: Granular IAM resource access policy.
 - `aws_secretsmanager_secret_rotation.this`: Configures Lambda rotation schedules.
 
 ### Security & Compliance Guardrails
+
 - **Mandatory KMS CMK**: Encryption at rest strictly requires `kms_key_arn`.
 - **Soft Delete Window**: Defaults to 30-day recovery window (`recovery_window_in_days = 30`).
 - **Public Policy Prevention**: `block_public_policy` validation prevents accidental external sharing.
@@ -18,7 +20,7 @@ The `secrets-manager` module manages AWS Secrets Manager secrets, automatic vers
 ## Requirements & Providers
 
 | Requirement | Version |
-|---|---|
+| --- | --- |
 | `terraform` | `>= 1.11.0` |
 | `aws` | `>= 6.64.0` |
 
@@ -27,6 +29,7 @@ The `secrets-manager` module manages AWS Secrets Manager secrets, automatic vers
 ## Usage Examples
 
 ### Minimal Working Example
+
 ```hcl
 module "secret" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=1.0.0"
@@ -41,6 +44,7 @@ module "secret" {
 ```
 
 ### Complete Production Example
+
 ```hcl
 module "secret" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=1.0.0"
@@ -73,7 +77,7 @@ module "secret" {
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-|---|---|---|---|:---:|
+| --- | --- | --- | --- | :---: |
 | `application` | Application name for resource naming and tagging. | `string` | **Required** | Yes |
 | `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
 | `name` | Friendly name of the secret. Conflicts with name_prefix. | `string` | `null` | No |
@@ -99,7 +103,7 @@ module "secret" {
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-|---|---|:---:|
+| --- | --- | :---: |
 | `arn` | ARN of the secret. | No |
 | `id` | ID of the secret. | No |
 | `name` | Name of the secret. | No |

@@ -11,7 +11,7 @@ Every AWS module is located under [`modules/aws/`](../modules/aws/) and engineer
 All AWS modules are organized into functional domain categories under `modules/aws/`:
 
 | Domain | Module Directory | Primary AWS Resources Managed | Compliance Baseline |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | **Compute** | [`modules/aws/compute/batch`](../modules/aws/compute/batch) | `aws_batch_compute_environment`, `aws_batch_job_queue`, `aws_batch_job_definition` | SOC2 Type II |
 | | [`modules/aws/compute/ecs`](../modules/aws/compute/ecs) | `aws_ecs_cluster`, `aws_ecs_task_definition`, `aws_ecs_service` | AWS Container Security |
 | | [`modules/aws/compute/eks`](../modules/aws/compute/eks) | `aws_eks_cluster`, `aws_eks_node_group`, `aws_eks_addon` | CIS EKS Benchmark v1.4 |
@@ -75,13 +75,17 @@ Silent fallbacks to AWS default managed keys (`aws/s3`, `aws/rds`, `aws/sqs`) ar
 Every module implements deterministic naming and centralized tagging via `locals.tf`:
 
 ### Resource Naming Formula
-```
+
+```hcl
 ${var.application}-${var.environment}-${var.name}
 ```
+
 *(If `var.name` is null or empty, resources resolve cleanly to `${var.application}-${var.environment}`)*.
 
 ### Standard Tags
+
 All resources automatically inherit the following tags merged with any user-provided `var.tags`:
+
 - `Application`: Name of the system or application service.
 - `Environment`: Target deployment tier (`dev`, `staging`, `prod`, validated via regex `^[a-z0-9-]+$`).
 - `Name`: Full rendered resource name.
@@ -235,11 +239,12 @@ resource "aws_route53_record" "db_internal" {
 ## 6. Terragrunt AWS Architecture (Plainr Pattern)
 
 To achieve maximum simplicity, maintainability, and zero code duplication across environments (`dev`, `qa`, `prod`), this module library is designed to be orchestrated using the **Plainr Terragrunt Architecture**:
+
 - A single canonical Terraform composition stack in **`resources/`**.
 - A master **`root.hcl`** managing remote state and provider generation.
 - Thin environment directories (**`dev/`**, **`qa/`**, **`prod/`**) that invoke `..//resources` with environment-specific inputs.
 
-```
+```text
 infra-live/
 ├── root.hcl                          # Root Terragrunt configuration (remote state & provider generator)
 ├── resources/                        # Single canonical Terraform composition layer
@@ -263,6 +268,7 @@ infra-live/
 ```
 
 ### 6.1. Master Root Configuration: `root.hcl`
+
 The root `root.hcl` manages S3 remote state storage with DynamoDB state locking and automatically generates standardized provider configurations across all sibling environment directories:
 
 ```hcl
@@ -322,9 +328,11 @@ EOF
 ---
 
 ### 6.2. The Canonical Composition Layer: `resources/`
+
 The `resources/` directory wires together the modular building blocks from `modules/aws/` and adds safe direct resources (IAM policies, DNS records).
 
 #### `resources/kms.tf`
+
 ```hcl
 module "kms" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
@@ -339,6 +347,7 @@ module "kms" {
 ```
 
 #### `resources/vpc.tf`
+
 ```hcl
 module "vpc" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
@@ -363,6 +372,7 @@ module "vpc" {
 ```
 
 #### `resources/rds.tf`
+
 ```hcl
 module "rds" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
@@ -406,6 +416,7 @@ module "rds" {
 ### 6.3. Environment Invocations: `dev/`, `qa/`, `prod/`
 
 #### `dev/terragrunt.hcl`
+
 ```hcl
 include "root" {
   path = find_in_parent_folders("root.hcl")
@@ -440,6 +451,7 @@ inputs = {
 ```
 
 #### `prod/terragrunt.hcl`
+
 ```hcl
 include "root" {
   path = find_in_parent_folders("root.hcl")

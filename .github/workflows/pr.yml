@@ -30,8 +30,7 @@ jobs:
       contents: read
     secrets: inherit
     with:
-      lint-md-files: "*.md"
-      md-lint-ignore-rule: "MD041 MD029"
+      lint-md-files: "**/*.md"
 
   check:
     needs: init
@@ -59,7 +58,7 @@ jobs:
     permissions:
       contents: read
     container:
-      image: registry-1.docker.io/grootantech/toolkit:verify-v2
+      image: registry-1.docker.io/grootantech/toolkit:1.0.0
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
