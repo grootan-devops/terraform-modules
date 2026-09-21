@@ -33,3 +33,8 @@ terraform.rc
 .vscode/
 *.swp
 *~
+
+# Local credentials
+.env
+.env.*
+!.env.example
