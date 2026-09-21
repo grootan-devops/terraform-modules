@@ -10,7 +10,7 @@ Production-grade, modular Terraform library for provisioning secure, compliant c
 
 Modules are grouped by cloud provider and domain under `modules/`:
 
-```
+```text
 terraform-modules/
 ├── .gitignore                          # Artifact exclusions
 ├── AWS.md                              # AWS architecture, CIS baselines & module catalog
@@ -30,6 +30,7 @@ terraform-modules/
 ## 2. Module Consumption
 
 ### Native Terraform
+
 Reference modules using semantic version tags in Git (recommended for remote repos) or relative paths (for monorepos):
 
 ```hcl
@@ -51,7 +52,7 @@ module "s3" {
 
 The recommended Terragrunt pattern pairs a single canonical Terraform composition stack in `resources/` with sibling environment directories:
 
-```
+```text
 infra-live/
 ├── root.hcl                          # Remote state (S3/DynamoDB) and provider generator
 ├── resources/                        # Single Terraform stack composing modules
@@ -71,6 +72,7 @@ infra-live/
 ```
 
 ### 3.1. `root.hcl`
+
 ```hcl
 remote_state {
   backend = "s3"
@@ -125,6 +127,7 @@ EOF
 ```
 
 ### 3.2. `resources/` Composition Example
+
 ```hcl
 # resources/kms.tf
 module "kms" {
@@ -181,6 +184,7 @@ module "rds" {
 ```
 
 ### 3.3. Environment Terragrunt (`dev/terragrunt.hcl`, `prod/terragrunt.hcl`)
+
 ```hcl
 # dev/terragrunt.hcl
 include "root" {

@@ -36,7 +36,7 @@ module "secret" {
   name        = "db-credentials"
 
   kms_key_arn   = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  secret_string = jsonencode({ username = "app_user", password = "TemporaryInitialPassword123!" })
+  secret_string = jsonencode({ username = var.db_username, password = var.db_password })
 }
 ```
 

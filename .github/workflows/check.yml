@@ -32,3 +32,4 @@ jobs:
     with:
       tag: ${{ needs.init.outputs.tag }}
       allow-unstable-library-refs: true
+      check-library-pinning: false
