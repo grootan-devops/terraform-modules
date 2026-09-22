@@ -1,0 +1,38 @@
+name: Release · Publish & Notify
+run-name: "Release · Publish & Notify · ${{ github.event_name }} · ${{ github.sha }}"
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - ".github/**"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  init:
+    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@dev
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    secrets: inherit
+    with:
+      ignore-docker: "true"
+      ignore-chart: "true"
+
+  release:
+    needs: [init]
+    uses: grootan-devops/github-ci-library/.github/workflows/release.yml@dev
+    permissions:
+      contents: write
+      actions: read
+    secrets: inherit
+    with:
+      tag: ${{ needs.init.outputs.tag }}
+      upstream-run-id: ${{ needs.init.outputs.upstream-run-id }}

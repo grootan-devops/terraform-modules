@@ -1,0 +1,35 @@
+name: Checks · Release Guards
+run-name: "Checks · Release Guards · ${{ github.event_name }} · ${{ github.sha }}"
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  init:
+    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@dev
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    secrets: inherit
+    with:
+      ignore-docker: "true"
+      ignore-chart: "true"
+
+  check:
+    needs: init
+    uses: grootan-devops/github-ci-library/.github/workflows/check.yml@dev
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      tag: ${{ needs.init.outputs.tag }}
+      allow-unstable-library-refs: true
+      check-library-pinning: false

@@ -1,0 +1,69 @@
+name: CI · PR Verification
+run-name: "CI · PR Verification · ${{ github.event_name }} · ${{ github.sha }}"
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  init:
+    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@dev
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    secrets: inherit
+    with:
+      ignore-docker: "true"
+      ignore-chart: "true"
+
+  lint:
+    uses: grootan-devops/github-ci-library/.github/workflows/lint.yml@dev
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      lint-md-files: "**/*.md"
+
+  check:
+    needs: init
+    uses: grootan-devops/github-ci-library/.github/workflows/check.yml@dev
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      tag: ${{ needs.init.outputs.tag }}
+      allow-unstable-library-refs: true
+      check-library-pinning: false
+
+  secret-scan:
+    uses: grootan-devops/github-ci-library/.github/workflows/secret-scanning.yml@dev
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      full-history: false
+
+  verify:
+    name: Repository Verification
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    container:
+      image: registry-1.docker.io/grootantech/toolkit:1.0.0
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify Terraform Modules
+        run: make verify
