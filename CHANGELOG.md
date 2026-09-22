@@ -7,6 +7,13 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-22
+
+### Changed
+
+- Pinned the repository's GitHub Actions verification workflows to `github-ci-library` 1.0.0.
+- Refreshed release metadata and documentation without changing module interfaces.
+
 ## [1.0.0] - 2026-09-19
 
 ### Added
