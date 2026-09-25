@@ -7,6 +7,20 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootan-devops/github-ci-library`](https://github.com/grootan-devops/github-ci-library) from [`1.0.0` to `1.3.1`](https://app.renovatebot.com/package-diff?name=grootan-devops%2Fgithub-ci-library&from=1.0.0&to=1.3.1)
+- Updated [`grootantech/toolkit`](https://github.com/grootan-devops/toolkit) from `1.0.0` to `1.1.0`
+
 ## [1.1.1] - 2026-09-23
 
 ### Changed
