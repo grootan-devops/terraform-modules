@@ -11,7 +11,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Normalize the Docker Hub toolkit reference used by PR verification; module interfaces remain unchanged.
+- Bump the Docker Hub toolkit reference used by PR verification to 1.1.0; pin reusable workflows to github-ci-library @1.3.1; module interfaces remain unchanged.
 
 ## [1.1.0] - 2026-09-22
 

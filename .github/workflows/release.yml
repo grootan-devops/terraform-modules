@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   init:
-    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@1.0.0
+    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@1.3.1
     permissions:
       contents: read
       actions: read
@@ -28,7 +28,7 @@ jobs:
 
   release:
     needs: [init]
-    uses: grootan-devops/github-ci-library/.github/workflows/release.yml@1.0.0
+    uses: grootan-devops/github-ci-library/.github/workflows/release.yml@1.3.1
     permissions:
       contents: write
       actions: read
