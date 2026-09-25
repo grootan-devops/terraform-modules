@@ -33,6 +33,8 @@ terraform.rc
 .vscode/
 *.swp
 *~
+__pycache__/
+*.pyc
 
 # Local credentials
 .env

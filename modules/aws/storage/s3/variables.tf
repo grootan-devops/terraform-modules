@@ -188,7 +188,7 @@ variable "lifecycle_rules" {
 # ==============================================================================
 
 variable "public_access_block" {
-  description = "Public access block configuration."
+  description = "Deprecated compatibility input; ignored. All four public access blocks are always enabled."
   type = object({
     block_public_acls       = bool
     block_public_policy     = bool

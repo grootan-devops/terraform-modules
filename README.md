@@ -516,6 +516,8 @@ ownership and lifecycle boundaries, and known caveats are the common additions.
 
 Every usage example must reference the public Git source pinned to a release tag —
 `tests/verify_modules.py` rejects a module README whose examples use a relative path.
+The offline check validates the public source path and stable SemVer tag syntax; confirm
+that the tag exists when publishing the example.
 
 ---
 
@@ -549,6 +551,7 @@ make validate    # full run (same as verify's second half)
 - `required_version >= 1.5.0` and a `hashicorp/aws` provider requirement.
 - `application` and `environment` variables are declared.
 - A `locals` block carrying naming and tag governance exists.
+- Data sources declared in root Terraform files are referenced by module logic.
 - A `README.md` exists whose examples use the public Git source pinned to the release tag.
 - No Markdown anywhere in the repository points a module `source` at a relative path.
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, and

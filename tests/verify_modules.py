@@ -51,17 +51,23 @@ def contract_checks(module):
             errors.append(f"{rel}: required governance variable {name!r} is missing")
     if "locals" not in text or "tags" not in text:
         errors.append(f"{rel}: local naming/tag governance contract is missing")
+    for kind, name in re.findall(
+        r'(?m)^[ \t]*data[ \t]+"([^"]+)"[ \t]+"([^"]+)"[ \t]*\{', text
+    ):
+        if not re.search(rf'\bdata\.{re.escape(kind)}\.{re.escape(name)}\b', text):
+            errors.append(f"{rel}: unused data source data.{kind}.{name}")
     readme = module / "README.md"
     if not readme.exists():
         errors.append(f"{rel}: README.md is missing")
     else:
-        expected_source = (
-            "git::https://github.com/grootan-devops/terraform-modules.git//"
-            f"{rel.as_posix()}?ref=1.0.0"
+        stable_tag = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+        expected_source = re.compile(
+            r"git::https://github\.com/grootan-devops/terraform-modules\.git//"
+            rf"{re.escape(rel.as_posix())}\?ref={stable_tag}(?=\"|&)"
         )
-        if expected_source not in readme.read_text():
+        if not expected_source.search(readme.read_text()):
             errors.append(
-                f"{rel}: examples must use the public Git source pinned to 1.0.0"
+                f"{rel}: examples must use the public Git source pinned to a stable SemVer tag"
             )
     return errors
 
