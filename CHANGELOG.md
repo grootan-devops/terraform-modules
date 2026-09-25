@@ -5,13 +5,19 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-09-25
+
+### Changed
+
+- Bumped PR verification container image to `grootantech/toolkit:1.1.0`.
+- Pinned repository CI reusable workflow callers to `github-ci-library` `@1.3.1`.
+- Module interfaces and governance contracts remain fully backward compatible.
 
 ## [1.1.1] - 2026-09-23
 
 ### Changed
 
-- Bump the Docker Hub toolkit reference used by PR verification to 1.1.0; pin reusable workflows to github-ci-library @1.3.1; module interfaces remain unchanged.
+- Normalize the Docker Hub toolkit reference used by PR verification; module interfaces remain unchanged.
 
 ## [1.1.0] - 2026-09-22
 

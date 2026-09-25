@@ -1,6 +1,6 @@
 # Terraform Modules Library
 
-Release `1.1.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
+Release `1.2.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
 
 Production-grade, modular Terraform library for provisioning secure, compliant cloud infrastructure.
 
