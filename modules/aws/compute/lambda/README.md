@@ -22,6 +22,7 @@ The `lambda` module manages AWS Lambda serverless functions supporting container
 | Requirement | Version |
 | --- | --- |
 | `terraform` | `>= 1.5.0` |
+| `archive` | `>= 2.7.0, < 3.0.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---

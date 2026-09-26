@@ -17,6 +17,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 
 - **Mandatory KMS CMK**: Requires `kms_key_arn`. S3 Bucket Keys are enabled to reduce KMS API costs by up to 99%.
 - **Hardcoded Public Access Block**: `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` are hardcoded to `true`.
+- **Deprecated Compatibility Input**: `public_access_block` is accepted but ignored; passing `false` does not disable any public access block.
 - **TLS 1.2+ Enforcement**: Injects explicit `Deny` statements for `aws:SecureTransport = false` and `s3:TlsVersion < 1.2`.
 - **Versioning by Default**: `enable_versioning` defaults to `true` to protect against accidental object deletion or ransomware.
 
@@ -127,7 +128,7 @@ module "s3_bucket" {
 | `object_ownership` | Object ownership. Valid values: BucketOwnerEnforced, BucketOwnerPreferred, ObjectWriter. | `string` | `"BucketOwnerEnforced"` | No |
 | `access_control_policy` | Access Control Policy to apply to the S3 bucket. | `object({...})` | `null` | No |
 | `lifecycle_rules` | List of lifecycle rules to configure on the S3 bucket. | `list(object({...}))` | `[...]` | No |
-| `public_access_block` | Public access block configuration. | `object({...})` | `{...}` | No |
+| `public_access_block` | Deprecated compatibility input; ignored. All four public access blocks are always enabled. | `object({...})` | `{...}` | No |
 | `custom_policy_statements` | A list of custom bucket policy statements. The `Resource` block is automatically injected into each statement for this bucket. | `list(any)` | `[]` | No |
 | `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
 | `cors_rules` | List of CORS rules to configure for the bucket | `list(object({...}))` | `[]` | No |
