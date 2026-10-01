@@ -1,8 +1,23 @@
 # Terraform Modules Library
 
-Release `1.2.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
+Release `1.3.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
 
 Production-grade, modular Terraform library for provisioning secure, compliant cloud infrastructure.
+
+## Documentation
+
+| Task | Read |
+| --- | --- |
+| Consume modules in a Terraform or Terragrunt stack | [§2](#2-module-consumption), [§3](#3-terragrunt-architecture), [Consuming modules](docs/consumption.md) |
+| Design a module's public API | [§4](#4-module-contract), [Provider schema](docs/provider-schema.md) |
+| Name resources and emit tags | [§5](#5-naming--tagging-standards), [Other providers](docs/other-providers.md) |
+| Choose security controls | [§6](#6-security-baselines), [AWS catalog](docs/AWS.md), [Other providers](docs/other-providers.md) |
+| Write a module README | [§7](#7-module-documentation-standard) |
+| Classify a change and release it | [§8](#8-versioning--release-contract), [State migration](docs/state-migration.md), [MIGRATION.md](MIGRATION.md) |
+| Test and verify a module | [§9](#9-development--testing), [Module tests](docs/testing.md) |
+
+For AI-assisted work, read this index first and follow only the relevant links, at the same
+branch, tag or local checkout.
 
 ---
 
@@ -13,8 +28,15 @@ Modules are grouped by cloud provider and domain under `modules/`:
 ```text
 terraform-modules/
 ├── .gitignore                          # Artifact exclusions
-├── AWS.md                              # AWS architecture, CIS baselines & module catalog
 ├── README.md                           # Repository structure, consumption & Terragrunt guide
+├── docs/
+│   ├── AWS.md                          # AWS architecture, CIS baselines & module catalog
+│   ├── consumption.md                  # Rules for composing modules into environments
+│   ├── provider-schema.md              # Deriving inputs and outputs from the schema
+│   ├── state-migration.md              # Moved blocks and the release plan gate
+│   ├── testing.md                      # Native and Terratest test shapes
+│   ├── other-providers.md              # Naming bounds and capability tables beyond AWS
+│   └── assets/                         # Architecture diagram template
 └── modules/
     └── aws/                            # AWS infrastructure modules
         ├── compute/                    # batch, ecs, eks, lambda
@@ -46,9 +68,12 @@ module "s3" {
 
 ```
 
+The rules for sources and versions, composition, state, providers, secrets and validation are
+in [Consuming modules](docs/consumption.md).
+
 ---
 
-## 3. Terragrunt Architecture (Plainr Pattern)
+## 3. Terragrunt Architecture
 
 The recommended Terragrunt pattern pairs a single canonical Terraform composition stack in `resources/` with sibling environment directories:
 
@@ -249,7 +274,8 @@ inputs = {
 
 Every module here is a versioned public interface. The rules below are what a consumer may
 rely on and what a new or changed module must satisfy. `tests/verify_modules.py` enforces
-the mechanical subset of them — run it with `make verify`.
+the mechanical subset of them — run it with `make verify`. Derive inputs and outputs from the
+provider schema ([Provider schema](docs/provider-schema.md)).
 
 ### 4.1. Variables
 
@@ -342,6 +368,8 @@ for write-only (`*_wo`) arguments. Today `secrets-manager` is the single module 
 ---
 
 ## 5. Naming & Tagging Standards
+
+The bounds for providers other than AWS are in [Other providers](docs/other-providers.md).
 
 ### 5.1. Deterministic naming
 
@@ -447,7 +475,21 @@ blanket mandate. Every control on every resource resolves to one of six statuses
 | `not_applicable` | Semantically meaningless here (KMS on an IAM role). | Omit entirely. |
 
 The resolved AWS matrix — which control applies to which service — is in
-**[docs/AWS.md](docs/AWS.md)**.
+**[docs/AWS.md](docs/AWS.md)**. For a resource the matrix does not cover, derive the status
+from `terraform providers schema -json`:
+
+1. Absent from the schema → `not_supported`. A variable that maps to nothing reads as a
+   control that is switched on.
+2. Present, and the cloud applies it with no configuration → `provider_managed`.
+3. Present, on a resource holding customer data at rest or in transit → `required`.
+4. Present, with a material cost or operational trade-off (NAT gateways, long log retention,
+   Multi-AZ) → `recommended`.
+5. Present and niche (BYO-IP, cross-region replication, object lock) → `optional`.
+6. Present but meaningless here (KMS on an IAM role) → `not_applicable`.
+
+`not_supported` is a provider gap that may close in a later release and is worth a comment in
+the module; `not_applicable` never closes. Starting tables for Azure and GCP are in
+[Other providers](docs/other-providers.md).
 
 ### 6.2. Cryptographic key governance
 
@@ -519,6 +561,9 @@ Every usage example must reference the public Git source pinned to a release tag
 The offline check validates the public source path and stable SemVer tag syntax; confirm
 that the tag exists when publishing the example.
 
+Start the architecture diagram from [docs/assets/architecture-template.svg](docs/assets/architecture-template.svg)
+(a PNG export sits beside it).
+
 ---
 
 ## 8. Versioning & Release Contract
@@ -534,7 +579,8 @@ repository tag is the version, and every module moves with it.
 
 Anything at MAJOR — and any MINOR that changes observable behaviour — requires an entry in
 [MIGRATION.md](./MIGRATION.md) before release. Release notes go in
-[CHANGELOG.md](./CHANGELOG.md).
+[CHANGELOG.md](./CHANGELOG.md). Moving a resource address, and the plan review that gates a
+risky release, are in [State migration](docs/state-migration.md).
 
 ---
 
@@ -579,7 +625,8 @@ terraform test          # requires tests/*.tftest.hcl and Terraform >= 1.6
 | 6 | Terraform core and provider version matrix | Not wired in |
 
 Level 2 is the cheapest to extend and the one to add with any new module: it runs offline in
-seconds and `make verify` picks it up automatically.
+seconds and `make verify` picks it up automatically. The test shapes are in
+[Module tests](docs/testing.md).
 
 Detailed AWS resource catalogs and baseline specifications are documented in
 **[docs/AWS.md](docs/AWS.md)**.
