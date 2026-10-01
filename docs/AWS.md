@@ -236,9 +236,9 @@ resource "aws_route53_record" "db_internal" {
 
 ---
 
-## 6. Terragrunt AWS Architecture (Plainr Pattern)
+## 6. Terragrunt AWS Architecture
 
-To achieve maximum simplicity, maintainability, and zero code duplication across environments (`dev`, `qa`, `prod`), this module library is designed to be orchestrated using the **Plainr Terragrunt Architecture**:
+To achieve maximum simplicity, maintainability, and zero code duplication across environments (`dev`, `qa`, `prod`), this module library is designed to be orchestrated using this **Terragrunt architecture**:
 
 - A single canonical Terraform composition stack in **`resources/`**.
 - A master **`root.hcl`** managing remote state and provider generation.
