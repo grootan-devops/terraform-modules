@@ -285,6 +285,20 @@ are internal: call this module, not them.
 passes through, the two defaulting mechanisms, the precedence ladders, naming, where validation
 lives, and the HCL idioms. Read it before adding an area or an input.
 
+## Environments
+
+The module has no `environment` input. Each environment is its own OneUptime project, and the
+stack's API key decides which project it writes to:
+
+```text
+OneUptime project "oneuptime-dev"   <- the dev stack's API key
+OneUptime project "oneuptime-prod"  <- the prod stack's API key
+```
+
+The dev and prod stacks call the module with the same block. Only the key in
+`ONEUPTIME_API_KEY` differs, plus `oneuptime_url` when the environments run on separate
+OneUptime instances.
+
 ## How Defaults Work
 
 `monitor_defaults` and `status_page_defaults` share one precedence, lowest to highest:
