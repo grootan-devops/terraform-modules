@@ -603,7 +603,7 @@ run "verify_optional_service_inputs_flow_through" {
         memory                            = 2048
         desired_count                     = 3
         environment                       = { LOG_LEVEL = "info" }
-        secrets                           = { DB_PASSWORD = "arn:aws:secretsmanager:us-west-2:123456789012:secret:core-prod-db-AbCdEf" }
+        secrets                           = { DATABASE_URL = "arn:aws:secretsmanager:us-west-2:123456789012:secret:core-prod-db-AbCdEf" }
         load_balancer_target_group_arn    = "arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/core-prod-api/0123456789abcdef"
         enable_deployment_circuit_breaker = true
         rollback_on_failure               = true
@@ -643,7 +643,7 @@ run "verify_optional_service_inputs_flow_through" {
   }
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.this["api"].container_definitions)[0].secrets == [{ name = "DB_PASSWORD", valueFrom = "arn:aws:secretsmanager:us-west-2:123456789012:secret:core-prod-db-AbCdEf" }]
+    condition     = jsondecode(aws_ecs_task_definition.this["api"].container_definitions)[0].secrets == [{ name = "DATABASE_URL", valueFrom = "arn:aws:secretsmanager:us-west-2:123456789012:secret:core-prod-db-AbCdEf" }]
     error_message = "Container secrets did not flow through."
   }
 

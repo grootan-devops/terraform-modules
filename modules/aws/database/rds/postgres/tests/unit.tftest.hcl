@@ -39,7 +39,7 @@ variables {
 
   credential = {
     username = "dbadmin"
-    password = "mock-password-not-real"
+    password = sha256("rds-postgres-test-fixture")
   }
 
   backup_retention_period                  = 30

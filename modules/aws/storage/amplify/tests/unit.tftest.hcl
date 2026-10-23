@@ -130,7 +130,7 @@ run "verify_parameter_overrides" {
     basic_auth = {
       enable   = true
       username = "reviewer"
-      password = "not a real secret"
+      password = sha256("amplify-test-fixture")
     }
     custom_headers = "customHeaders:\n  - pattern: '**/*'\n    headers:\n      - key: Strict-Transport-Security\n        value: max-age=31536000\n"
     custom_rules = [
@@ -159,7 +159,7 @@ run "verify_parameter_overrides" {
   }
 
   assert {
-    condition     = aws_amplify_app.this.basic_auth_credentials == base64encode("reviewer:not a real secret")
+    condition     = aws_amplify_app.this.basic_auth_credentials == base64encode("reviewer:${sha256("amplify-test-fixture")}")
     error_message = "Basic auth credentials must be the base64-encoded username:password pair."
   }
 

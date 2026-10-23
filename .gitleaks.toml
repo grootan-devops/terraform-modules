@@ -11,3 +11,18 @@ targetRules = ["generic-username", "generic-password"]
 paths = [
   '''^modules/aws/security/secrets-manager/README\.md$''',
 ]
+
+# Commit d59f045 added literal placeholder credentials to three mock-provider
+# test fixtures; the next commit replaced them with computed values. Only that
+# commit, only those files and only the credential rules are allowed, so a
+# later literal in any test still fails the scan.
+[[allowlists]]
+description = "Placeholder test credentials in d59f045, since replaced"
+condition = "AND"
+targetRules = ["generic-username", "generic-password"]
+commits = ["d59f0453426d13052a59b0400c0aa57552d12efd"]
+paths = [
+  '''^modules/aws/database/rds/postgres/tests/unit\.tftest\.hcl$''',
+  '''^modules/aws/storage/amplify/tests/unit\.tftest\.hcl$''',
+  '''^modules/aws/compute/ecs/tests/unit\.tftest\.hcl$''',
+]
