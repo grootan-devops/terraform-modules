@@ -14,6 +14,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Plan-time validation that names the offending monitors, status pages and workflows when inputs reference each other inconsistently.
 - `modules/oneuptime/modules/workflows-templates/teams-notification`, which builds the five standard Microsoft Teams notification workflows without creating resources.
 - A mock-provider `terraform test` suite in `modules/oneuptime/tests/`, run by `make verify`.
+- `docs/ONEUPTIME.md`, the OneUptime counterpart of `docs/AWS.md`: module catalog, secret handling, monitoring baselines, naming and labelling standards, an end-to-end composition and a Terragrunt dev/prod layout.
 - The OneUptime module guide, `modules/oneuptime/CONVENTIONS.md`, a OneUptime section in `docs/other-providers.md`, and a documentation index row.
 
 ### Changed

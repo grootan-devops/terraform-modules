@@ -54,4 +54,6 @@ governance and the provider per family:
 | Credentials | `api_key` belongs to the calling stack's provider block, or `ONEUPTIME_API_KEY`. Monitors reference credentials as `{{monitorSecrets.<name>}}`. |
 | Version constraint | `>= 13.0.6, < 14.0.0`: provider majors change resource schemas, so the bound follows the validated major. |
 
+The catalog, baselines and a Terragrunt dev/prod layout are in [docs/ONEUPTIME.md](ONEUPTIME.md).
+
 [Documentation index](../README.md#documentation)

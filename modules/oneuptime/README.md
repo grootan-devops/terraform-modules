@@ -5,6 +5,9 @@ what is monitored — into the OneUptime resources that watch it: labels, teams,
 alert and incident rules, on-call policies, status pages and workflows. The calling stack owns
 **what** is monitored; this module owns **how** that becomes resources.
 
+The baselines, naming standards and a Terragrunt dev/prod layout are in
+[docs/ONEUPTIME.md](../../docs/ONEUPTIME.md).
+
 ## Architecture & Managed Resources
 
 Labels and teams are created at the root, because every area needs their ids. Everything else

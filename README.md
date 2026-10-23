@@ -12,11 +12,11 @@ and the OneUptime monitoring that watches it.
 | Consume modules in a Terraform or Terragrunt stack | [§2](#2-module-consumption), [§3](#3-terragrunt-architecture), [Consuming modules](docs/consumption.md) |
 | Design a module's public API | [§4](#4-module-contract), [Provider schema](docs/provider-schema.md) |
 | Name resources and emit tags | [§5](#5-naming--tagging-standards), [Other providers](docs/other-providers.md) |
-| Choose security controls | [§6](#6-security-baselines), [AWS catalog](docs/AWS.md), [Other providers](docs/other-providers.md) |
+| Choose security controls | [§6](#6-security-baselines), [AWS catalog](docs/AWS.md), [OneUptime catalog](docs/ONEUPTIME.md), [Other providers](docs/other-providers.md) |
 | Write a module README | [§7](#7-module-documentation-standard) |
 | Classify a change and release it | [§8](#8-versioning--release-contract), [State migration](docs/state-migration.md), [MIGRATION.md](MIGRATION.md) |
 | Test and verify a module | [§9](#9-development--testing), [Module tests](docs/testing.md) |
-| Monitor a stack with OneUptime | [OneUptime module](modules/oneuptime/README.md), [Other providers](docs/other-providers.md#oneuptime) |
+| Monitor a stack with OneUptime | [OneUptime catalog](docs/ONEUPTIME.md), [OneUptime module](modules/oneuptime/README.md), [Other providers](docs/other-providers.md#oneuptime) |
 
 For AI-assisted work, read this index first and follow only the relevant links, at the same
 branch, tag or local checkout.
@@ -33,6 +33,7 @@ terraform-modules/
 ├── README.md                           # Repository structure, consumption & Terragrunt guide
 ├── docs/
 │   ├── AWS.md                          # AWS architecture, CIS baselines & module catalog
+│   ├── ONEUPTIME.md                    # OneUptime architecture, monitoring baselines & catalog
 │   ├── consumption.md                  # Rules for composing modules into environments
 │   ├── provider-schema.md              # Deriving inputs and outputs from the schema
 │   ├── state-migration.md              # Moved blocks and the release plan gate
@@ -644,7 +645,8 @@ seconds and `make verify` picks it up automatically. The test shapes are in
 [Module tests](docs/testing.md).
 
 Detailed AWS resource catalogs and baseline specifications are documented in
-**[docs/AWS.md](docs/AWS.md)**.
+**[docs/AWS.md](docs/AWS.md)**, and the OneUptime equivalents in
+**[docs/ONEUPTIME.md](docs/ONEUPTIME.md)**.
 
 ---
 
