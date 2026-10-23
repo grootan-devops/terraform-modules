@@ -1,7 +1,7 @@
 # Other providers
 
-This library ships AWS modules. A module for another cloud follows the same contract, naming
-and capability rules, with the provider's own limits. The rows below are a starting point:
+This library ships AWS modules and one OneUptime module. A module for another cloud follows the
+same contract, naming and capability rules, with the provider's own limits. The rows below are a starting point:
 confirm each against `terraform providers schema -json` before relying on it.
 
 ## Naming bounds
@@ -37,5 +37,21 @@ Classify each control from the schema with the procedure in README §6.1.
 | `google_compute_network` | `not_applicable` | `not_applicable` | `required` (flow logs) | `not_applicable` | `required` (Private Google Access) |
 
 AWS-specific rules do not transfer to another provider without schema evidence.
+
+## OneUptime
+
+[`modules/oneuptime`](../modules/oneuptime/README.md) configures monitoring through the
+`oneuptime/oneuptime` provider rather than provisioning cloud infrastructure. The contract
+applies with these substitutions; `tests/verify_modules.py` checks the variables, the label
+governance and the provider per family:
+
+| Contract rule | OneUptime |
+| --- | --- |
+| `application` and `environment` variables | `application` only. Environments are kept apart by OneUptime project, which the API key is scoped to. |
+| Governance tags merged last | Labels: the `application` label, plus the component and group labels derived from `rbac_component_mapping`. They are never written on an item. |
+| `rendered_name` | Names come from caller keys: a component's rules carry the component name, on-call objects `<component>-oncall-*`, monitors their `display_name`. |
+| CMEK, TLS, deletion protection | `not_applicable`: the provider schema has no such arguments; OneUptime runs the service. |
+| Credentials | `api_key` belongs to the calling stack's provider block, or `ONEUPTIME_API_KEY`. Monitors reference credentials as `{{monitorSecrets.<name>}}`. |
+| Version constraint | `>= 13.0.6, < 14.0.0`: provider majors change resource schemas, so the bound follows the validated major. |
 
 [Documentation index](../README.md#documentation)

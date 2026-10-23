@@ -8,6 +8,29 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 1.4.0
+
+### Required
+
+No state migration required. AWS module interfaces, resource addresses and runtime behaviour are
+unchanged; change the `?ref=` tag only. This release adds `modules/oneuptime`.
+
+### Recommended
+
+- A stack running a local copy of the OneUptime module can point its module blocks at
+  `git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.4.0`
+  and run `terraform init -upgrade`. Resource addresses do not change while the module block
+  keeps its name.
+- The published module needs Terraform `>= 1.9.0` and `oneuptime/oneuptime`
+  `>= 13.0.6, < 14.0.0`. Keep the stack's own provider pin inside that range.
+- The Teams notification template's `dashboard_url` now defaults to `https://oneuptime.com`.
+  Set it explicitly for a self-hosted instance.
+
+### Verify
+
+- A plan for each environment shows no changes after the `?ref=` change.
+- A stack moved from a local copy shows no changes once `dashboard_url` is set to its instance.
+
 ## 1.3.0
 
 ### Required

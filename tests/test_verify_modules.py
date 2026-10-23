@@ -68,5 +68,104 @@ class PublicSourceContractTests(unittest.TestCase):
         self.assertEqual(self.findings_for_source(source), [])
 
 
+class ProviderFamilyContractTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        original_root = verify_modules.ROOT
+        verify_modules.ROOT = Path(self.temp.name)
+        self.addCleanup(setattr, verify_modules, "ROOT", original_root)
+
+    def write_module(self, rel, provider="oneuptime/oneuptime", body="", readme=None):
+        module = verify_modules.ROOT / rel
+        module.mkdir(parents=True)
+        (module / "main.tf").write_text(
+            'terraform { required_version = ">= 1.9.0" '
+            f'required_providers {{ oneuptime = {{ source = "{provider}" }} }} }}\n{body}'
+        )
+        if readme is None:
+            readme = (
+                "git::https://github.com/grootan-devops/terraform-modules.git//"
+                f"{rel}?ref=1.4.0\""
+            )
+        (module / "README.md").write_text(readme)
+        return module
+
+    def test_oneuptime_module_uses_label_governance_without_environment(self):
+        module = self.write_module(
+            "modules/oneuptime",
+            body='variable "application" {}\nlocals {}\nresource "oneuptime_label" "this" {}\n',
+        )
+        self.assertEqual(verify_modules.contract_checks(module), [])
+
+    def test_oneuptime_module_without_its_provider_or_labels_fails(self):
+        module = self.write_module(
+            "modules/oneuptime",
+            provider="hashicorp/aws",
+            body='variable "application" {}\nlocals { tags = {} }\nresource "aws_s3_bucket" "this" {}\n',
+        )
+        findings = verify_modules.contract_checks(module)
+        self.assertIn("modules/oneuptime: oneuptime/oneuptime provider contract is missing", findings)
+        self.assertIn(
+            "modules/oneuptime: local naming/oneuptime_label governance contract is missing", findings
+        )
+
+    def test_aws_module_still_requires_environment_and_tags(self):
+        module = self.write_module(
+            "modules/aws/network/vpc",
+            provider="hashicorp/aws",
+            body='variable "application" {}\nresource "aws_vpc" "this" {}\n',
+        )
+        findings = verify_modules.contract_checks(module)
+        self.assertIn(
+            "modules/aws/network/vpc: required governance variable 'environment' is missing", findings
+        )
+        self.assertIn(
+            "modules/aws/network/vpc: local naming/tags governance contract is missing", findings
+        )
+
+    def test_nested_module_skips_parent_governance_and_published_example(self):
+        module = self.write_module(
+            "modules/oneuptime/modules/alerts",
+            body='resource "oneuptime_alert_owner_rule" "this" {}\n',
+            readme="# Alerts\n",
+        )
+        self.assertEqual(verify_modules.contract_checks(module), [])
+
+        (module / "README.md").unlink()
+        self.assertEqual(
+            verify_modules.contract_checks(module),
+            ["modules/oneuptime/modules/alerts: README.md is missing"],
+        )
+
+    def test_nested_module_with_resources_still_requires_its_provider(self):
+        module = self.write_module(
+            "modules/oneuptime/modules/monitors",
+            provider="hashicorp/aws",
+            body='data "oneuptime_monitor_status" "offline" {}\n'
+            'output "id" { value = data.oneuptime_monitor_status.offline.id }\n',
+            readme="# Monitors\n",
+        )
+        self.assertEqual(
+            verify_modules.contract_checks(module),
+            ["modules/oneuptime/modules/monitors: oneuptime/oneuptime provider contract is missing"],
+        )
+
+    def test_resource_free_module_needs_no_provider(self):
+        module = verify_modules.ROOT / "modules/oneuptime/modules/workflows-templates/teams"
+        module.mkdir(parents=True)
+        (module / "versions.tf").write_text('terraform { required_version = ">= 1.9.0" }\n')
+        (module / "outputs.tf").write_text('output "workflow_configs" { value = {} }\n')
+        (module / "README.md").write_text("# Teams\n")
+        self.assertEqual(verify_modules.contract_checks(module), [])
+
+    def test_unknown_provider_family_is_reported(self):
+        module = self.write_module("modules/azure/storage/account", provider="hashicorp/azurerm")
+        self.assertEqual(
+            verify_modules.contract_checks(module),
+            ["modules/azure/storage/account: provider family 'azure' has no contract in FAMILIES"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

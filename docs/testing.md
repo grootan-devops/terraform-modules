@@ -48,6 +48,10 @@ run "verify_invalid_environment_fails" {
 Cover both shapes, the happy path and a rejected input: a suite that only asserts the happy
 path still passes after someone deletes a `validation` block.
 
+[`modules/oneuptime/tests/unit.tftest.hcl`](../modules/oneuptime/tests/unit.tftest.hcl) is the
+same shape against `mock_provider "oneuptime"`, with `command = apply` to read the ids the mock
+returns.
+
 ## Terratest — `test/<module>_test.go`
 
 For behaviour only a live API shows. It costs real money and time, so add it on request, not

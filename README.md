@@ -1,8 +1,9 @@
 # Terraform Modules Library
 
-Release `1.3.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
+Release `1.4.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
 
-Production-grade, modular Terraform library for provisioning secure, compliant cloud infrastructure.
+Production-grade, modular Terraform library for provisioning secure, compliant cloud infrastructure,
+and the OneUptime monitoring that watches it.
 
 ## Documentation
 
@@ -15,6 +16,7 @@ Production-grade, modular Terraform library for provisioning secure, compliant c
 | Write a module README | [§7](#7-module-documentation-standard) |
 | Classify a change and release it | [§8](#8-versioning--release-contract), [State migration](docs/state-migration.md), [MIGRATION.md](MIGRATION.md) |
 | Test and verify a module | [§9](#9-development--testing), [Module tests](docs/testing.md) |
+| Monitor a stack with OneUptime | [OneUptime module](modules/oneuptime/README.md), [Other providers](docs/other-providers.md#oneuptime) |
 
 For AI-assisted work, read this index first and follow only the relevant links, at the same
 branch, tag or local checkout.
@@ -23,7 +25,7 @@ branch, tag or local checkout.
 
 ## 1. Repository Layout
 
-Modules are grouped by cloud provider and domain under `modules/`:
+Modules are grouped by provider and domain under `modules/`:
 
 ```text
 terraform-modules/
@@ -38,13 +40,15 @@ terraform-modules/
 │   ├── other-providers.md              # Naming bounds and capability tables beyond AWS
 │   └── assets/                         # Architecture diagram template
 └── modules/
-    └── aws/                            # AWS infrastructure modules
-        ├── compute/                    # batch, ecs, eks, lambda
-        ├── database/                   # dynamodb, elasticache/valkey, rds/postgres, rds/proxy
-        ├── integration/                # api-gateway, eventbridge, sqs, step-functions
-        ├── network/                    # alb, cloudfront, vpc, waf
-        ├── security/                   # cognito, kms, secrets-manager
-        └── storage/                    # amplify, efs, s3
+    ├── aws/                            # AWS infrastructure modules
+    │   ├── compute/                    # batch, ecs, eks, lambda
+    │   ├── database/                   # dynamodb, elasticache/valkey, rds/postgres, rds/proxy
+    │   ├── integration/                # api-gateway, eventbridge, sqs, step-functions
+    │   ├── network/                    # alb, cloudfront, vpc, waf
+    │   ├── security/                   # cognito, kms, secrets-manager
+    │   └── storage/                    # amplify, efs, s3
+    └── oneuptime/                      # OneUptime monitors, on-call, status pages, workflows
+        └── modules/                    # internal areas, and the teams-notification template
 ```
 
 ---
@@ -289,8 +293,9 @@ provider schema ([Provider schema](docs/provider-schema.md)).
 | `ephemeral` | Conditional | `true` only for values consumed by write-only or ephemeral resources. Requires Terraform `>= 1.10.0`. |
 | `validation` | Conditional | Only for genuine domain boundaries the provider does not reject cleanly. |
 
-`application` and `environment` are required on every module; `tests/verify_modules.py`
-fails the build if either is missing.
+`application` and `environment` are required on every AWS module; `tests/verify_modules.py`
+fails the build if either is missing. A OneUptime module declares `application`, which
+becomes the label everything it creates carries ([Other providers](docs/other-providers.md#oneuptime)).
 
 Related settings are grouped into one strongly-typed object rather than scattered across
 flat variables:
@@ -355,7 +360,7 @@ The standard for a reusable child module is a **minimum bound only**. An upper b
 `< 7.0.0` cannot stop a breaking provider release from being published; it only forces a
 dependency conflict on consumer stacks that have already moved past it.
 
-> **Current state at `1.0.0`:** 23 of the 24 modules ship `version = ">= 6.0.0, < 7.0.0"`.
+> **Current state at `1.0.0`:** 23 of the 24 AWS modules ship `version = ">= 6.0.0, < 7.0.0"`.
 > Only [`modules/aws/security/secrets-manager`](modules/aws/security/secrets-manager) meets
 > the standard, at `>= 6.64.0`. Dropping the cap is a MINOR change — it needs no `moved`
 > block — but it changes resolution for callers, so it belongs in `CHANGELOG.md`.
@@ -363,7 +368,12 @@ dependency conflict on consumer stacks that have already moved past it.
 `required_version` is derived from the features a module actually uses: `>= 1.5.0` as the
 baseline, `>= 1.6.0` once it ships `*.tftest.hcl`, `>= 1.10.0` for `ephemeral`, `>= 1.11.0`
 for write-only (`*_wo`) arguments. Today `secrets-manager` is the single module at
-`>= 1.11.0`; the other 23 declare `>= 1.5.0`.
+`>= 1.11.0`; the other 23 AWS modules declare `>= 1.5.0`.
+
+> **OneUptime at `1.4.0`:** [`modules/oneuptime`](modules/oneuptime) and its submodules declare
+> Terraform `>= 1.9.0`, because their validations compare one input against another, and
+> `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`. The upper bound is deliberate: 14.x removes the
+> `name` argument of the `oneuptime_domain` data source the module looks domains up by.
 
 ---
 
@@ -440,7 +450,7 @@ locals {
 }
 ```
 
-> **Current state at `1.0.0`:** 23 of the 24 modules do the opposite — they merge
+> **Current state at `1.0.0`:** 23 of the 24 AWS modules do the opposite — they merge
 > `var.tags` last, so a caller passing `tags = { Environment = "prod" }` silently overwrites
 > the governance value, and none of them emit `ManagedBy`.
 > [`modules/aws/security/secrets-manager`](modules/aws/security/secrets-manager) is the only
@@ -594,11 +604,16 @@ make validate    # full run (same as verify's second half)
 
 `tests/verify_modules.py` is the gate. For every module it asserts:
 
-- `required_version >= 1.5.0` and a `hashicorp/aws` provider requirement.
-- `application` and `environment` variables are declared.
-- A `locals` block carrying naming and tag governance exists.
+- `required_version >= 1.5.0`, and the provider of its family (`hashicorp/aws`,
+  `oneuptime/oneuptime`) wherever it declares a resource or data source.
+- The family's governance variables are declared: `application` and `environment` on AWS,
+  `application` on OneUptime.
+- A `locals` block carrying naming and tag governance (AWS) or label governance (OneUptime)
+  exists.
 - Data sources declared in root Terraform files are referenced by module logic.
 - A `README.md` exists whose examples use the public Git source pinned to the release tag.
+  An internal submodule — one under another module's own `modules/` directory — needs a
+  README, and takes its governance variables and published examples from the parent.
 - No Markdown anywhere in the repository points a module `source` at a relative path.
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, and
   `terraform validate` all pass, and `terraform test` runs wherever a `*.tftest.hcl` exists.
@@ -616,9 +631,9 @@ terraform test          # requires tests/*.tftest.hcl and Terraform >= 1.6
 
 | Level | What it covers | State today |
 | :---: | --- | --- |
-| 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on all 24 modules |
+| 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on all 32 module directories |
 | 1 | Static security and secret scanning | Not wired into this repository |
-| 2 | `terraform test` with `mock_provider`, no credentials | `modules/aws/security/secrets-manager/tests/unit.tftest.hcl` only |
+| 2 | `terraform test` with `mock_provider`, no credentials | `modules/aws/security/secrets-manager` and `modules/oneuptime` |
 | 3 | Plan analysis for unexpected `delete` actions | Not wired in; no `examples/` fixtures exist |
 | 4 | Terratest apply/idempotency/destroy against real cloud | Not wired in |
 | 5 | Upgrade tests across a `moved` block | Not wired in |
