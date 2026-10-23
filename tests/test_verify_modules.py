@@ -86,7 +86,7 @@ class ProviderFamilyContractTests(unittest.TestCase):
         if readme is None:
             readme = (
                 "git::https://github.com/grootan-devops/terraform-modules.git//"
-                f"{rel}?ref=1.4.0\""
+                f"{rel}?ref=1.5.0\""
             )
         (module / "README.md").write_text(readme)
         return module

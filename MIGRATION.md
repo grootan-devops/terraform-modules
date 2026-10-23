@@ -8,7 +8,7 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
-## 1.4.0
+## 1.5.0
 
 ### Required
 
@@ -18,7 +18,7 @@ unchanged; change the `?ref=` tag only. This release adds `modules/oneuptime`.
 ### Recommended
 
 - A stack running a local copy of the OneUptime module can point its module blocks at
-  `git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.4.0`
+  `git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0`
   and run `terraform init -upgrade`. Resource addresses do not change while the module block
   keeps its name.
 - The published module needs Terraform `>= 1.9.0` and `oneuptime/oneuptime`
@@ -30,6 +30,10 @@ unchanged; change the `?ref=` tag only. This release adds `modules/oneuptime`.
 
 - A plan for each environment shows no changes after the `?ref=` change.
 - A stack moved from a local copy shows no changes once `dashboard_url` is set to its instance.
+
+## 1.4.0
+
+No migration is required. This release only updates dependencies.
 
 ## 1.3.0
 

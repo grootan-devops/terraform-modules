@@ -1,6 +1,6 @@
 # Terraform Modules Library
 
-Release `1.4.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
+Release `1.5.0` · [Compatibility](https://github.com/grootan-devops/ai-skills/blob/main/COMPATIBILITY.md) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
 
 Production-grade, modular Terraform library for provisioning secure, compliant cloud infrastructure,
 and the OneUptime monitoring that watches it.
@@ -370,7 +370,7 @@ baseline, `>= 1.6.0` once it ships `*.tftest.hcl`, `>= 1.10.0` for `ephemeral`, 
 for write-only (`*_wo`) arguments. Today `secrets-manager` is the single module at
 `>= 1.11.0`; the other 23 AWS modules declare `>= 1.5.0`.
 
-> **OneUptime at `1.4.0`:** [`modules/oneuptime`](modules/oneuptime) and its submodules declare
+> **OneUptime at `1.5.0`:** [`modules/oneuptime`](modules/oneuptime) and its submodules declare
 > Terraform `>= 1.9.0`, because their validations compare one input against another, and
 > `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`. The upper bound is deliberate: 14.x removes the
 > `name` argument of the `oneuptime_domain` data source the module looks domains up by.

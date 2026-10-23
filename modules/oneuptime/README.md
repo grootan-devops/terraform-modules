@@ -99,7 +99,7 @@ provider "oneuptime" {
 
 ```hcl
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.4.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
 
   application = "core"
 
@@ -132,7 +132,7 @@ escalation timings and status page behaviour all come from the module's defaults
 
 ```hcl
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=1.4.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=1.5.0"
 
   project_name      = "Core"
   dashboard_url     = "https://oneuptime.example.com"
@@ -140,7 +140,7 @@ module "teams_notifications" {
 }
 
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.4.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
 
   application = "core"
 
