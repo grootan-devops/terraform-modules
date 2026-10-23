@@ -85,6 +85,8 @@ def contract_checks(module):
             errors.append(
                 f"{rel}: examples must use the public Git source pinned to a stable SemVer tag"
             )
+    if not any((module / "tests").glob("*.tftest.hcl")):
+        errors.append(f"{rel}: tests/*.tftest.hcl is missing")
     return errors
 
 

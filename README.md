@@ -367,8 +367,9 @@ dependency conflict on consumer stacks that have already moved past it.
 > block — but it changes resolution for callers, so it belongs in `CHANGELOG.md`.
 
 `required_version` is derived from the features a module actually uses: `>= 1.5.0` as the
-baseline, `>= 1.6.0` once it ships `*.tftest.hcl`, `>= 1.10.0` for `ephemeral`, `>= 1.11.0`
-for write-only (`*_wo`) arguments. Today `secrets-manager` is the single module at
+baseline, `>= 1.10.0` for `ephemeral`, `>= 1.11.0` for write-only (`*_wo`) arguments. Test
+files do not raise it: `*.tftest.hcl` loads only under `terraform test`, which runs in the CI
+toolkit image, never in a consumer's plan. Today `secrets-manager` is the single module at
 `>= 1.11.0`; the other 23 AWS modules declare `>= 1.5.0`.
 
 > **OneUptime at `1.5.0`:** [`modules/oneuptime`](modules/oneuptime) and its submodules declare
@@ -616,8 +617,9 @@ make validate    # full run (same as verify's second half)
   An internal submodule — one under another module's own `modules/` directory — needs a
   README, and takes its governance variables and published examples from the parent.
 - No Markdown anywhere in the repository points a module `source` at a relative path.
+- A native test suite exists under `tests/*.tftest.hcl`.
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, and
-  `terraform validate` all pass, and `terraform test` runs wherever a `*.tftest.hcl` exists.
+  `terraform validate` all pass, and `terraform test` passes.
 
 Individual commands, run inside a module directory:
 
@@ -625,7 +627,7 @@ Individual commands, run inside a module directory:
 terraform fmt -recursive .
 terraform init -backend=false
 terraform validate
-terraform test          # requires tests/*.tftest.hcl and Terraform >= 1.6
+terraform test          # tests/*.tftest.hcl; mock_provider needs Terraform >= 1.7
 ```
 
 ### 9.1. Test levels
@@ -634,15 +636,14 @@ terraform test          # requires tests/*.tftest.hcl and Terraform >= 1.6
 | :---: | --- | --- |
 | 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on all 32 module directories |
 | 1 | Static security and secret scanning | Not wired into this repository |
-| 2 | `terraform test` with `mock_provider`, no credentials | `modules/aws/security/secrets-manager` and `modules/oneuptime` |
+| 2 | `terraform test` with `mock_provider`, no credentials | Every module directory, required by the gate: naming, tags, security defaults, parameters, validation |
 | 3 | Plan analysis for unexpected `delete` actions | Not wired in; no `examples/` fixtures exist |
 | 4 | Terratest apply/idempotency/destroy against real cloud | Not wired in |
 | 5 | Upgrade tests across a `moved` block | Not wired in |
 | 6 | Terraform core and provider version matrix | Not wired in |
 
-Level 2 is the cheapest to extend and the one to add with any new module: it runs offline in
-seconds and `make verify` picks it up automatically. The test shapes are in
-[Module tests](docs/testing.md).
+Level 2 runs offline in seconds, and `make verify` fails a module without it. What a suite
+covers and the test shapes are in [Module tests](docs/testing.md).
 
 Detailed AWS resource catalogs and baseline specifications are documented in
 **[docs/AWS.md](docs/AWS.md)**, and the OneUptime equivalents in

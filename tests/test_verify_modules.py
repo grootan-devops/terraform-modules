@@ -24,6 +24,8 @@ class PublicSourceContractTests(unittest.TestCase):
             'variable "application" {}\nvariable "environment" {}\n'
         )
         (self.module / "locals.tf").write_text('locals { tags = {} }\n')
+        (self.module / "tests").mkdir()
+        (self.module / "tests/unit.tftest.hcl").write_text('run "plan" {}\n')
 
     def findings_for_source(self, source):
         (self.module / "README.md").write_text(
@@ -89,6 +91,8 @@ class ProviderFamilyContractTests(unittest.TestCase):
                 f"{rel}?ref=1.5.0\""
             )
         (module / "README.md").write_text(readme)
+        (module / "tests").mkdir()
+        (module / "tests/unit.tftest.hcl").write_text('run "plan" {}\n')
         return module
 
     def test_oneuptime_module_uses_label_governance_without_environment(self):
@@ -157,7 +161,27 @@ class ProviderFamilyContractTests(unittest.TestCase):
         (module / "versions.tf").write_text('terraform { required_version = ">= 1.9.0" }\n')
         (module / "outputs.tf").write_text('output "workflow_configs" { value = {} }\n')
         (module / "README.md").write_text("# Teams\n")
+        (module / "tests").mkdir()
+        (module / "tests/unit.tftest.hcl").write_text('run "plan" {}\n')
         self.assertEqual(verify_modules.contract_checks(module), [])
+
+    def test_module_without_a_native_test_suite_fails(self):
+        module = self.write_module(
+            "modules/oneuptime",
+            body='variable "application" {}\nlocals {}\nresource "oneuptime_label" "this" {}\n',
+        )
+        (module / "tests/unit.tftest.hcl").unlink()
+        self.assertEqual(
+            verify_modules.contract_checks(module),
+            ["modules/oneuptime: tests/*.tftest.hcl is missing"],
+        )
+
+        # Suites live in tests/; a file in the module root does not count.
+        (module / "unit.tftest.hcl").write_text('run "plan" {}\n')
+        self.assertEqual(
+            verify_modules.contract_checks(module),
+            ["modules/oneuptime: tests/*.tftest.hcl is missing"],
+        )
 
     def test_unknown_provider_family_is_reported(self):
         module = self.write_module("modules/azure/storage/account", provider="hashicorp/azurerm")

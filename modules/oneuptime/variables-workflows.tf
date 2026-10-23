@@ -109,6 +109,9 @@ variable "workflow_variable_contents" {
       for ref in keys(var.workflow_variable_contents) :
       contains(flatten([for key, wf in var.workflow_configs : [for name in keys(wf.variables) : "${key}.${name}"]]), ref)
     ])
-    error_message = "workflow_variable_contents names variables that are not declared in workflow_configs: ${join(", ", sort([for ref in keys(var.workflow_variable_contents) : ref if !contains(flatten([for key, wf in var.workflow_configs : [for name in keys(wf.variables) : "${key}.${name}"]]), ref)]))}."
+    // The keys are "<workflow>.<variable>" references, never the secret
+    // values, and Terraform refuses to print a message built from a sensitive
+    // value, so they are unwrapped to name the offenders.
+    error_message = "workflow_variable_contents names variables that are not declared in workflow_configs: ${join(", ", sort([for ref in nonsensitive(keys(var.workflow_variable_contents)) : ref if !contains(flatten([for key, wf in var.workflow_configs : [for name in keys(wf.variables) : "${key}.${name}"]]), ref)]))}."
   }
 }
