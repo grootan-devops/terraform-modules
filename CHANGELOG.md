@@ -23,6 +23,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Internal submodules under a module's own `modules/` directory need a README and take their governance variables and published examples from the parent.
 - The OneUptime module and its submodules require Terraform `>= 1.9.0` and `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`; 14.x removes the `name` argument of the `oneuptime_domain` data source.
 - README §1, §4 and §9 describe the OneUptime family and the 32 module directories the gate now covers.
+- Pinned repository CI reusable workflow callers to `github-ci-library` `@1.6.1`.
 
 ## [1.4.0] - 2026-10-23
 
