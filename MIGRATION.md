@@ -25,11 +25,17 @@ unchanged; change the `?ref=` tag only. This release adds `modules/oneuptime`.
   `>= 13.0.6, < 14.0.0`. Keep the stack's own provider pin inside that range.
 - The Teams notification template's `dashboard_url` now defaults to `https://oneuptime.com`.
   Set it explicitly for a self-hosted instance.
+- Generated monitor criteria now create only what their preset promises: Offline opens an
+  incident, Degraded raises an alert, Operational creates neither. A stack moved from a local
+  copy sees an in-place `monitor_steps` update on every generated monitor. To keep an alert on
+  Offline or an incident on Degraded, set `criteria.offline.create_alerts = true` or
+  `criteria.degraded.create_incidents = true` on that monitor.
 
 ### Verify
 
 - A plan for each environment shows no changes after the `?ref=` change.
-- A stack moved from a local copy shows no changes once `dashboard_url` is set to its instance.
+- A stack moved from a local copy shows only the `monitor_steps` criteria updates above once
+  `dashboard_url` is set to its instance.
 
 ## 1.4.0
 

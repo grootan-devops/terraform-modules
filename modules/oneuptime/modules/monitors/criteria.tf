@@ -79,15 +79,17 @@ locals {
     body_contains     = null
     remediation_notes = null
 
+    // null, so the preset decides what it creates (see criteria_creates);
+    // `true` here made every preset open an incident and raise an alert.
     incident_severity    = var.monitor_defaults.severities.incident
     incident_title       = null
     incident_description = null
-    create_incidents     = true
+    create_incidents     = null
 
     alert_severity    = var.monitor_defaults.severities.alert
     alert_title       = null
     alert_description = null
-    create_alerts     = true
+    create_alerts     = null
 
     // Last-word escape hatch, merged over the finished criterion.
     overrides = {}
@@ -325,6 +327,25 @@ locals {
   // Identical for every monitor type: name, description, the status flip, and
   // the incident or alert the preset opens. Built once, here.
   // -------------------------------------------------------------------------
+
+  // What each criterion creates. The preset decides - offline an incident,
+  // degraded an alert - and criteria.<preset>.create_incidents / create_alerts
+  // override it. Operational is the recovery criterion and never creates
+  // either. Resolved once, so the flags and the incidents / alerts blocks
+  // below cannot disagree.
+  criteria_creates = {
+    for ctx in local.criteria_contexts : ctx.id => {
+      incidents = local.criteria_preset_defaults[ctx.preset].creates != "nothing" && coalesce(
+        ctx.params.create_incidents,
+        local.criteria_preset_defaults[ctx.preset].creates == "incident",
+      )
+      alerts = local.criteria_preset_defaults[ctx.preset].creates != "nothing" && coalesce(
+        ctx.params.create_alerts,
+        local.criteria_preset_defaults[ctx.preset].creates == "alert",
+      )
+    }
+  }
+
   criteria_rendered_presets = {
     for ctx in local.criteria_contexts : ctx.id => merge(
       local.monitor_criteria_defaults,
@@ -340,26 +361,20 @@ locals {
         // could be flipped to Offline or Degraded, but the one criterion that
         // returns it to healthy was told not to change the status, so it stayed
         // down for good while the probe reported 200. Suppressing the incident
-        // and the alert for `operational` is the job of create_incidents /
-        // create_alerts below, not of this flag.
+        // and the alert for `operational` is the job of criteria_creates,
+        // not of this flag.
         change_monitor_status = true
         monitor_status_id     = local.monitor_status_ids[local.criteria_preset_defaults[ctx.preset].monitor_status]
 
-        create_incidents = local.criteria_preset_defaults[ctx.preset].creates != "nothing" ? coalesce(
-          ctx.params.create_incidents,
-          local.criteria_preset_defaults[ctx.preset].creates == "incident",
-        ) : false
-        create_alerts = local.criteria_preset_defaults[ctx.preset].creates != "nothing" ? coalesce(
-          ctx.params.create_alerts,
-          local.criteria_preset_defaults[ctx.preset].creates == "alert",
-        ) : false
+        create_incidents = local.criteria_creates[ctx.id].incidents
+        create_alerts    = local.criteria_creates[ctx.id].alerts
       },
 
       ctx.params.is_enabled == null ? {} : { is_enabled = ctx.params.is_enabled },
 
       // incidents / alerts are only emitted when the criterion actually creates
       // one - the provider wants the key absent, not an empty list.
-      coalesce(ctx.params.create_incidents, local.criteria_preset_defaults[ctx.preset].creates == "incident") ? {
+      local.criteria_creates[ctx.id].incidents ? {
         incidents = [
           merge(
             {
@@ -375,7 +390,7 @@ locals {
         ]
       } : {},
 
-      coalesce(ctx.params.create_alerts, local.criteria_preset_defaults[ctx.preset].creates == "alert") ? {
+      local.criteria_creates[ctx.id].alerts ? {
         alerts = [
           merge(
             {

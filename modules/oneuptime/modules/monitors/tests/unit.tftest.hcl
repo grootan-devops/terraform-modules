@@ -518,6 +518,84 @@ run "api_monitor_step_and_criteria" {
     )
     error_message = "Extra criteria should be passed through with the criteria defaults underneath their own values."
   }
+
+  // Each preset creates exactly what the README promises: Offline an incident,
+  // Degraded an alert, Operational nothing. An absent incidents/alerts block is
+  // unknown on the planned resource, so the blocks are read from the rendered
+  // criteria.
+  assert {
+    condition = (
+      oneuptime_monitor.this["api"].monitor_steps[0].criteria[0].create_alerts == false
+      && !contains(keys(local.monitor_criteria["api"][0]), "alerts")
+    )
+    error_message = "Offline must open an incident only, not raise an alert as well."
+  }
+
+  assert {
+    condition = (
+      oneuptime_monitor.this["api"].monitor_steps[0].criteria[1].create_incidents == false
+      && !contains(keys(local.monitor_criteria["api"][1]), "incidents")
+    )
+    error_message = "Degraded must raise an alert only, not open an incident as well."
+  }
+
+  assert {
+    condition = (
+      !contains(keys(local.monitor_criteria["api"][4]), "incidents")
+      && !contains(keys(local.monitor_criteria["api"][4]), "alerts")
+    )
+    error_message = "Operational must carry neither an incidents nor an alerts block."
+  }
+}
+
+run "criteria_flags_override_what_the_preset_creates" {
+  command = plan
+
+  variables {
+    monitors_component_mapping = { "application" = ["docs"] }
+    monitor_configs = {
+      "docs" = {
+        display_name = "Docs"
+        monitor_type = "Website"
+        target       = "https://docs.example.com"
+        criteria = {
+          offline     = { create_incidents = false, create_alerts = true }
+          degraded    = { create_incidents = true }
+          operational = { create_incidents = true, create_alerts = true }
+        }
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      local.monitor_criteria["docs"][0].create_incidents == false
+      && !contains(keys(local.monitor_criteria["docs"][0]), "incidents")
+      && local.monitor_criteria["docs"][0].create_alerts == true
+      && length(local.monitor_criteria["docs"][0].alerts) == 1
+    )
+    error_message = "criteria.offline can swap the incident for an alert."
+  }
+
+  assert {
+    condition = (
+      local.monitor_criteria["docs"][1].create_incidents == true
+      && length(local.monitor_criteria["docs"][1].incidents) == 1
+      && local.monitor_criteria["docs"][1].create_alerts == true
+      && length(local.monitor_criteria["docs"][1].alerts) == 1
+    )
+    error_message = "criteria.degraded can open an incident on top of its alert."
+  }
+
+  assert {
+    condition = (
+      local.monitor_criteria["docs"][2].create_incidents == false
+      && local.monitor_criteria["docs"][2].create_alerts == false
+      && !contains(keys(local.monitor_criteria["docs"][2]), "incidents")
+      && !contains(keys(local.monitor_criteria["docs"][2]), "alerts")
+    )
+    error_message = "Operational is the recovery criterion and never creates an incident or an alert, whatever it is asked."
+  }
 }
 
 run "website_monitor_takes_monitor_thresholds_and_default_severities" {

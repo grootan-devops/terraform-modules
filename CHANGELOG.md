@@ -29,6 +29,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Generated OneUptime monitor criteria create only what their preset promises: Offline opens an incident, Degraded raises an alert, and Operational creates neither. Previously Offline and Degraded both opened an incident and raised an alert, and Operational carried empty incident and alert blocks. `criteria.<preset>.create_incidents` / `create_alerts` still override the preset.
 - The OneUptime `workflow_variable_contents` validation names the undeclared variables instead of failing with "Error message refers to sensitive values".
 - The `docs/testing.md` example reads the S3 encryption rule with `one()`; `rule` is a set in AWS provider 6.x.
 
