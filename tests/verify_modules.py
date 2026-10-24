@@ -11,6 +11,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ROOT / "modules"
 
+# Per provider family under modules/: the provider its modules require, the
+# governance variables they declare, and the token their governance local
+# carries - resource tags on AWS, the label OneUptime attaches to everything.
+FAMILIES = {
+    "aws": ("hashicorp/aws", ("application", "environment"), "tags"),
+    "oneuptime": ("oneuptime/oneuptime", ("application",), "oneuptime_label"),
+}
+
 
 def modules():
     return sorted({p.parent for p in MODULES.rglob("*.tf") if p.name != ".terraform"})
@@ -40,17 +48,26 @@ def source(module):
 def contract_checks(module):
     text = source(module)
     rel = module.relative_to(ROOT)
+    if rel.parts[1] not in FAMILIES:
+        return [f"{rel}: provider family {rel.parts[1]!r} has no contract in FAMILIES"]
+    provider, variables, governance = FAMILIES[rel.parts[1]]
+    # A module under another module's modules/ directory is wired by that
+    # parent, which owns the governance inputs and the published examples.
+    nested = "modules" in rel.parts[2:]
     errors = []
     match = re.search(r'required_version\s*=\s*">=\s*([0-9]+)\.([0-9]+)', text)
-    if not match or tuple(map(int, match.groups())) < (1, 5):
-        errors.append(f"{rel}: Terraform >= 1.5.0 contract is missing")
-    if not re.search(r'source\s*=\s*"hashicorp/aws"', text):
-        errors.append(f"{rel}: hashicorp/aws provider contract is missing")
-    for name in ("application", "environment"):
-        if not re.search(rf'variable\s+"{name}"', text):
-            errors.append(f"{rel}: required governance variable {name!r} is missing")
-    if "locals" not in text or "tags" not in text:
-        errors.append(f"{rel}: local naming/tag governance contract is missing")
+    # 1.9 is the floor: modules validate one input against another.
+    if not match or tuple(map(int, match.groups())) < (1, 9):
+        errors.append(f"{rel}: Terraform >= 1.9.0 contract is missing")
+    declares_objects = re.search(r'(?m)^[ \t]*(?:resource|data)[ \t]+"', text)
+    if declares_objects and not re.search(rf'source\s*=\s*"{re.escape(provider)}"', text):
+        errors.append(f"{rel}: {provider} provider contract is missing")
+    if not nested:
+        for name in variables:
+            if not re.search(rf'variable\s+"{name}"', text):
+                errors.append(f"{rel}: required governance variable {name!r} is missing")
+        if "locals" not in text or governance not in text:
+            errors.append(f"{rel}: local naming/{governance} governance contract is missing")
     for kind, name in re.findall(
         r'(?m)^[ \t]*data[ \t]+"([^"]+)"[ \t]+"([^"]+)"[ \t]*\{', text
     ):
@@ -59,7 +76,7 @@ def contract_checks(module):
     readme = module / "README.md"
     if not readme.exists():
         errors.append(f"{rel}: README.md is missing")
-    else:
+    elif not nested:
         stable_tag = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
         expected_source = re.compile(
             r"git::https://github\.com/grootan-devops/terraform-modules\.git//"
@@ -69,6 +86,8 @@ def contract_checks(module):
             errors.append(
                 f"{rel}: examples must use the public Git source pinned to a stable SemVer tag"
             )
+    if not any((module / "tests").glob("*.tftest.hcl")):
+        errors.append(f"{rel}: tests/*.tftest.hcl is missing")
     return errors
 
 

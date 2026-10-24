@@ -27,7 +27,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---
@@ -38,7 +38,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 
 ```hcl
 module "s3_bucket" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -51,7 +51,7 @@ module "s3_bucket" {
 
 ```hcl
 module "s3_bucket" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.5.0"
 
   application          = "analytics"
   environment          = "prod"

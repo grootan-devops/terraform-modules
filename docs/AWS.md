@@ -98,7 +98,7 @@ The following complete configuration demonstrates how to compose the categorized
 
 ```hcl
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -114,7 +114,7 @@ provider "aws" {
 
 # 1. Primary Encryption Key (Security)
 module "kms" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.5.0"
 
   application             = "core"
   environment             = "prod"
@@ -126,7 +126,7 @@ module "kms" {
 
 # 2. Network Infrastructure (Network)
 module "vpc" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -150,7 +150,7 @@ module "vpc" {
 
 # 3. Encrypted Object Storage (Storage)
 module "app_storage" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -162,7 +162,7 @@ module "app_storage" {
 
 # 4. Managed Relational Database (Database)
 module "db" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -198,7 +198,7 @@ module "db" {
 
 # 5. Containerized Compute Workload (Compute)
 module "ecs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -296,7 +296,7 @@ generate "provider" {
   if_exists = "overwrite_terragrunt"
   contents  = <<EOF
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -335,7 +335,7 @@ The `resources/` directory wires together the modular building blocks from `modu
 
 ```hcl
 module "kms" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.5.0"
 
   application             = var.application
   environment             = var.environment
@@ -350,7 +350,7 @@ module "kms" {
 
 ```hcl
 module "vpc" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.5.0"
 
   application                 = var.application
   environment                 = var.environment
@@ -375,7 +375,7 @@ module "vpc" {
 
 ```hcl
 module "rds" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.5.0"
 
   application    = var.application
   environment    = var.environment

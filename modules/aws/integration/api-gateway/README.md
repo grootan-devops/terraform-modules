@@ -19,7 +19,7 @@ The `api-gateway` module manages Amazon API Gateway REST APIs featuring Lambda a
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---
@@ -30,7 +30,7 @@ The `api-gateway` module manages Amazon API Gateway REST APIs featuring Lambda a
 
 ```hcl
 module "api_gateway" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -43,7 +43,7 @@ module "api_gateway" {
 
 ```hcl
 module "api_gateway" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=1.5.0"
 
   application = "portal"
   environment = "prod"

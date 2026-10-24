@@ -23,7 +23,7 @@ The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) w
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---
@@ -34,7 +34,7 @@ The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) w
 
 ```hcl
 module "vpc" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -53,7 +53,7 @@ module "vpc" {
 
 ```hcl
 module "vpc" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.5.0"
 
   application = "enterprise"
   environment = "prod"

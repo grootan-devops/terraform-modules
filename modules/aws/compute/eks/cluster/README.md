@@ -20,7 +20,7 @@ Standalone Amazon Elastic Kubernetes Service (EKS) control plane submodule manag
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---
@@ -31,7 +31,7 @@ Standalone Amazon Elastic Kubernetes Service (EKS) control plane submodule manag
 
 ```hcl
 module "eks_cluster" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/cluster?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/cluster?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -47,7 +47,7 @@ module "eks_cluster" {
 
 ```hcl
 module "eks_cluster" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/cluster?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/cluster?ref=1.5.0"
 
   application = "platform"
   environment = "prod"

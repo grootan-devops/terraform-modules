@@ -8,6 +8,40 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 1.5.0
+
+### Required
+
+Every module now requires Terraform `>= 1.9.0`; `secrets-manager` keeps `>= 1.11.0`. Upgrade
+Terraform in every pipeline and workstation that runs these stacks before changing the `?ref=`
+tag: on 1.5–1.8, `terraform init` stops with "Unsupported Terraform Core version".
+
+No state migration required. AWS module interfaces, resource addresses and runtime behaviour are
+unchanged. This release adds `modules/oneuptime`.
+
+### Recommended
+
+- A stack running a local copy of the OneUptime module can point its module blocks at
+  `git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0`
+  and run `terraform init -upgrade`. Resource addresses do not change while the module block
+  keeps its name.
+- The published OneUptime module needs `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`. Keep the
+  stack's own provider pin inside that range.
+- The Teams notification template's `dashboard_url` now defaults to `https://oneuptime.com`.
+  Set it explicitly for a self-hosted instance.
+- Generated monitor criteria now create only what their preset promises: Offline opens an
+  incident, Degraded raises an alert, Operational creates neither. A stack moved from a local
+  copy sees an in-place `monitor_steps` update on every generated monitor. To keep an alert on
+  Offline or an incident on Degraded, set `criteria.offline.create_alerts = true` or
+  `criteria.degraded.create_incidents = true` on that monitor.
+
+### Verify
+
+- `terraform version` reports 1.9.0 or later wherever these stacks run.
+- A plan for each environment shows no changes after the `?ref=` change.
+- A stack moved from a local copy shows only the `monitor_steps` criteria updates above once
+  `dashboard_url` is set to its instance.
+
 ## 1.4.0
 
 No migration is required. This release only updates dependencies.

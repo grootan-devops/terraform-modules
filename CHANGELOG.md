@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-10-23
+
+### Added
+
+- `modules/oneuptime`, which turns an inventory of components, owning groups and monitors into OneUptime labels, teams, monitors, alert and incident rules, on-call policies, status pages and workflows, with one internal submodule per area under `modules/oneuptime/modules/`.
+- Monitor probe steps and Offline / Degraded / Operational criteria generated from `monitor_type` for 15 monitor types, with module, stack and per-item defaults through `monitor_defaults` and `status_page_defaults`.
+- Plan-time validation that names the offending monitors, status pages and workflows when inputs reference each other inconsistently.
+- `modules/oneuptime/modules/workflows-templates/teams-notification`, which builds the five standard Microsoft Teams notification workflows without creating resources.
+- A mock-provider `terraform test` suite for every module directory — the 24 AWS modules, the OneUptime module, its six submodules and the Teams template — covering naming, governance tags, security defaults, parameters and input validation. They run in CI with no credentials.
+- `docs/ONEUPTIME.md`, the OneUptime counterpart of `docs/AWS.md`: module catalog, secret handling, monitoring baselines, naming and labelling standards, an end-to-end composition and a Terragrunt dev/prod layout.
+- The OneUptime module guide, `modules/oneuptime/CONVENTIONS.md`, a OneUptime section in `docs/other-providers.md`, and a documentation index row.
+
+### Changed
+
+- `tests/verify_modules.py` checks each provider family against its own contract: AWS modules keep `hashicorp/aws`, `application`, `environment` and tag governance; OneUptime modules need `oneuptime/oneuptime`, `application` and label governance. Checks on AWS modules are unchanged.
+- Internal submodules under a module's own `modules/` directory need a README and take their governance variables and published examples from the parent.
+- Every module requires Terraform `>= 1.9.0`, raised from `>= 1.5.0` on the 23 AWS modules; `secrets-manager` keeps `>= 1.11.0`. Modules validate one input against another, which Terraform supports from 1.9 (`compute/lambda` already did), and `tests/verify_modules.py` rejects a lower floor.
+- The OneUptime module and its submodules require `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`; 14.x removes the `name` argument of the `oneuptime_domain` data source.
+- README §1, §4 and §9 describe the OneUptime family and the 32 module directories the gate now covers.
+- Every usage example in the module READMEs, README and `docs/AWS.md` pins `?ref=1.5.0` instead of `1.0.0`, and the README's current-state notes are stamped `1.5.0`.
+- Pinned repository CI reusable workflow callers to `github-ci-library` `@1.6.1`.
+- `tests/verify_modules.py` fails a module without a `tests/*.tftest.hcl` suite.
+- A test file no longer raises a module's `required_version`: test files load only under `terraform test`, in the CI toolkit image. README §4.4 and `docs/testing.md` say so, and `docs/testing.md` lists what a suite covers.
+
+### Fixed
+
+- Generated OneUptime monitor criteria create only what their preset promises: Offline opens an incident, Degraded raises an alert, and Operational creates neither. Previously Offline and Degraded both opened an incident and raised an alert, and Operational carried empty incident and alert blocks. `criteria.<preset>.create_incidents` / `create_alerts` still override the preset.
+- The OneUptime `workflow_variable_contents` validation names the undeclared variables instead of failing with "Error message refers to sensitive values".
+- The `docs/testing.md` example reads the S3 encryption rule with `one()`; `rule` is a set in AWS provider 6.x.
+
 ## [1.4.0] - 2026-10-23
 
 ### Changed

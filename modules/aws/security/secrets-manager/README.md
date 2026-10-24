@@ -32,7 +32,7 @@ The `secrets-manager` module manages AWS Secrets Manager secrets, automatic vers
 
 ```hcl
 module "secret" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -47,7 +47,7 @@ module "secret" {
 
 ```hcl
 module "secret" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=1.5.0"
 
   application = "payment"
   environment = "prod"
