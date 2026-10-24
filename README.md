@@ -63,7 +63,7 @@ Reference modules using semantic version tags in Git (recommended for remote rep
 ```hcl
 # Remote Git reference (Semantic Tagging)
 module "s3" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -161,7 +161,7 @@ EOF
 ```hcl
 # resources/kms.tf
 module "kms" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=1.5.0"
 
   application             = var.application
   environment             = var.environment
@@ -172,7 +172,7 @@ module "kms" {
 
 # resources/vpc.tf
 module "vpc" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.5.0"
 
   application                 = var.application
   environment                 = var.environment
@@ -187,7 +187,7 @@ module "vpc" {
 
 # resources/rds.tf
 module "rds" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=1.5.0"
 
   application    = var.application
   environment    = var.environment
@@ -361,7 +361,7 @@ The standard for a reusable child module is a **minimum bound only**. An upper b
 `< 7.0.0` cannot stop a breaking provider release from being published; it only forces a
 dependency conflict on consumer stacks that have already moved past it.
 
-> **Current state at `1.0.0`:** 23 of the 24 AWS modules ship `version = ">= 6.0.0, < 7.0.0"`.
+> **Current state at `1.5.0`:** 23 of the 24 AWS modules ship `version = ">= 6.0.0, < 7.0.0"`.
 > Only [`modules/aws/security/secrets-manager`](modules/aws/security/secrets-manager) meets
 > the standard, at `>= 6.64.0`. Dropping the cap is a MINOR change — it needs no `moved`
 > block — but it changes resolution for callers, so it belongs in `CHANGELOG.md`.
@@ -421,7 +421,7 @@ locals {
 }
 ```
 
-> **Current state at `1.0.0`:** no module implements this. `modules/aws/network/alb` passes
+> **Current state at `1.5.0`:** no module implements this. `modules/aws/network/alb` passes
 > `local.rendered_name` to `aws_lb` unguarded, so an `application`/`environment`/`name`
 > triple longer than 32 characters fails at apply with a provider validation error.
 
@@ -452,7 +452,7 @@ locals {
 }
 ```
 
-> **Current state at `1.0.0`:** 23 of the 24 AWS modules do the opposite — they merge
+> **Current state at `1.5.0`:** 23 of the 24 AWS modules do the opposite — they merge
 > `var.tags` last, so a caller passing `tags = { Environment = "prod" }` silently overwrites
 > the governance value, and none of them emit `ManagedBy`.
 > [`modules/aws/security/secrets-manager`](modules/aws/security/secrets-manager) is the only
@@ -627,7 +627,7 @@ Individual commands, run inside a module directory:
 terraform fmt -recursive .
 terraform init -backend=false
 terraform validate
-terraform test          # tests/*.tftest.hcl; mock_provider needs Terraform >= 1.7
+terraform test          # tests/*.tftest.hcl; the suites need Terraform >= 1.10 (state_key)
 ```
 
 ### 9.1. Test levels

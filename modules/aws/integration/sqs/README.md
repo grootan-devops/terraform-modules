@@ -33,7 +33,7 @@ The `sqs` module manages Amazon Simple Queue Service (SQS) standard and FIFO que
 
 ```hcl
 module "sqs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -46,7 +46,7 @@ module "sqs" {
 
 ```hcl
 module "sqs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=1.5.0"
 
   application = "notifications"
   environment = "prod"

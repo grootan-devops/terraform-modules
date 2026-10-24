@@ -30,7 +30,7 @@ The `amplify` module provisions AWS Amplify Web Hosting apps with multi-branch d
 
 ```hcl
 module "amplify" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/amplify?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/amplify?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -43,7 +43,7 @@ module "amplify" {
 
 ```hcl
 module "amplify" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/amplify?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/amplify?ref=1.5.0"
 
   application = "portal"
   environment = "prod"

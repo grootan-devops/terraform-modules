@@ -31,7 +31,7 @@ The `cloudfront` module provisions Amazon CloudFront Content Delivery Network (C
 
 ```hcl
 module "cdn" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=1.5.0"
 
   application         = "core"
   environment         = "prod"
@@ -59,7 +59,7 @@ module "cdn" {
 
 ```hcl
 module "cdn" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=1.5.0"
 
   application         = "portal"
   environment         = "prod"

@@ -33,7 +33,7 @@ The `efs` module provisions scalable Amazon Elastic File System (EFS) resources 
 
 ```hcl
 module "efs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=1.5.0"
 
   application = "core"
   environment = "prod"
@@ -49,7 +49,7 @@ module "efs" {
 
 ```hcl
 module "efs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=1.5.0"
 
   application = "enterprise"
   environment = "prod"

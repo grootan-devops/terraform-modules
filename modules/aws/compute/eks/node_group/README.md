@@ -30,7 +30,7 @@ Standalone Amazon EKS Managed Node Group submodule providing EC2 launch template
 
 ```hcl
 module "eks_node_group" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/node_group?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/node_group?ref=1.5.0"
 
   application  = "core"
   environment  = "prod"
@@ -45,7 +45,7 @@ module "eks_node_group" {
 
 ```hcl
 module "eks_node_group" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/node_group?ref=1.0.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks/node_group?ref=1.5.0"
 
   application  = "platform"
   environment  = "prod"

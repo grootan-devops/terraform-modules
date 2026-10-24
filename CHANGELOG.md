@@ -24,6 +24,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Every module requires Terraform `>= 1.9.0`, raised from `>= 1.5.0` on the 23 AWS modules; `secrets-manager` keeps `>= 1.11.0`. Modules validate one input against another, which Terraform supports from 1.9 (`compute/lambda` already did), and `tests/verify_modules.py` rejects a lower floor.
 - The OneUptime module and its submodules require `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`; 14.x removes the `name` argument of the `oneuptime_domain` data source.
 - README §1, §4 and §9 describe the OneUptime family and the 32 module directories the gate now covers.
+- Every usage example in the module READMEs, README and `docs/AWS.md` pins `?ref=1.5.0` instead of `1.0.0`, and the README's current-state notes are stamped `1.5.0`.
 - Pinned repository CI reusable workflow callers to `github-ci-library` `@1.6.1`.
 - `tests/verify_modules.py` fails a module without a `tests/*.tftest.hcl` suite.
 - A test file no longer raises a module's `required_version`: test files load only under `terraform test`, in the CI toolkit image. README §4.4 and `docs/testing.md` say so, and `docs/testing.md` lists what a suite covers.
