@@ -98,7 +98,7 @@ The following complete configuration demonstrates how to compose the categorized
 
 ```hcl
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -296,7 +296,7 @@ generate "provider" {
   if_exists = "overwrite_terragrunt"
   contents  = <<EOF
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {

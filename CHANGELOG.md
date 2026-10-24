@@ -21,7 +21,8 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `tests/verify_modules.py` checks each provider family against its own contract: AWS modules keep `hashicorp/aws`, `application`, `environment` and tag governance; OneUptime modules need `oneuptime/oneuptime`, `application` and label governance. Checks on AWS modules are unchanged.
 - Internal submodules under a module's own `modules/` directory need a README and take their governance variables and published examples from the parent.
-- The OneUptime module and its submodules require Terraform `>= 1.9.0` and `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`; 14.x removes the `name` argument of the `oneuptime_domain` data source.
+- Every module requires Terraform `>= 1.9.0`, raised from `>= 1.5.0` on the 23 AWS modules; `secrets-manager` keeps `>= 1.11.0`. Modules validate one input against another, which Terraform supports from 1.9 (`compute/lambda` already did), and `tests/verify_modules.py` rejects a lower floor.
+- The OneUptime module and its submodules require `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`; 14.x removes the `name` argument of the `oneuptime_domain` data source.
 - README §1, §4 and §9 describe the OneUptime family and the 32 module directories the gate now covers.
 - Pinned repository CI reusable workflow callers to `github-ci-library` `@1.6.1`.
 - `tests/verify_modules.py` fails a module without a `tests/*.tftest.hcl` suite.

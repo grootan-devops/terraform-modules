@@ -20,7 +20,7 @@ The `rds/proxy` module manages Amazon RDS Proxy connection pooling pools for Pos
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---

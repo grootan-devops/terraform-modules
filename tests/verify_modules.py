@@ -56,8 +56,9 @@ def contract_checks(module):
     nested = "modules" in rel.parts[2:]
     errors = []
     match = re.search(r'required_version\s*=\s*">=\s*([0-9]+)\.([0-9]+)', text)
-    if not match or tuple(map(int, match.groups())) < (1, 5):
-        errors.append(f"{rel}: Terraform >= 1.5.0 contract is missing")
+    # 1.9 is the floor: modules validate one input against another.
+    if not match or tuple(map(int, match.groups())) < (1, 9):
+        errors.append(f"{rel}: Terraform >= 1.9.0 contract is missing")
     declares_objects = re.search(r'(?m)^[ \t]*(?:resource|data)[ \t]+"', text)
     if declares_objects and not re.search(rf'source\s*=\s*"{re.escape(provider)}"', text):
         errors.append(f"{rel}: {provider} provider contract is missing")

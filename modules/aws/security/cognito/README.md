@@ -20,7 +20,7 @@ The `cognito` module provisions Amazon Cognito User Pools, App Clients, risk con
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---

@@ -21,7 +21,7 @@ The `kms` module provisions symmetric and asymmetric AWS Key Management Service 
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---

@@ -27,7 +27,7 @@ The `s3` module provisions secure, compliant AWS Simple Storage Service (S3) buc
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.5.0` |
+| `terraform` | `>= 1.9.0` |
 | `aws` | `>= 6.0.0, < 7.0.0` |
 
 ---

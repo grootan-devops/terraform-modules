@@ -127,7 +127,7 @@ generate "provider" {
   if_exists = "overwrite_terragrunt"
   contents  = <<EOF
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -366,14 +366,14 @@ dependency conflict on consumer stacks that have already moved past it.
 > the standard, at `>= 6.64.0`. Dropping the cap is a MINOR change — it needs no `moved`
 > block — but it changes resolution for callers, so it belongs in `CHANGELOG.md`.
 
-`required_version` is derived from the features a module actually uses: `>= 1.5.0` as the
-baseline, `>= 1.10.0` for `ephemeral`, `>= 1.11.0` for write-only (`*_wo`) arguments. Test
-files do not raise it: `*.tftest.hcl` loads only under `terraform test`, which runs in the CI
-toolkit image, never in a consumer's plan. Today `secrets-manager` is the single module at
-`>= 1.11.0`; the other 23 AWS modules declare `>= 1.5.0`.
+`required_version` is derived from the features a module actually uses: `>= 1.9.0` as the
+baseline, because validations compare one input against another, `>= 1.10.0` for `ephemeral`,
+`>= 1.11.0` for write-only (`*_wo`) arguments. Test files do not raise it: `*.tftest.hcl`
+loads only under `terraform test`, which runs in the CI toolkit image, never in a consumer's
+plan. Today `secrets-manager` is the single module at `>= 1.11.0`; every other module, AWS and
+OneUptime, declares `>= 1.9.0`, and `tests/verify_modules.py` rejects anything lower.
 
 > **OneUptime at `1.5.0`:** [`modules/oneuptime`](modules/oneuptime) and its submodules declare
-> Terraform `>= 1.9.0`, because their validations compare one input against another, and
 > `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`. The upper bound is deliberate: 14.x removes the
 > `name` argument of the `oneuptime_domain` data source the module looks domains up by.
 
@@ -606,7 +606,7 @@ make validate    # full run (same as verify's second half)
 
 `tests/verify_modules.py` is the gate. For every module it asserts:
 
-- `required_version >= 1.5.0`, and the provider of its family (`hashicorp/aws`,
+- `required_version >= 1.9.0`, and the provider of its family (`hashicorp/aws`,
   `oneuptime/oneuptime`) wherever it declares a resource or data source.
 - The family's governance variables are declared: `application` and `environment` on AWS,
   `application` on OneUptime.

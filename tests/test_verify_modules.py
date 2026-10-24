@@ -17,7 +17,7 @@ class PublicSourceContractTests(unittest.TestCase):
         self.module = verify_modules.ROOT / "modules/aws/network/vpc"
         self.module.mkdir(parents=True)
         (self.module / "versions.tf").write_text(
-            'terraform { required_version = ">= 1.5.0" '
+            'terraform { required_version = ">= 1.9.0" '
             'required_providers { aws = { source = "hashicorp/aws" } } }\n'
         )
         (self.module / "variables.tf").write_text(
@@ -53,6 +53,23 @@ class PublicSourceContractTests(unittest.TestCase):
             with self.subTest(source=source):
                 findings = self.findings_for_source(source)
                 self.assertTrue(any("public Git source pinned" in item for item in findings))
+
+    def test_terraform_floor_is_1_9(self):
+        source = (
+            "git::https://github.com/grootan-devops/terraform-modules.git//"
+            "modules/aws/network/vpc?ref=1.5.0"
+        )
+        for version, ok in ((">= 1.5.0", False), (">= 1.8.5", False), (">= 1.9.0", True), (">= 1.11.0", True)):
+            with self.subTest(version=version):
+                (self.module / "versions.tf").write_text(
+                    f'terraform {{ required_version = "{version}" '
+                    'required_providers { aws = { source = "hashicorp/aws" } } }\n'
+                )
+                findings = self.findings_for_source(source)
+                self.assertEqual(
+                    "modules/aws/network/vpc: Terraform >= 1.9.0 contract is missing" in findings,
+                    not ok,
+                )
 
     def test_unused_data_source_is_found_outside_data_tf(self):
         (self.module / "iam.tf").write_text('data "aws_caller_identity" "current" {}\n')
