@@ -35,7 +35,7 @@ The `alb` module provisions external or internal AWS Application Load Balancers 
 
 ```hcl
 module "alb" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=<version>"
 
   application = "core"
   environment = "prod"
@@ -52,7 +52,7 @@ module "alb" {
 
 ```hcl
 module "alb" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=<version>"
 
   application = "enterprise"
   environment = "prod"

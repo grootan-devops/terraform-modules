@@ -8,6 +8,30 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 2.0.0
+
+### Required
+
+- **The Teams template moved.** A stack that calls it changes the source from
+  `//modules/oneuptime/modules/workflows-templates/teams-notification` to
+  `//modules/oneuptime/workflows-templates/teams-notification` when it moves `?ref=` to `2.0.0`.
+
+No state migration. The root module's calls keep their names (`module.monitors`,
+`module.alerts`, …), so every resource address is unchanged, and the template creates no
+resources. A stack that calls only `//modules/oneuptime` changes nothing but the tag.
+
+### Recommended
+
+- Update links into the OneUptime documentation: `modules/oneuptime/modules/<area>` is
+  `modules/oneuptime/<area>`.
+- Update links into the README's numbered sections: each is a page under `docs/` now, listed in
+  the README's documentation table.
+- Copy an example's `?ref=<version>` with the release your stack pins in place of `<version>`.
+
+### Verify
+
+- `terraform init -upgrade` installs the new release, and `terraform plan` shows no changes.
+
 ## 1.5.0
 
 ### Required

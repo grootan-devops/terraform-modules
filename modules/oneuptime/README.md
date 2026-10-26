@@ -18,20 +18,20 @@ on-call never touches monitors.
 | --- | --- | --- |
 | Root | `oneuptime_label.this` | label name in `labels_config`, plus the `application` label |
 | Root | `oneuptime_team.this` | group in `rbac_team_mapping` |
-| [Monitors](modules/monitors/README.md) | `oneuptime_monitor` | slug in `monitors_component_mapping` |
-| [Monitors](modules/monitors/README.md) | `oneuptime_monitor_group`, `_owner_rule`, `_label_rule` | component |
-| [Alerts](modules/alerts/README.md) | `oneuptime_alert_owner_rule`, `_label_rule`, `_grouping_rule` | component |
-| [Incidents](modules/incidents/README.md) | `oneuptime_incident_owner_rule`, `_label_rule`, `_grouping_rule` | component |
-| [On-call](modules/oncall/README.md) | `oneuptime_on_call_policy`, `_owner_rule`, `oneuptime_escalation_rule`, `oneuptime_on_call_policy_schedule`, `oneuptime_on_call_schedule_layer`, `oneuptime_schedules_on_call_duty_escalation_rule` | component |
-| [Status pages](modules/status-pages/README.md) | `oneuptime_status_page` and its groups, resources, monitor rules, links, domain, private users, subscribers, announcements and owners | entry in `status_page_configs` |
-| [Status pages](modules/status-pages/README.md) | `oneuptime_status_page_owner_rule`, `_label_rule` | component, once a page exists |
-| [Workflows](modules/workflows/README.md) | `oneuptime_workflow`, `oneuptime_workflow_variable` | entry in `workflow_configs` |
+| [Monitors](monitors/README.md) | `oneuptime_monitor` | slug in `monitors_component_mapping` |
+| [Monitors](monitors/README.md) | `oneuptime_monitor_group`, `_owner_rule`, `_label_rule` | component |
+| [Alerts](alerts/README.md) | `oneuptime_alert_owner_rule`, `_label_rule`, `_grouping_rule` | component |
+| [Incidents](incidents/README.md) | `oneuptime_incident_owner_rule`, `_label_rule`, `_grouping_rule` | component |
+| [On-call](oncall/README.md) | `oneuptime_on_call_policy`, `_owner_rule`, `oneuptime_escalation_rule`, `oneuptime_on_call_policy_schedule`, `oneuptime_on_call_schedule_layer`, `oneuptime_schedules_on_call_duty_escalation_rule` | component |
+| [Status pages](status-pages/README.md) | `oneuptime_status_page` and its groups, resources, monitor rules, links, domain, private users, subscribers, announcements and owners | entry in `status_page_configs` |
+| [Status pages](status-pages/README.md) | `oneuptime_status_page_owner_rule`, `_label_rule` | component, once a page exists |
+| [Workflows](workflows/README.md) | `oneuptime_workflow`, `oneuptime_workflow_variable` | entry in `workflow_configs` |
 
 Read-only lookups: the `Operational` / `Degraded` / `Offline` monitor statuses and the incident
-and alert severities (in `modules/monitors`), and custom domains by name (in
-`modules/status-pages`). They already exist in every OneUptime project.
+and alert severities (in `monitors`), and custom domains by name (in
+`status-pages`). They already exist in every OneUptime project.
 
-[`modules/workflows-templates/teams-notification`](modules/workflows-templates/teams-notification/README.md)
+[`workflows-templates/teams-notification`](workflows-templates/teams-notification/README.md)
 creates nothing: it builds `workflow_configs` for the five standard Microsoft Teams
 notifications.
 
@@ -46,8 +46,8 @@ Every area iterates that map, so a component owned by two groups gets **one** ru
 teams, never one rule per group. Monitors carry the component label, the label of every group
 that owns the component and the `application` label; labels are never written on a monitor.
 
-`modules/status-pages` takes `monitor_ids` and `monitor_group_ids` from `modules/monitors`, and
-`modules/workflows` takes the project id and monitor status ids. Those are the only
+`status-pages` takes `monitor_ids` and `monitor_group_ids` from `monitors`, and
+`workflows` takes the project id and monitor status ids. Those are the only
 dependencies between areas, and they are data, never `depends_on`.
 
 ### Security & Compliance Guardrails
@@ -102,7 +102,7 @@ provider "oneuptime" {
 
 ```hcl
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=<version>"
 
   application = "core"
 
@@ -135,7 +135,7 @@ escalation timings and status page behaviour all come from the module's defaults
 
 ```hcl
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/workflows-templates/teams-notification?ref=<version>"
 
   project_name      = "Core"
   dashboard_url     = "https://oneuptime.example.com"
@@ -143,7 +143,7 @@ module "teams_notifications" {
 }
 
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=<version>"
 
   application = "core"
 
@@ -225,17 +225,17 @@ module "oneuptime" {
 | `rbac_component_mapping` | Component -> the groups that own it. Drives monitor groups, owner rules and label rules in every area. Components and groups must be label names. | `map(list(string))` | **Required** | Yes |
 | `rbac_team_mapping` | Group -> member emails. Creates one `oneuptime_team` per group; members are not attached (see Security). | `map(list(string))` | **Required** | Yes |
 | `monitors_component_mapping` | Component -> monitor slugs. Only mapped slugs are created; each must have a `monitor_configs` entry. | `map(list(string))` | **Required** | Yes |
-| `monitor_configs` | One entry per monitor, keyed by slug. See [monitors §4](modules/monitors/README.md#4-monitor_configs-schema). | `any` | `{}` | No |
-| `monitor_defaults` | Baseline for every monitor, including the thresholds the generated criteria compare against. See [monitors §2](modules/monitors/README.md#2-monitor_defaults). | `object({...})` | `{}` | No |
+| `monitor_configs` | One entry per monitor, keyed by slug. See [monitors §4](monitors/README.md#4-monitor_configs-schema). | `any` | `{}` | No |
+| `monitor_defaults` | Baseline for every monitor, including the thresholds the generated criteria compare against. See [monitors §2](monitors/README.md#2-monitor_defaults). | `object({...})` | `{}` | No |
 | `alert_grouping_rule_config` | Alert grouping per component: by alert labels and severity, 15-minute reopen window. | `object({...})` | see `variables-alerts.tf` | No |
 | `incident_grouping_rule_config` | The same shape for incidents. | `object({...})` | see `variables-incidents.tf` | No |
 | `on_call_policy_config` | Repeat the policy 3 times if nobody acknowledges. | `object({...})` | see `variables-oncall.tf` | No |
 | `on_call_escalation_rules` | Escalate after 30 minutes, order 1. | `object({...})` | see `variables-oncall.tf` | No |
-| `on_call_schedule_layer_config` | The one schedule layer per component: weekly rotation covering the whole clock. See [on-call](modules/oncall/README.md#the-schedule-layer). | `object({...})` | `{}` | No |
-| `status_page_defaults` | Baseline for every status page. See [status pages §1](modules/status-pages/README.md#1-status_page_defaults). | `object({...})` | `{}` | No |
-| `status_page_configs` | One entry per status page, everything optional. See [status pages §2](modules/status-pages/README.md#2-configuring-a-page). | `map(object({...}))` | `{}` | No |
+| `on_call_schedule_layer_config` | The one schedule layer per component: weekly rotation covering the whole clock. See [on-call](oncall/README.md#the-schedule-layer). | `object({...})` | `{}` | No |
+| `status_page_defaults` | Baseline for every status page. See [status pages §1](status-pages/README.md#1-status_page_defaults). | `object({...})` | `{}` | No |
+| `status_page_configs` | One entry per status page, everything optional. See [status pages §2](status-pages/README.md#2-configuring-a-page). | `map(object({...}))` | `{}` | No |
 | `status_page_announcements` | Announcements published across status pages. | `map(object({...}))` | `{}` | No |
-| `workflow_configs` | Workflows as nodes, and their variables. See [workflows](modules/workflows/README.md). | `map(object({...}))` | `{}` | No |
+| `workflow_configs` | Workflows as nodes, and their variables. See [workflows](workflows/README.md). | `map(object({...}))` | `{}` | No |
 | `workflow_variable_contents` | `"<workflow>.<variable>"` -> initial variable content. Write-once. | `map(string)` | `{}` | No |
 | `custom_fields` | Project-level custom fields as a JSON string. Accepted but not yet applied to any resource. | `string` | `null` | No |
 
@@ -270,18 +270,17 @@ modules/oneuptime/
 ├── variables-<area>.tf           the inputs, types, defaults and validation of one area
 ├── tests/unit.tftest.hcl         mock-provider tests, run by make verify
 ├── CONVENTIONS.md                how configuration flows from a stack to a resource
-└── modules/
-    ├── monitors/                 monitors, monitor groups, monitor owner and label rules
-    ├── alerts/                   alert owner, label and grouping rules
-    ├── incidents/                incident owner, label and grouping rules
-    ├── oncall/                   policies, escalation rules, schedules, layers
-    ├── status-pages/             status pages and everything hanging off them
-    ├── workflows/                workflows and their variables
-    └── workflows-templates/      ready-made workflow_configs (teams-notification)
+├── monitors/                     monitors, monitor groups, monitor owner and label rules
+├── alerts/                       alert owner, label and grouping rules
+├── incidents/                    incident owner, label and grouping rules
+├── oncall/                       policies, escalation rules, schedules, layers
+├── status-pages/                 status pages and everything hanging off them
+├── workflows/                    workflows and their variables
+└── workflows-templates/          ready-made workflow_configs (teams-notification)
 ```
 
 **Where to make a change:** the input lives in the `variables-<area>.tf` named after the area,
-and the resources live in `modules/<area>/`. The submodules other than `workflows-templates`
+and the resources live in `<area>/`. The submodules other than `workflows-templates`
 are internal: call this module, not them.
 
 [CONVENTIONS.md](CONVENTIONS.md) is the standard every area follows — the five layers a value
@@ -321,7 +320,7 @@ Every key is `optional()`, so overriding one keeps the shipped value for the oth
 3. Give it `display_name`, `monitor_type` and whatever that type needs to reach the target
    (`target`, `port`, a `step` block). The probe step and the Offline / Degraded / Operational
    criteria are generated from the type; see
-   [monitors §7](modules/monitors/README.md#7-one-example-per-monitor-family).
+   [monitors §7](monitors/README.md#7-one-example-per-monitor-family).
 4. `terraform fmt -recursive && terraform validate && terraform plan`.
 
 ```hcl
@@ -362,7 +361,7 @@ status_page_configs = {
 
 That is a valid page: named after its key, public, indexable, 90 days of uptime history and
 whole-number uptime percentages. Grow it from there with the
-[status pages reference](modules/status-pages/README.md).
+[status pages reference](status-pages/README.md).
 
 ## Known Caveats
 
@@ -372,7 +371,7 @@ whole-number uptime percentages. Grow it from there with the
   `password` set there appears in plan output and in state. Prefer SSO, or set them in the
   dashboard.
 - The alert and incident grouping rules do not page on-call yet (`on_call_duty_policies = []`);
-  see [alerts](modules/alerts/README.md).
+  see [alerts](alerts/README.md).
 - Uptime bar colour bands are empty by default: the provider reads the band threshold back as
   `null` and fails the apply (last checked on 12.0.26). See
-  [status pages §1](modules/status-pages/README.md#1-status_page_defaults).
+  [status pages §1](status-pages/README.md#1-status_page_defaults).

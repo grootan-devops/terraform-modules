@@ -33,7 +33,7 @@ therefore the same as for workflows written by hand.
 
 ```hcl
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/workflows-templates/teams-notification?ref=<version>"
 
   project_name      = "Core"
   dashboard_url     = "https://oneuptime.example.com"
@@ -41,7 +41,7 @@ module "teams_notifications" {
 }
 
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=<version>"
   # ...
   workflow_configs           = module.teams_notifications.workflow_configs
   workflow_variable_contents = module.teams_notifications.workflow_variable_contents

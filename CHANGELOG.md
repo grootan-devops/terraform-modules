@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-27
+
+### Added
+
+- `docs/repository-layout.md`, `docs/terragrunt.md`, `docs/module-contract.md`, `docs/naming-and-tagging.md`, `docs/security-baselines.md`, `docs/module-readme.md` and `docs/versioning.md`: the README's sections 1 and 3–8, one task per page. Section 2 joins `docs/consumption.md` and section 9 `docs/testing.md`, now titled Development and testing.
+- A Requirements section in the README (Terraform `>= 1.9.0`; provider bounds in each module's README) and, in `docs/versioning.md`, the deprecation policy: announced in the changelog and migration guide, and kept through at least the next MINOR release where practical.
+
+### Changed
+
+- The OneUptime areas — `alerts`, `incidents`, `monitors`, `oncall`, `status-pages`, `workflows` and `workflows-templates` — live directly under `modules/oneuptime/` instead of `modules/oneuptime/modules/`. The root module's calls keep their names, so no resource address changes.
+- The Teams template's source is `//modules/oneuptime/workflows-templates/teams-notification`. A stack that calls it changes the path when it upgrades (MIGRATION.md).
+- `tests/verify_modules.py` treats a module inside another module's directory as internal to it, instead of a module under a `modules/` directory. The areas still take their governance inputs and published examples from the root module.
+- The README is a slim documentation index: the task table, requirements, a "Reading with an AI assistant" section that says which release to read, and the license. Reading the index no longer means reading every standard.
+- The README header drops its hand-kept release line and the link to the ai-skills compatibility page: the tag is the release, and this library documents its own versioning and requirements.
+- Examples in the docs and the module READMEs pin `?ref=<version>`, which shows the syntax, instead of the current release; a release no longer re-pins every example. `tests/verify_modules.py` accepts `<version>` as well as a stable SemVer tag, and still rejects relative paths, branches and pre-releases.
+- The "current state" callouts in the module contract and naming pages describe the release they ship in rather than naming it.
+- CI calls the github-ci-library 1.7.0 reusable workflows instead of 1.6.1.
+
 ## [1.5.0] - 2026-10-23
 
 ### Added

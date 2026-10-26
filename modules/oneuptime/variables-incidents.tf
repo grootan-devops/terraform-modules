@@ -1,4 +1,4 @@
-// Inputs consumed by ./modules/incidents.
+// Inputs consumed by ./incidents.
 
 variable "incident_grouping_rule_config" {
   type = object({

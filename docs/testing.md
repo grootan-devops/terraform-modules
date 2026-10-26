@@ -1,7 +1,55 @@
-# Module tests
+# Development and testing
 
-The test levels and which of them this repository runs are in the README §9. This page holds
-the test shapes a module adds.
+## Verify a change
+
+```bash
+make verify      # contract checks + fmt + init + validate + terraform test
+make contracts   # contract checks only, no Terraform binary required
+make validate    # full run (same as verify's second half)
+```
+
+`tests/verify_modules.py` is the gate. For every module it asserts:
+
+- `required_version >= 1.9.0`, and the provider of its family (`hashicorp/aws`,
+  `oneuptime/oneuptime`) wherever it declares a resource or data source.
+- The family's governance variables are declared: `application` and `environment` on AWS,
+  `application` on OneUptime.
+- A `locals` block carrying naming and tag governance (AWS) or label governance (OneUptime)
+  exists.
+- Data sources declared in root Terraform files are referenced by module logic.
+- A `README.md` exists whose examples use the public Git source with `?ref=<version>` or a
+  stable SemVer tag.
+  An internal submodule — a module inside another module's directory, such as an area of
+  `modules/oneuptime` — needs a README, and takes its governance variables and published
+  examples from the parent.
+- No Markdown anywhere in the repository points a module `source` at a relative path.
+- A native test suite exists under `tests/*.tftest.hcl`.
+- `terraform fmt -check -recursive`, `terraform init -backend=false`, and
+  `terraform validate` all pass, and `terraform test` passes.
+
+Individual commands, run inside a module directory:
+
+```bash
+terraform fmt -recursive .
+terraform init -backend=false
+terraform validate
+terraform test          # tests/*.tftest.hcl; the suites need Terraform >= 1.10 (state_key)
+```
+
+## Test levels
+
+| Level | What it covers | State today |
+| :---: | --- | --- |
+| 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on all 32 module directories |
+| 1 | Static security and secret scanning | Not wired into this repository |
+| 2 | `terraform test` with `mock_provider`, no credentials | Every module directory, required by the gate: naming, tags, security defaults, parameters, validation |
+| 3 | Plan analysis for unexpected `delete` actions | Not wired in; no `examples/` fixtures exist |
+| 4 | Terratest apply/idempotency/destroy against real cloud | Not wired in |
+| 5 | Upgrade tests across a `moved` block | Not wired in |
+| 6 | Terraform core and provider version matrix | Not wired in |
+
+Level 2 runs offline in seconds, and `make verify` fails a module without it. What a suite
+covers and the test shapes are below.
 
 ## Native test — `tests/unit.tftest.hcl`
 
@@ -17,7 +65,7 @@ A suite covers, for every resource the module manages:
    and any truncation or override the module implements.
 2. **Tags** — `Application`, `Environment` and `Name` on every taggable resource, caller tags
    kept, and sub-resource `Name` overrides. Assert governance precedence only on a module that
-   merges governance tags last (README §5.3), and never assert the overwrite.
+   merges governance tags last ([governance tags](naming-and-tagging.md#governance-tags-and-merge-precedence)), and never assert the overwrite.
 3. **Security defaults** — KMS wiring, encryption, TLS, public access, deletion protection,
    logging and retention: whatever the module enforces.
 4. **Parameters** — the shipped defaults, a run that overrides several optional inputs, and
@@ -83,7 +131,7 @@ the module in a scratch copy and watching a run fail.
 
 [`modules/oneuptime/tests/unit.tftest.hcl`](../modules/oneuptime/tests/unit.tftest.hcl) is the
 same shape against `mock_provider "oneuptime"`; each OneUptime submodule has its own suite
-under `modules/oneuptime/modules/<area>/tests/`.
+under `modules/oneuptime/<area>/tests/`.
 
 ## Terratest — `test/<module>_test.go`
 

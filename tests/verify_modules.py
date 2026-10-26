@@ -51,9 +51,11 @@ def contract_checks(module):
     if rel.parts[1] not in FAMILIES:
         return [f"{rel}: provider family {rel.parts[1]!r} has no contract in FAMILIES"]
     provider, variables, governance = FAMILIES[rel.parts[1]]
-    # A module under another module's modules/ directory is wired by that
-    # parent, which owns the governance inputs and the published examples.
-    nested = "modules" in rel.parts[2:]
+    # A module inside another module's directory is wired by that parent,
+    # which owns the governance inputs and the published examples.
+    nested = any(
+        any(ROOT.joinpath(*rel.parts[:depth]).glob("*.tf")) for depth in range(2, len(rel.parts))
+    )
     errors = []
     match = re.search(r'required_version\s*=\s*">=\s*([0-9]+)\.([0-9]+)', text)
     # 1.9 is the floor: modules validate one input against another.
@@ -80,11 +82,12 @@ def contract_checks(module):
         stable_tag = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
         expected_source = re.compile(
             r"git::https://github\.com/grootan-devops/terraform-modules\.git//"
-            rf"{re.escape(rel.as_posix())}\?ref={stable_tag}(?=\"|&)"
+            rf"{re.escape(rel.as_posix())}\?ref=(?:{stable_tag}|<version>)(?=\"|&)"
         )
         if not expected_source.search(readme.read_text()):
             errors.append(
-                f"{rel}: examples must use the public Git source pinned to a stable SemVer tag"
+                f"{rel}: examples must use the public Git source pinned to a stable SemVer tag "
+                "or the <version> placeholder"
             )
     if not any((module / "tests").glob("*.tftest.hcl")):
         errors.append(f"{rel}: tests/*.tftest.hcl is missing")

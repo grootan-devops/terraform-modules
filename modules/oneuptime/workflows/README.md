@@ -1,4 +1,4 @@
-# `modules/workflows`
+# `workflows`
 
 Creates `oneuptime_workflow` and its `oneuptime_workflow_variable`s from
 `workflow_configs`. A workflow is described as **nodes**; the module generates
@@ -6,7 +6,7 @@ the canvas JSON — node and edge ids, edges, layout — so there is no JSON to
 write and no UUID to invent.
 
 Inputs are set on the **parent module** (`modules/oneuptime`), not here. Types and
-validation live in [../../variables-workflows.tf](../../variables-workflows.tf).
+validation live in [../variables-workflows.tf](../variables-workflows.tf).
 
 | Output | Contents |
 | --- | --- |

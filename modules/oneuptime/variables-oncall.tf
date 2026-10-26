@@ -1,4 +1,4 @@
-// Inputs consumed by ./modules/oncall.
+// Inputs consumed by ./oncall.
 
 variable "on_call_policy_config" {
   type = object({

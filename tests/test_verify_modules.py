@@ -34,7 +34,7 @@ class PublicSourceContractTests(unittest.TestCase):
         return verify_modules.contract_checks(self.module)
 
     def test_stable_semver_tags_do_not_depend_on_literal_1_0_0(self):
-        for tag in ("1.0.0", "1.2.0", "10.3.42", "1.2.0&depth=1"):
+        for tag in ("1.0.0", "1.2.0", "10.3.42", "1.2.0&depth=1", "<version>", "<version>&depth=1"):
             with self.subTest(tag=tag):
                 source = (
                     "git::https://github.com/grootan-devops/terraform-modules.git//"
@@ -47,6 +47,7 @@ class PublicSourceContractTests(unittest.TestCase):
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=main",
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.2.0-rc1",
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=01.2.0",
+            "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=<tag>",
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=1.2.0",
             "./",
         ):
@@ -112,6 +113,11 @@ class ProviderFamilyContractTests(unittest.TestCase):
         (module / "tests/unit.tftest.hcl").write_text('run "plan" {}\n')
         return module
 
+    def write_parent(self, rel="modules/oneuptime"):
+        parent = verify_modules.ROOT / rel
+        parent.mkdir(parents=True, exist_ok=True)
+        (parent / "main.tf").write_text('module "area" { source = "./area" }\n')
+
     def test_oneuptime_module_uses_label_governance_without_environment(self):
         module = self.write_module(
             "modules/oneuptime",
@@ -146,8 +152,9 @@ class ProviderFamilyContractTests(unittest.TestCase):
         )
 
     def test_nested_module_skips_parent_governance_and_published_example(self):
+        self.write_parent()
         module = self.write_module(
-            "modules/oneuptime/modules/alerts",
+            "modules/oneuptime/alerts",
             body='resource "oneuptime_alert_owner_rule" "this" {}\n',
             readme="# Alerts\n",
         )
@@ -156,12 +163,24 @@ class ProviderFamilyContractTests(unittest.TestCase):
         (module / "README.md").unlink()
         self.assertEqual(
             verify_modules.contract_checks(module),
-            ["modules/oneuptime/modules/alerts: README.md is missing"],
+            ["modules/oneuptime/alerts: README.md is missing"],
+        )
+
+    def test_module_without_a_parent_module_is_not_nested(self):
+        module = self.write_module(
+            "modules/oneuptime/alerts",
+            body='resource "oneuptime_alert_owner_rule" "this" {}\n',
+            readme="# Alerts\n",
+        )
+        self.assertIn(
+            "modules/oneuptime/alerts: required governance variable 'application' is missing",
+            verify_modules.contract_checks(module),
         )
 
     def test_nested_module_with_resources_still_requires_its_provider(self):
+        self.write_parent()
         module = self.write_module(
-            "modules/oneuptime/modules/monitors",
+            "modules/oneuptime/monitors",
             provider="hashicorp/aws",
             body='data "oneuptime_monitor_status" "offline" {}\n'
             'output "id" { value = data.oneuptime_monitor_status.offline.id }\n',
@@ -169,11 +188,12 @@ class ProviderFamilyContractTests(unittest.TestCase):
         )
         self.assertEqual(
             verify_modules.contract_checks(module),
-            ["modules/oneuptime/modules/monitors: oneuptime/oneuptime provider contract is missing"],
+            ["modules/oneuptime/monitors: oneuptime/oneuptime provider contract is missing"],
         )
 
     def test_resource_free_module_needs_no_provider(self):
-        module = verify_modules.ROOT / "modules/oneuptime/modules/workflows-templates/teams"
+        self.write_parent()
+        module = verify_modules.ROOT / "modules/oneuptime/workflows-templates/teams"
         module.mkdir(parents=True)
         (module / "versions.tf").write_text('terraform { required_version = ">= 1.9.0" }\n')
         (module / "outputs.tf").write_text('output "workflow_configs" { value = {} }\n')
