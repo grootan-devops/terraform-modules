@@ -34,7 +34,7 @@ class PublicSourceContractTests(unittest.TestCase):
         return verify_modules.contract_checks(self.module)
 
     def test_stable_semver_tags_do_not_depend_on_literal_1_0_0(self):
-        for tag in ("1.0.0", "1.2.0", "10.3.42", "1.2.0&depth=1"):
+        for tag in ("1.0.0", "1.2.0", "10.3.42", "1.2.0&depth=1", "<version>", "<version>&depth=1"):
             with self.subTest(tag=tag):
                 source = (
                     "git::https://github.com/grootan-devops/terraform-modules.git//"
@@ -47,6 +47,7 @@ class PublicSourceContractTests(unittest.TestCase):
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=main",
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=1.2.0-rc1",
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=01.2.0",
+            "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=<tag>",
             "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=1.2.0",
             "./",
         ):

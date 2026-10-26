@@ -153,7 +153,7 @@ provider "oneuptime" {
 
 # 1. Standard Teams notifications (Templates)
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=<version>"
 
   project_name      = "Core"
   dashboard_url     = "https://oneuptime.example.com"
@@ -162,7 +162,7 @@ module "teams_notifications" {
 
 # 2. Monitors, rules, on-call, status page and workflows (Root)
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=<version>"
 
   application = "core"
 
@@ -385,7 +385,7 @@ locals {
 
 ```hcl
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=<version>"
 
   project_name      = var.application
   dashboard_url     = var.oneuptime_url
@@ -393,7 +393,7 @@ module "teams_notifications" {
 }
 
 module "oneuptime" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime?ref=<version>"
 
   application = var.application
 

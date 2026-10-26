@@ -31,7 +31,7 @@ The `eventbridge` module provisions custom Amazon EventBridge event buses with K
 
 ```hcl
 module "eventbridge" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=<version>"
 
   application = "core"
   environment = "prod"
@@ -44,7 +44,7 @@ module "eventbridge" {
 
 ```hcl
 module "eventbridge" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=<version>"
 
   application = "orders"
   environment = "prod"

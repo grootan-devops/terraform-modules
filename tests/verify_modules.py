@@ -80,11 +80,12 @@ def contract_checks(module):
         stable_tag = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
         expected_source = re.compile(
             r"git::https://github\.com/grootan-devops/terraform-modules\.git//"
-            rf"{re.escape(rel.as_posix())}\?ref={stable_tag}(?=\"|&)"
+            rf"{re.escape(rel.as_posix())}\?ref=(?:{stable_tag}|<version>)(?=\"|&)"
         )
         if not expected_source.search(readme.read_text()):
             errors.append(
-                f"{rel}: examples must use the public Git source pinned to a stable SemVer tag"
+                f"{rel}: examples must use the public Git source pinned to a stable SemVer tag "
+                "or the <version> placeholder"
             )
     if not any((module / "tests").glob("*.tftest.hcl")):
         errors.append(f"{rel}: tests/*.tftest.hcl is missing")

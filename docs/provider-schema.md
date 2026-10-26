@@ -56,7 +56,7 @@ The output is keyed by provider, then resource type:
 - `"computed": true` without `"optional"` is read-only: never a variable; an output when it
   is useful to callers.
 - `"sensitive": true` means the variable or output mapped to it is `sensitive = true`.
-- An argument absent from the schema is never invented — see the capability statuses in the
-  README §6.1.
+- An argument absent from the schema is never invented — see the capability statuses in
+  [Security baselines](security-baselines.md#capability-aware-controls).
 
 [Documentation index](../README.md#documentation)

@@ -1,7 +1,25 @@
 # Consuming modules
 
-How an infrastructure repository composes versioned modules into environments. The layout and
-examples are in README §2 and §3; these are the rules around them.
+How an infrastructure repository composes versioned modules into environments: a native
+Terraform call, the rules around every call, and the Terragrunt layout in
+[Terragrunt architecture](terragrunt.md).
+
+## Native Terraform
+
+Reference modules using semantic version tags in Git (recommended for remote repos) or relative paths (for monorepos):
+
+```hcl
+# Remote Git reference (Semantic Tagging)
+module "s3" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "assets"
+  kms_key_arn = module.kms.key_arn
+}
+
+```
 
 ## Module sources and versions
 
@@ -17,7 +35,7 @@ examples are in README §2 and §3; these are the rules around them.
 
 ## Composition
 
-- A new project uses the Terragrunt layout in §3: a shared `root.hcl`, one `resources/`
+- A new project uses the [Terragrunt layout](terragrunt.md): a shared `root.hcl`, one `resources/`
   composition root, and one `<environment>/terragrunt.hcl` per environment that includes
   `root.hcl`, sources `resources/` and supplies the inputs. A project already on native
   Terraform keeps its layout unless a migration is asked for.
@@ -29,7 +47,7 @@ examples are in README §2 and §3; these are the rules around them.
   through their documented outputs; keep non-secret environment values in the environment's
   `terragrunt.hcl`.
 - New work adds module calls, not `resource` blocks. Existing direct resources (such as the
-  IAM and DNS files in §3) stay as they are, and a capability no module provides is reported as
+  IAM and DNS files in the [Terragrunt layout](terragrunt.md)) stay as they are, and a capability no module provides is reported as
   a module gap.
 
 ## State, providers and secrets

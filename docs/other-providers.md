@@ -7,7 +7,7 @@ confirm each against `terraform providers schema -json` before relying on it.
 ## Naming bounds
 
 Truncate to `limit - (hash + 1)` characters and append a hyphen and a stable hash of the full
-name (README §5.2), against the provider's bounds:
+name ([length limits](naming-and-tagging.md#length-limits-and-deterministic-truncation)), against the provider's bounds:
 
 | Provider | Resource | Limit | Valid characters | Mitigation |
 | --- | --- | :---: | --- | --- |
@@ -17,7 +17,7 @@ name (README §5.2), against the provider's bounds:
 
 ## Capability statuses
 
-Classify each control from the schema with the procedure in README §6.1.
+Classify each control from the schema with the procedure in [Security baselines](security-baselines.md#capability-aware-controls).
 
 ### Azure (`azurerm`)
 

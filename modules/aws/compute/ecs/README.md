@@ -32,7 +32,7 @@ The `ecs` module provisions Amazon Elastic Container Service (ECS) clusters with
 
 ```hcl
 module "ecs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=<version>"
 
   application = "core"
   environment = "prod"
@@ -57,7 +57,7 @@ module "ecs" {
 
 ```hcl
 module "ecs" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=<version>"
 
   application = "ecommerce"
   environment = "prod"

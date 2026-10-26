@@ -33,7 +33,7 @@ The `lambda` module manages AWS Lambda serverless functions supporting container
 
 ```hcl
 module "lambda" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=<version>"
 
   application = "core"
   environment = "prod"
@@ -49,7 +49,7 @@ module "lambda" {
 
 ```hcl
 module "lambda" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=<version>"
 
   application = "billing"
   environment = "prod"

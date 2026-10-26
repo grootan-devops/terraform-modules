@@ -32,7 +32,7 @@ The `elasticache/valkey` module manages Valkey replication groups for low-latenc
 
 ```hcl
 module "valkey" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=<version>"
 
   application = "core"
   environment = "prod"
@@ -48,7 +48,7 @@ module "valkey" {
 
 ```hcl
 module "valkey" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=1.5.0"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=<version>"
 
   application = "session"
   environment = "prod"
