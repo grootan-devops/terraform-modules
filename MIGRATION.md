@@ -24,27 +24,13 @@ resources. A stack that calls only `//modules/oneuptime` changes nothing but the
 
 - Update links into the OneUptime documentation: `modules/oneuptime/modules/<area>` is
   `modules/oneuptime/<area>`.
-
-### Verify
-
-- `terraform init -upgrade` installs the new release, and `terraform plan` shows no changes.
-
-## 1.6.0
-
-### Required
-
-No migration required. Module interfaces, resource addresses and behaviour are unchanged; this
-release reorganises the documentation.
-
-### Recommended
-
 - Update links into the README's numbered sections: each is a page under `docs/` now, listed in
   the README's documentation table.
 - Copy an example's `?ref=<version>` with the release your stack pins in place of `<version>`.
 
 ### Verify
 
-- `make contracts` passes.
+- `terraform init -upgrade` installs the new release, and `terraform plan` shows no changes.
 
 ## 1.5.0
 
