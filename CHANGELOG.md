@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-27
+
+### Changed
+
+- The OneUptime areas — `alerts`, `incidents`, `monitors`, `oncall`, `status-pages`, `workflows` and `workflows-templates` — live directly under `modules/oneuptime/` instead of `modules/oneuptime/modules/`. The root module's calls keep their names, so no resource address changes.
+- The Teams template's source is `//modules/oneuptime/workflows-templates/teams-notification`. A stack that calls it changes the path when it upgrades (MIGRATION.md).
+- `tests/verify_modules.py` treats a module inside another module's directory as internal to it, instead of a module under a `modules/` directory. The areas still take their governance inputs and published examples from the root module.
+
 ## [1.6.0] - 2026-10-27
 
 ### Added

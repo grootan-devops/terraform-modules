@@ -51,9 +51,11 @@ def contract_checks(module):
     if rel.parts[1] not in FAMILIES:
         return [f"{rel}: provider family {rel.parts[1]!r} has no contract in FAMILIES"]
     provider, variables, governance = FAMILIES[rel.parts[1]]
-    # A module under another module's modules/ directory is wired by that
-    # parent, which owns the governance inputs and the published examples.
-    nested = "modules" in rel.parts[2:]
+    # A module inside another module's directory is wired by that parent,
+    # which owns the governance inputs and the published examples.
+    nested = any(
+        any(ROOT.joinpath(*rel.parts[:depth]).glob("*.tf")) for depth in range(2, len(rel.parts))
+    )
     errors = []
     match = re.search(r'required_version\s*=\s*">=\s*([0-9]+)\.([0-9]+)', text)
     # 1.9 is the floor: modules validate one input against another.

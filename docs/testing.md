@@ -19,8 +19,9 @@ make validate    # full run (same as verify's second half)
 - Data sources declared in root Terraform files are referenced by module logic.
 - A `README.md` exists whose examples use the public Git source with `?ref=<version>` or a
   stable SemVer tag.
-  An internal submodule — one under another module's own `modules/` directory — needs a
-  README, and takes its governance variables and published examples from the parent.
+  An internal submodule — a module inside another module's directory, such as an area of
+  `modules/oneuptime` — needs a README, and takes its governance variables and published
+  examples from the parent.
 - No Markdown anywhere in the repository points a module `source` at a relative path.
 - A native test suite exists under `tests/*.tftest.hcl`.
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, and
@@ -130,7 +131,7 @@ the module in a scratch copy and watching a run fail.
 
 [`modules/oneuptime/tests/unit.tftest.hcl`](../modules/oneuptime/tests/unit.tftest.hcl) is the
 same shape against `mock_provider "oneuptime"`; each OneUptime submodule has its own suite
-under `modules/oneuptime/modules/<area>/tests/`.
+under `modules/oneuptime/<area>/tests/`.
 
 ## Terratest — `test/<module>_test.go`
 

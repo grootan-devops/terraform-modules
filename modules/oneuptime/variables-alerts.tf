@@ -1,4 +1,4 @@
-// Inputs consumed by ./modules/alerts.
+// Inputs consumed by ./alerts.
 
 variable "alert_grouping_rule_config" {
   type = object({

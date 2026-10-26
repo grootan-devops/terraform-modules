@@ -1,4 +1,4 @@
-// Inputs consumed by ./modules/workflows.
+// Inputs consumed by ./workflows.
 
 variable "workflow_configs" {
   type = map(object({

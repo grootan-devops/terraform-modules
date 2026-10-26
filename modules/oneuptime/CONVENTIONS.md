@@ -2,7 +2,7 @@
 
 How configuration travels from the calling stack to a provider resource, and
 the rules every area of this module follows. Read this before adding an area
-(`modules/<area>/`) or a new input; the per-area READMEs assume it.
+(`<area>/`) or a new input; the per-area READMEs assume it.
 
 Two worked traces — one for a monitor, one for a status page — are in
 [§4](#4-two-traces-end-to-end).
@@ -17,15 +17,15 @@ It passes through fixed layers, each with one job.
 | 1 | **Stack** | the calling stack's `locals.tf` and module block | *What* exists: monitors, pages, who owns what. Stack-wide `*_defaults` overrides | Contain resources, `try()`, or ids |
 | 2 | **Contract** | `modules/oneuptime/variables-<area>.tf` | Types, the shipped defaults, **all** validation | Reference resources or locals |
 | 3 | **Shared derivation** | `modules/oneuptime/locals.tf`, `labels.tf`, `teams.tf` | What *every* area needs: `component_definitions`, `label_ids`, `team_ids` | Know anything area-specific |
-| 4 | **Area derivation** | `modules/<area>/locals.tf` | Merging defaults, flattening, generating. The real work | Declare types or validate |
-| 5 | **Resources** | `modules/<area>/main.tf` | `for_each` over a layer-4 local, attributes assigned | Contain merge/precedence logic |
+| 4 | **Area derivation** | `<area>/locals.tf` | Merging defaults, flattening, generating. The real work | Declare types or validate |
+| 5 | **Resources** | `<area>/main.tf` | `for_each` over a layer-4 local, attributes assigned | Contain merge/precedence logic |
 
 The rule that follows from this: **`main.tf` should read like a list of
 assignments.** If a resource attribute contains a `merge()`, a nested `for`, or
 more than one `try()`, it belongs in `locals.tf`. The monitors submodule is the
 example — `monitor_steps = local.monitor_steps[each.key]` is one line because
-the layering happens in [`modules/monitors/locals.tf`](modules/monitors/locals.tf)
-and [`criteria.tf`](modules/monitors/criteria.tf).
+the layering happens in [`monitors/locals.tf`](monitors/locals.tf)
+and [`criteria.tf`](monitors/criteria.tf).
 
 ### Why the parent owns labels and teams
 
@@ -41,12 +41,12 @@ team_ids  = { for name, team in oneuptime_team.this : name => team.id }
 
 The same rule decides where a **data source** lives: a lookup only one area
 needs belongs to that area. Monitor statuses and severities sit in
-[`modules/monitors/data.tf`](modules/monitors/data.tf); custom domains sit in
-[`modules/status-pages/data.tf`](modules/status-pages/data.tf).
+[`monitors/data.tf`](monitors/data.tf); custom domains sit in
+[`status-pages/data.tf`](status-pages/data.tf).
 
 ### Cross-area dependencies are data, never `depends_on`
 
-`modules/status-pages` publishes what `modules/monitors` creates, so it takes
+`status-pages` publishes what `monitors` creates, so it takes
 its ids as inputs in [`main.tf`](main.tf):
 
 ```hcl
@@ -86,7 +86,7 @@ lives once, in `*_defaults`:
 show_uptime_history_in_days = optional(number, 90)   // in status_page_defaults
 show_uptime_history_in_days = optional(number)       // in status_page_configs, no default
 
-// modules/status-pages/locals.tf  - layer 4
+// status-pages/locals.tf  - layer 4
 show_uptime_history_in_days = coalesce(page.show_uptime_history_in_days, var.status_page_defaults.show_uptime_history_in_days)
 ```
 
@@ -97,7 +97,7 @@ silently do nothing.
 ### The `merge` form
 
 ```hcl
-// modules/monitors/locals.tf  - layer 4
+// monitors/locals.tf  - layer 4
 merge(
   local.monitor_step_defaults,                            // 1. stack baseline
   local.monitor_type_step_defaults[spec.monitor_type],     // 2. implied by the type
@@ -221,7 +221,7 @@ appears in a slug, so splitting and prefix-matching stay unambiguous.
 Submodule variable types are the one place `any` is acceptable:
 
 ```hcl
-// modules/<area>/variables.tf
+// <area>/variables.tf
 variable "monitor_configs"       { type = any }              // validated by the parent
 variable "label_ids"             { type = map(string) }      // derived by the parent
 variable "component_definitions" { type = map(object({...})) }
@@ -329,9 +329,9 @@ merge([for key, page in var.status_page_configs : { ... }]...)   // note the ...
 ## 9. Adding an area
 
 1. `variables-<area>.tf` in the parent — types, defaults as `optional(…, x)`, every validation.
-2. `modules/<area>/variables.tf` — `any` for pass-through, concrete types for `label_ids` / `team_ids` / `component_definitions`, plus the header comment pointing back.
-3. `modules/<area>/locals.tf` — resolve defaults into `<area>_definitions`, flatten children into `"<parent>.<child>"` maps.
-4. `modules/<area>/main.tf` — `for_each` over those locals, attributes only.
-5. `modules/<area>/README.md` — schema, allowed values, one example per shape.
+2. `<area>/variables.tf` — `any` for pass-through, concrete types for `label_ids` / `team_ids` / `component_definitions`, plus the header comment pointing back.
+3. `<area>/locals.tf` — resolve defaults into `<area>_definitions`, flatten children into `"<parent>.<child>"` maps.
+4. `<area>/main.tf` — `for_each` over those locals, attributes only.
+5. `<area>/README.md` — schema, allowed values, one example per shape.
 6. Wire it in the parent `main.tf`, passing `component_definitions`, `label_ids`, `team_ids`, and any ids from another area.
 7. `terraform fmt -recursive && terraform validate`.

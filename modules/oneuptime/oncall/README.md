@@ -1,4 +1,4 @@
-# `modules/oncall`
+# `oncall`
 
 One on-call setup per component in `rbac_component_mapping`:
 
@@ -12,7 +12,7 @@ One on-call setup per component in `rbac_component_mapping`:
 | `oneuptime_schedules_on_call_duty_escalation_rule` | binds the schedule to the escalation rule |
 
 Timings come from `on_call_policy_config` and `on_call_escalation_rules` in
-[../../variables-oncall.tf](../../variables-oncall.tf): repeat 3× if nobody
+[../variables-oncall.tf](../variables-oncall.tf): repeat 3× if nobody
 acknowledges, escalate after 30 minutes.
 
 | Output | Contents |
@@ -23,7 +23,7 @@ acknowledges, escalate after 30 minutes.
 ## The schedule layer
 
 Every component gets one layer, shaped by `on_call_schedule_layer_config` in
-[../../variables-oncall.tf](../../variables-oncall.tf). The shipped default is a
+[../variables-oncall.tf](../variables-oncall.tf). The shipped default is a
 weekly rotation covering the whole clock:
 
 ```hcl

@@ -31,7 +31,8 @@ terraform-modules/
     │   ├── security/                   # cognito, kms, secrets-manager
     │   └── storage/                    # amplify, efs, s3
     └── oneuptime/                      # OneUptime monitors, on-call, status pages, workflows
-        └── modules/                    # internal areas, and the teams-notification template
+        ├── <area>/                     # internal areas: alerts, incidents, monitors, oncall, status-pages, workflows
+        └── workflows-templates/        # the teams-notification template
 ```
 
 [Documentation index](../README.md#documentation)
