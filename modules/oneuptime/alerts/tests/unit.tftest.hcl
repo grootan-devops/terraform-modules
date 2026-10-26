@@ -1,4 +1,4 @@
-// Unit tests for modules/alerts, called directly with the normalized inputs the
+// Unit tests for alerts/, called directly with the normalized inputs the
 // parent module (modules/oneuptime) would pass it. No OneUptime instance or API
 // key: the mock provider answers every call.
 mock_provider "oneuptime" {}

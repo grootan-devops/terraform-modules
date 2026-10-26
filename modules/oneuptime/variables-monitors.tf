@@ -1,4 +1,4 @@
-// Inputs consumed by ./modules/monitors. See ./modules/monitors/README.md
+// Inputs consumed by ./monitors. See ./monitors/README.md
 // for the monitor_configs schema and one worked example per monitor type.
 
 variable "monitors_component_mapping" {
@@ -44,7 +44,7 @@ variable "monitor_configs" {
     ])
 
     error_message = format(
-      "Every monitor needs a monitor_type from the list in modules/monitors/README.md §3. Wrong or missing on: %s.",
+      "Every monitor needs a monitor_type from the list in monitors/README.md §3. Wrong or missing on: %s.",
       join(", ", [
         for key, config in var.monitor_configs : key if !contains([
           "Manual", "Website", "API", "Ping", "IP", "Port", "Server", "SSL Certificate",
@@ -175,7 +175,7 @@ variable "monitor_defaults" {
 
     // Values the generated criteria compare against. A monitor overrides any
     // of them for one criterion (criteria.<preset>.<key>); setting one here
-    // moves it for the whole project. See modules/monitors/README.md.
+    // moves it for the whole project. See monitors/README.md.
     thresholds = optional(object({
       // API / Website
       expected_status_code              = optional(number, 200)

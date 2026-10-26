@@ -1,4 +1,4 @@
-// Unit tests for modules/workflows, called directly with the normalized inputs
+// Unit tests for workflows/, called directly with the normalized inputs
 // the parent module (modules/oneuptime) would pass it. No OneUptime instance or
 // API key: the mock provider answers every call, so `command = apply` only
 // builds state in memory.

@@ -1,6 +1,6 @@
 // No OneUptime instance or API key: the mock provider answers every call, so
 // `command = apply` only builds state in memory. The submodules have their own
-// tests under modules/<area>/tests; this file covers what the root owns -
+// tests under <area>/tests; this file covers what the root owns -
 // labels, teams, the wiring between areas - and every input validation.
 mock_provider "oneuptime" {}
 

@@ -21,13 +21,13 @@ internal submodule per area. Call the root module, not the submodules; the
 | Area | Module Directory | Primary OneUptime Resources Managed | One Per |
 | --- | --- | --- | --- |
 | **Root** | [`modules/oneuptime`](../modules/oneuptime) | `oneuptime_label`, `oneuptime_team` | label name, `rbac_team_mapping` group |
-| **Monitors** | [`modules/oneuptime/modules/monitors`](../modules/oneuptime/modules/monitors) | `oneuptime_monitor`, `oneuptime_monitor_group`, `oneuptime_monitor_owner_rule`, `oneuptime_monitor_label_rule` | mapped monitor slug; component |
-| **Alerts** | [`modules/oneuptime/modules/alerts`](../modules/oneuptime/modules/alerts) | `oneuptime_alert_owner_rule`, `oneuptime_alert_label_rule`, `oneuptime_alert_grouping_rule` | component |
-| **Incidents** | [`modules/oneuptime/modules/incidents`](../modules/oneuptime/modules/incidents) | `oneuptime_incident_owner_rule`, `oneuptime_incident_label_rule`, `oneuptime_incident_grouping_rule` | component |
-| **On-call** | [`modules/oneuptime/modules/oncall`](../modules/oneuptime/modules/oncall) | `oneuptime_on_call_policy`, `oneuptime_escalation_rule`, `oneuptime_on_call_policy_schedule`, `oneuptime_on_call_schedule_layer` | component |
-| **Status pages** | [`modules/oneuptime/modules/status-pages`](../modules/oneuptime/modules/status-pages) | `oneuptime_status_page` with groups, resources, monitor rules, links, domain, subscribers, announcements, owners | `status_page_configs` entry |
-| **Workflows** | [`modules/oneuptime/modules/workflows`](../modules/oneuptime/modules/workflows) | `oneuptime_workflow`, `oneuptime_workflow_variable` | `workflow_configs` entry |
-| **Templates** | [`modules/oneuptime/modules/workflows-templates/teams-notification`](../modules/oneuptime/modules/workflows-templates/teams-notification) | none — emits `workflow_configs` for five Microsoft Teams notifications | — |
+| **Monitors** | [`modules/oneuptime/monitors`](../modules/oneuptime/monitors) | `oneuptime_monitor`, `oneuptime_monitor_group`, `oneuptime_monitor_owner_rule`, `oneuptime_monitor_label_rule` | mapped monitor slug; component |
+| **Alerts** | [`modules/oneuptime/alerts`](../modules/oneuptime/alerts) | `oneuptime_alert_owner_rule`, `oneuptime_alert_label_rule`, `oneuptime_alert_grouping_rule` | component |
+| **Incidents** | [`modules/oneuptime/incidents`](../modules/oneuptime/incidents) | `oneuptime_incident_owner_rule`, `oneuptime_incident_label_rule`, `oneuptime_incident_grouping_rule` | component |
+| **On-call** | [`modules/oneuptime/oncall`](../modules/oneuptime/oncall) | `oneuptime_on_call_policy`, `oneuptime_escalation_rule`, `oneuptime_on_call_policy_schedule`, `oneuptime_on_call_schedule_layer` | component |
+| **Status pages** | [`modules/oneuptime/status-pages`](../modules/oneuptime/status-pages) | `oneuptime_status_page` with groups, resources, monitor rules, links, domain, subscribers, announcements, owners | `status_page_configs` entry |
+| **Workflows** | [`modules/oneuptime/workflows`](../modules/oneuptime/workflows) | `oneuptime_workflow`, `oneuptime_workflow_variable` | `workflow_configs` entry |
+| **Templates** | [`modules/oneuptime/workflows-templates/teams-notification`](../modules/oneuptime/workflows-templates/teams-notification) | none — emits `workflow_configs` for five Microsoft Teams notifications | — |
 
 Read-only lookups resolve the `Operational` / `Degraded` / `Offline` monitor statuses, the
 incident and alert severities, and custom status page domains by name. They already exist in
@@ -153,7 +153,7 @@ provider "oneuptime" {
 
 # 1. Standard Teams notifications (Templates)
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=<version>"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/workflows-templates/teams-notification?ref=<version>"
 
   project_name      = "Core"
   dashboard_url     = "https://oneuptime.example.com"
@@ -385,7 +385,7 @@ locals {
 
 ```hcl
 module "teams_notifications" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/modules/workflows-templates/teams-notification?ref=<version>"
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/oneuptime/workflows-templates/teams-notification?ref=<version>"
 
   project_name      = var.application
   dashboard_url     = var.oneuptime_url

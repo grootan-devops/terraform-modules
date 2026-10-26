@@ -1,5 +1,5 @@
-// Inputs consumed by ./modules/status-pages. See
-// ./modules/status-pages/README.md for the page schema and examples.
+// Inputs consumed by ./status-pages. See
+// ./status-pages/README.md for the page schema and examples.
 
 variable "status_page_defaults" {
   description = "Baseline configuration applied to every status page, overridable per project and per page"

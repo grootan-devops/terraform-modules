@@ -1,4 +1,4 @@
-// Unit tests for modules/oncall, called directly with the normalized inputs the
+// Unit tests for oncall/, called directly with the normalized inputs the
 // parent module (modules/oneuptime) would pass it. No OneUptime instance or API
 // key: the mock provider answers every call, so `command = apply` only builds
 // state in memory.

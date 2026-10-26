@@ -1,4 +1,4 @@
-# `modules/status-pages`
+# `status-pages`
 
 Creates `oneuptime_status_page` and everything that hangs off it: groups,
 resources, monitor rules, header and footer links, uptime-bar colours, custom
@@ -8,7 +8,7 @@ label-driven `oneuptime_status_page_owner_rule` and
 
 Inputs are set on the **parent module** (`modules/oneuptime`), not here — this
 submodule receives them already normalized, along with resolved label, team,
-monitor and monitor-group ids. See [../../README.md](../../README.md) for how to
+monitor and monitor-group ids. See [../README.md](../README.md) for how to
 call the module; this file is the reference for what a page can contain.
 
 | Output | Contents |
@@ -24,7 +24,7 @@ Status pages default the same way monitors do, so a page in
 `status_page_configs` only declares what is genuinely its own — its name, what
 it publishes, its domain. Precedence, lowest to highest:
 
-1. the `default` in `../../variables-status-pages.tf` — the industry-standard baseline
+1. the `default` in `../variables-status-pages.tf` — the industry-standard baseline
 2. `status_page_defaults` passed to the module — the stack-wide baseline
 3. the page's own entry in `status_page_configs` — the per-page override
 
@@ -188,7 +188,7 @@ each resource in it.
 | Key | Notes |
 | --- | --- |
 | `owner_group_names` | Groups from `rbac_team_mapping`. Resolves to `oneuptime_team`. |
-| `owner_user_ids` | Raw user ids — looking users up by name needs an API key wider than project scope, the same reason team membership is commented out in `../../teams.tf`. |
+| `owner_user_ids` | Raw user ids — looking users up by name needs an API key wider than project scope, the same reason team membership is commented out in `../teams.tf`. |
 | `label_names` | Defaults to the project label. Give a page its **component** label and the label-driven `oneuptime_status_page_owner_rule` hands it to the groups that own that component, exactly like the alert, incident and monitor owner rules. |
 | `private_users` | Only meaningful with `is_public_status_page = false`. |
 | `domain` | `{ domain_name, subdomain }`. The domain must already exist and be verified in the OneUptime project; the module looks it up by name and attaches it. |

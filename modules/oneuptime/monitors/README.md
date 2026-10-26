@@ -1,4 +1,4 @@
-# `modules/monitors`
+# `monitors`
 
 Creates one `oneuptime_monitor` per entry in `monitor_configs`, plus the
 `oneuptime_monitor_group`, `oneuptime_monitor_owner_rule` and
@@ -6,7 +6,7 @@ Creates one `oneuptime_monitor` per entry in `monitor_configs`, plus the
 
 Inputs are set on the **parent module** (`modules/oneuptime`), not here — this
 submodule receives them already normalized, along with resolved label and team
-ids. See [../../README.md](../../README.md) for how to call the module; this
+ids. See [../README.md](../README.md) for how to call the module; this
 file is the reference for everything monitor-shaped you can put in it.
 
 The module requires provider `oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`; the
@@ -16,9 +16,9 @@ selectable in the OneUptime dashboard afterwards.
 
 | Output | Contents |
 | --- | --- |
-| `monitor_ids` | monitor key -> monitor id. Consumed by `modules/status-pages`. |
+| `monitor_ids` | monitor key -> monitor id. Consumed by `status-pages`. |
 | `monitor_group_ids` | component -> monitor group id. |
-| `monitor_status_ids` | `operational` / `degraded` / `offline` -> monitor status id. Consumed by `modules/workflows`. |
+| `monitor_status_ids` | `operational` / `degraded` / `offline` -> monitor status id. Consumed by `workflows`. |
 
 ---
 
@@ -55,7 +55,7 @@ derives the component, group and project labels, so labelling stays consistent.
 Only what differs from that baseline is written per monitor. Three levels of
 override, lowest to highest:
 
-1. the defaults in [`../../variables-monitors.tf`](../../variables-monitors.tf)
+1. the defaults in [`../variables-monitors.tf`](../variables-monitors.tf)
 2. `monitor_defaults` passed to the module — the stack-wide baseline
 3. the monitor's own entry — `thresholds` for the whole monitor,
    `criteria.<preset>` for one criterion

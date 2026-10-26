@@ -13,7 +13,7 @@ terraform {
 // of OneUptime it configures, so a change to on-call never touches monitors.
 
 module "monitors" {
-  source = "./modules/monitors"
+  source = "./monitors"
 
   application                = var.application
   monitors_component_mapping = var.monitors_component_mapping
@@ -26,7 +26,7 @@ module "monitors" {
 }
 
 module "alerts" {
-  source = "./modules/alerts"
+  source = "./alerts"
 
   alert_grouping_rule_config = var.alert_grouping_rule_config
 
@@ -36,7 +36,7 @@ module "alerts" {
 }
 
 module "incidents" {
-  source = "./modules/incidents"
+  source = "./incidents"
 
   incident_grouping_rule_config = var.incident_grouping_rule_config
 
@@ -46,7 +46,7 @@ module "incidents" {
 }
 
 module "oncall" {
-  source = "./modules/oncall"
+  source = "./oncall"
 
   on_call_policy_config    = var.on_call_policy_config
   on_call_escalation_rules = var.on_call_escalation_rules
@@ -61,7 +61,7 @@ module "oncall" {
 // Status pages publish what the monitors submodule creates, so they take its
 // ids rather than looking monitors up themselves.
 module "status_pages" {
-  source = "./modules/status-pages"
+  source = "./status-pages"
 
   application               = var.application
   status_page_defaults      = var.status_page_defaults
@@ -78,9 +78,9 @@ module "status_pages" {
 
 // Workflows read the ids of what the other areas create: the monitor status
 // ids and the project id are substituted into node arguments (see
-// modules/workflows/README.md).
+// workflows/README.md).
 module "workflows" {
-  source = "./modules/workflows"
+  source = "./workflows"
 
   workflow_configs           = var.workflow_configs
   workflow_variable_contents = var.workflow_variable_contents
