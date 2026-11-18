@@ -8,6 +8,24 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 2.1.0
+
+### Required
+
+- **Incidents now page people.** With the defaults, every incident runs its component's on-call
+  policy, which notifies the owning teams' members every 10 minutes, up to 10 times, until someone
+  acknowledges it or it resolves. A stack that should not page sets `on_call_routing = { incidents = false }`.
+  To keep the 2.0.x timings, set `on_call_escalation_rules = { escalate_after_in_minutes = 30 }` and
+  `on_call_policy_config = { repeat_policy_if_no_one_acknowledges_no_of_times = 3 }`.
+
+### Verify
+
+- `terraform plan` adds one `oneuptime_incident_on_call_rule` per component and one
+  `oneuptime_team_on_call_duty_escalation_rule` per component and owning group, and updates each
+  on-call policy and escalation rule in place to the new timings unless the stack sets its own.
+- Members of each owning team have notification rules in OneUptime; a team with no members, or members
+  without rules, is paged without anyone hearing it.
+
 ## 2.0.1
 
 No required action: change `?ref=` to `2.0.1`.

@@ -10,10 +10,14 @@ One on-call setup per component in `rbac_component_mapping`:
 | `oneuptime_on_call_policy_schedule` | `<component>-oncall-schedule` |
 | `oneuptime_on_call_schedule_layer` | `<component>-oncall-schedule-layer` |
 | `oneuptime_schedules_on_call_duty_escalation_rule` | binds the schedule to the escalation rule |
+| `oneuptime_team_on_call_duty_escalation_rule` | one per owning group: the escalation rule pages the group's team |
 
 Timings come from `on_call_policy_config` and `on_call_escalation_rules` in
-[../variables-oncall.tf](../variables-oncall.tf): repeat 3× if nobody
-acknowledges, escalate after 30 minutes.
+[../variables-oncall.tf](../variables-oncall.tf): page the owning teams again
+every 10 minutes and repeat up to 10 times while nobody acknowledges. Paging stops
+when someone acknowledges the incident or it resolves. `on_call_routing` decides
+which records start the policy (incidents by default; see
+[incidents](../incidents/README.md) and [alerts](../alerts/README.md)).
 
 | Output | Contents |
 | --- | --- |

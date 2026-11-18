@@ -49,6 +49,21 @@ resource "oneuptime_escalation_rule" "this" {
   order                     = var.on_call_escalation_rules.order
 }
 
+resource "oneuptime_team_on_call_duty_escalation_rule" "this" {
+  for_each = merge([
+    for component, definition in var.component_definitions : {
+      for group in definition.groups : "${component}.${group}" => {
+        component = component
+        group     = group
+      }
+    }
+  ]...)
+
+  on_call_duty_policy_id                 = oneuptime_on_call_policy.this[each.value.component].id
+  on_call_duty_policy_escalation_rule_id = oneuptime_escalation_rule.this[each.value.component].id
+  team_id                                = var.team_ids[each.value.group]
+}
+
 resource "oneuptime_on_call_policy_schedule" "this" {
   for_each    = var.component_definitions
   name        = "${each.key}-oncall-schedule"

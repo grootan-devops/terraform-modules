@@ -73,3 +73,13 @@ resource "oneuptime_incident_grouping_rule" "this" {
   // on-call rota when an episode opens.
   on_call_duty_policies = [] // TO-DO
 }
+
+resource "oneuptime_incident_on_call_rule" "this" {
+  for_each       = var.route_to_on_call ? var.component_definitions : {}
+  name           = each.key
+  is_enabled     = true
+  description    = "incident on-call rule for component ${each.key}"
+  monitor_labels = toset([var.label_ids[each.key]])
+
+  on_call_duty_policies = toset([var.on_call_policy_ids[each.key]])
+}

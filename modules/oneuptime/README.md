@@ -229,8 +229,9 @@ module "oneuptime" {
 | `monitor_defaults` | Baseline for every monitor, including the thresholds the generated criteria compare against. See [monitors §2](monitors/README.md#2-monitor_defaults). | `object({...})` | `{}` | No |
 | `alert_grouping_rule_config` | Alert grouping per component: by alert labels and severity, 15-minute reopen window. | `object({...})` | see `variables-alerts.tf` | No |
 | `incident_grouping_rule_config` | The same shape for incidents. | `object({...})` | see `variables-incidents.tf` | No |
-| `on_call_policy_config` | Repeat the policy 3 times if nobody acknowledges. | `object({...})` | see `variables-oncall.tf` | No |
-| `on_call_escalation_rules` | Escalate after 30 minutes, order 1. | `object({...})` | see `variables-oncall.tf` | No |
+| `on_call_policy_config` | Repeat the policy while nobody acknowledges: on, up to 10 times. Every field is optional. | `object({...})` | `{}` | No |
+| `on_call_escalation_rules` | Page the owning teams again every 10 minutes, order 1. Every field is optional. | `object({...})` | `{}` | No |
+| `on_call_routing` | Which records page a component's on-call policy: `incidents` (default `true`) and `alerts` (default `false`), so one outage pages once. | `object({...})` | `{}` | No |
 | `on_call_schedule_layer_config` | The one schedule layer per component: weekly rotation covering the whole clock. See [on-call](oncall/README.md#the-schedule-layer). | `object({...})` | `{}` | No |
 | `status_page_defaults` | Baseline for every status page. See [status pages §1](status-pages/README.md#1-status_page_defaults). | `object({...})` | `{}` | No |
 | `status_page_configs` | One entry per status page, everything optional. See [status pages §2](status-pages/README.md#2-configuring-a-page). | `map(object({...}))` | `{}` | No |

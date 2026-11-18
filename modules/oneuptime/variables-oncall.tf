@@ -1,26 +1,30 @@
 // Inputs consumed by ./oncall.
 
 variable "on_call_policy_config" {
+  description = "How often a component's on-call policy runs again while nobody acknowledges: on by default, up to 10 times."
   type = object({
-    repeat_policy_if_no_one_acknowledges             = bool
-    repeat_policy_if_no_one_acknowledges_no_of_times = number
+    repeat_policy_if_no_one_acknowledges             = optional(bool, true)
+    repeat_policy_if_no_one_acknowledges_no_of_times = optional(number, 10)
   })
-  default = {
-    repeat_policy_if_no_one_acknowledges             = true
-    repeat_policy_if_no_one_acknowledges_no_of_times = 3
-  }
+  default = {}
 }
 
-
 variable "on_call_escalation_rules" {
+  description = "When the escalation rule pages the owning teams again: every 10 minutes by default."
   type = object({
-    escalate_after_in_minutes = number
-    order                     = number
+    escalate_after_in_minutes = optional(number, 10)
+    order                     = optional(number, 1)
   })
-  default = {
-    escalate_after_in_minutes = 30
-    order                     = 1
-  }
+  default = {}
+}
+
+variable "on_call_routing" {
+  description = "Which records page a component's on-call policy: incidents by default, alerts not, so one outage pages once."
+  type = object({
+    incidents = optional(bool, true)
+    alerts    = optional(bool, false)
+  })
+  default = {}
 }
 
 
