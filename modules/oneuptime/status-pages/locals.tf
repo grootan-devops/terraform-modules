@@ -215,7 +215,7 @@ locals {
 
   status_page_domains = {
     for key, page in var.status_page_configs :
-    key => merge(page.domain, { status_page_key = key }) if page.domain != null
+    key => merge({ domain_name = null, domain_id = null, subdomain = null }, page.domain, { status_page_key = key }) if page.domain != null
   }
 
   status_page_label_names = {
@@ -251,7 +251,7 @@ locals {
   ]...)
 
   // Domain names looked up once each, however many pages reference them.
-  status_page_domain_names = toset([for domain in local.status_page_domains : domain.domain_name])
+  status_page_domain_names = toset([for domain in local.status_page_domains : domain.domain_name if domain.domain_id == null])
 
   // Announcements are project-level in OneUptime (they carry the set of pages
   // they appear on), so they are configured next to the pages rather than

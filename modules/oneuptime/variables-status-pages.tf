@@ -332,7 +332,8 @@ variable "status_page_configs" {
     // and verified in the OneUptime project.
     domain = optional(object({
       // Name of the domain in OneUptime, e.g. "example.com".
-      domain_name = string
+      domain_name = optional(string)
+      domain_id   = optional(string)
       // Subdomain label such as "status". Leave blank or "@" for the root.
       subdomain = optional(string)
     }))
@@ -421,6 +422,14 @@ variable "status_page_configs" {
       ])
     ])
     error_message = "Each status page monitor rule must set at least one of label_names, monitor_name_pattern or monitor_description_pattern, otherwise it matches nothing."
+  }
+
+  validation {
+    condition = alltrue([
+      for page in var.status_page_configs :
+      page.domain == null || (try(page.domain.domain_name, null) == null) != (try(page.domain.domain_id, null) == null)
+    ])
+    error_message = "A status page domain must set exactly one of domain_name or domain_id."
   }
 }
 

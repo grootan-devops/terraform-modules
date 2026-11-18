@@ -13,6 +13,10 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A status page's `owner_group_names` skips a group that owns one of the page's component labels. The module's status page owner rule already makes that group an owner, and OneUptime 14 refuses the second, with "This team is already an owner of this status page".
 - A status page carries the labels of the groups that own its component labels. The module's status page label rule adds those labels on the server as soon as the page is created, so a page planned without them failed the apply with an inconsistent `labels` value.
 
+### Added
+
+- A status page `domain` takes `domain_id` as an alternative to `domain_name`. OneUptime 14 cannot list domains by name ("Invalid column on Domain - name"), so the name lookup fails there; a page given the domain's id attaches it without a lookup. Exactly one of the two must be set.
+
 ### Changed
 
 - CI calls the github-ci-library 1.9.1 reusable workflows instead of 1.7.0, and the repository verification job runs in `grootantech/toolkit:2.0.1` (Terraform 1.17, Trivy 0.76) instead of 1.2.0.

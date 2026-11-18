@@ -12,6 +12,12 @@ Newer sections are split into **Required** (the upgrade breaks or misbehaves wit
 
 No required action: change `?ref=` to `2.0.1`.
 
+### Recommended
+
+- Against OneUptime 14, give a status page's custom domain as `domain_id` (Project Settings,
+  Domains) instead of `domain_name`: the name lookup fails there with "Invalid column on Domain -
+  name". Nothing changes for a stack whose `domain_name` lookup already works.
+
 ### Verify
 
 - `terraform plan` updates every `oneuptime_alert_grouping_rule` and

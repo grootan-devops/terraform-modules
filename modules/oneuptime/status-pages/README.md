@@ -191,7 +191,7 @@ each resource in it.
 | `owner_user_ids` | Raw user ids — looking users up by name needs an API key wider than project scope, the same reason team membership is commented out in `../teams.tf`. |
 | `label_names` | Defaults to the project label. Give a page its **component** label and the label-driven `oneuptime_status_page_owner_rule` hands it to the groups that own that component, exactly like the alert, incident and monitor owner rules. The page also carries the labels of those owning groups, which `oneuptime_status_page_label_rule` would add on the server; setting them here keeps the plan and the page in agreement. |
 | `private_users` | Only meaningful with `is_public_status_page = false`. |
-| `domain` | `{ domain_name, subdomain }`. The domain must already exist and be verified in the OneUptime project; the module looks it up by name and attaches it. |
+| `domain` | `{ domain_name, subdomain }` or `{ domain_id, subdomain }`. The domain must already exist and be verified in the OneUptime project. `domain_name` is looked up by name, which OneUptime 14 refuses ("Invalid column on Domain - name"); against OneUptime 14 give the domain's id from Project Settings, Domains as `domain_id`. `subdomain = "@"` serves the page on the domain itself. |
 
 ### 2.4 Subscribers
 

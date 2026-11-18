@@ -944,3 +944,27 @@ run "children_attach_to_their_page_and_group" {
     error_message = "status_page_group_ids should map every \"<page>.<group>\" key to its id."
   }
 }
+
+run "a_domain_given_by_id_skips_the_name_lookup" {
+  command = plan
+
+  variables {
+    status_page_configs = {
+      "core" = merge(var.blank_page, {
+        domain = {
+          domain_id = "domain-direct"
+          subdomain = "@"
+        }
+      })
+    }
+  }
+
+  assert {
+    condition = (
+      oneuptime_status_page_domain.this["core"].domain_id == "domain-direct"
+      && oneuptime_status_page_domain.this["core"].subdomain == "@"
+      && length(data.oneuptime_domain.by_name) == 0
+    )
+    error_message = "A domain given by domain_id should be attached as is, without looking up a domain by name."
+  }
+}
