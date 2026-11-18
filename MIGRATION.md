@@ -8,6 +8,22 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 2.0.1
+
+No required action: change `?ref=` to `2.0.1`.
+
+### Verify
+
+- `terraform plan` updates every `oneuptime_alert_grouping_rule` and
+  `oneuptime_incident_grouping_rule` in place, once, from priority `1` (or whatever OneUptime moved
+  it to) to its component's number: 10, 20, 30 and so on in component name order. A grouping rule
+  created by hand in the same project that already holds one of those numbers moves one place.
+- A status page given component `label_names` may show its owning groups' labels being added.
+  OneUptime normally adds them already through the status page label rule, in which case the
+  plan shows nothing.
+- A grouping rule or status page left tainted by a failed 2.0.0 apply against OneUptime 14 is
+  replaced once; the next plan is clean.
+
 ## 2.0.0
 
 ### Required

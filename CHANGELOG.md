@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-11-18
+
+### Fixed
+
+- Alert and incident grouping rules take distinct priorities - 10, 20, 30 and so on in component name order - instead of priority `1` each. OneUptime 14 keeps a project's grouping rules in one ordered list where two rules cannot share a number, so it moved the duplicates to 2, 3 and so on, and every apply failed with "Provider produced inconsistent result after apply". A number no other rule holds is kept as written, so the plan and the server now agree.
+- A status page carries the labels of the groups that own its component labels. The module's status page label rule adds those labels on the server as soon as the page is created, so a page planned without them failed the apply with an inconsistent `labels` value.
+
+### Changed
+
+- CI calls the github-ci-library 1.9.1 reusable workflows instead of 1.7.0, and the repository verification job runs in `grootantech/toolkit:2.0.1` (Terraform 1.17, Trivy 0.76) instead of 1.2.0.
+
 ## [2.0.0] - 2026-10-27
 
 ### Added

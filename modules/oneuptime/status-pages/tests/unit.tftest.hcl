@@ -413,8 +413,8 @@ run "pages_are_named_after_name_or_key" {
   }
 
   assert {
-    condition     = oneuptime_status_page.this["core"].labels == toset(["label-platform", "label-core"])
-    error_message = "A page with label_names should carry exactly those labels."
+    condition     = oneuptime_status_page.this["core"].labels == toset(["label-platform", "label-devops", "label-core"])
+    error_message = "A page with label_names should carry those labels plus the groups that own each component label."
   }
 
   assert {
