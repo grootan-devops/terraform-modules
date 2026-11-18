@@ -355,7 +355,7 @@ variables {
         })
       }
 
-      owner_group_names = toset(["devops"])
+      owner_group_names = toset(["devops", "developers"])
       owner_user_ids    = toset(["user-1234"])
     })
 
@@ -413,8 +413,8 @@ run "pages_are_named_after_name_or_key" {
   }
 
   assert {
-    condition     = oneuptime_status_page.this["core"].labels == toset(["label-platform", "label-core"])
-    error_message = "A page with label_names should carry exactly those labels."
+    condition     = oneuptime_status_page.this["core"].labels == toset(["label-platform", "label-devops", "label-core"])
+    error_message = "A page with label_names should carry those labels plus the groups that own each component label."
   }
 
   assert {
@@ -769,10 +769,10 @@ run "subscribers_private_users_and_owners" {
 
   assert {
     condition = (
-      keys(oneuptime_status_page_team_owner.this) == ["core.devops"]
-      && oneuptime_status_page_team_owner.this["core.devops"].team_id == "team-devops"
+      keys(oneuptime_status_page_team_owner.this) == ["core.developers"]
+      && oneuptime_status_page_team_owner.this["core.developers"].team_id == "team-developers"
     )
-    error_message = "owner_group_names should resolve to team ids."
+    error_message = "owner_group_names should resolve to team ids, except groups the status page owner rule already makes owners through the page's component labels."
   }
 
   assert {
@@ -942,5 +942,29 @@ run "children_attach_to_their_page_and_group" {
   assert {
     condition     = output.status_page_group_ids == { for key, group in oneuptime_status_page_group.this : key => group.id }
     error_message = "status_page_group_ids should map every \"<page>.<group>\" key to its id."
+  }
+}
+
+run "a_domain_given_by_id_skips_the_name_lookup" {
+  command = plan
+
+  variables {
+    status_page_configs = {
+      "core" = merge(var.blank_page, {
+        domain = {
+          domain_id = "domain-direct"
+          subdomain = "@"
+        }
+      })
+    }
+  }
+
+  assert {
+    condition = (
+      oneuptime_status_page_domain.this["core"].domain_id == "domain-direct"
+      && oneuptime_status_page_domain.this["core"].subdomain == ""
+      && length(data.oneuptime_domain.by_name) == 0
+    )
+    error_message = "A domain given by domain_id should be attached without a name lookup, and subdomain \"@\" sent as the empty subdomain OneUptime stores."
   }
 }

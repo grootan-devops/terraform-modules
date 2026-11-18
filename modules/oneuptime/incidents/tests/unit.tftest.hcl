@@ -195,8 +195,16 @@ run "default_grouping_config_flows_into_every_grouping_rule" {
   }
 
   assert {
-    condition     = alltrue([for rule in oneuptime_incident_grouping_rule.this : rule.priority == 1 && rule.is_enabled])
-    error_message = "Grouping rules should be enabled with priority 1."
+    condition     = alltrue([for rule in oneuptime_incident_grouping_rule.this : rule.is_enabled])
+    error_message = "Grouping rules should be enabled."
+  }
+
+  assert {
+    condition = (
+      oneuptime_incident_grouping_rule.this["application"].priority == 10
+      && oneuptime_incident_grouping_rule.this["platform"].priority == 20
+    )
+    error_message = "Grouping rules should take distinct priorities 10, 20, ... in component name order, so OneUptime keeps each as written."
   }
 
   assert {

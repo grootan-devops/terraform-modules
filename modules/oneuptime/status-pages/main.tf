@@ -18,8 +18,7 @@ resource "oneuptime_status_page" "this" {
   // A page with no label_names of its own carries the project label, which is
   // what the status page owner and label rules below match on.
   labels = toset([
-    for label_name in coalesce(var.status_page_configs[each.key].label_names, [var.application]) :
-    var.label_ids[label_name]
+    for label_name in local.status_page_label_names[each.key] : var.label_ids[label_name]
   ])
 
   // Copy and SEO - passed straight through, omitted when not set.
@@ -186,8 +185,8 @@ resource "oneuptime_status_page_history_chart_bar_color" "this" {
 resource "oneuptime_status_page_domain" "this" {
   for_each       = local.status_page_domains
   status_page_id = oneuptime_status_page.this[each.value.status_page_key].id
-  domain_id      = data.oneuptime_domain.by_name[each.value.domain_name].id
-  subdomain      = each.value.subdomain
+  domain_id      = each.value.domain_id != null ? each.value.domain_id : data.oneuptime_domain.by_name[each.value.domain_name].id
+  subdomain      = each.value.subdomain == "@" ? "" : each.value.subdomain
   depends_on     = [data.oneuptime_domain.by_name]
 }
 

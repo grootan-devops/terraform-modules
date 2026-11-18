@@ -108,7 +108,7 @@ environment is its own OneUptime project (§6).
 | --- | --- | --- |
 | `<application>` (`#1100ff`, type `project`) | `var.application` | every monitor, and every status page without `label_names` |
 | `<component>` | `labels_config` | the component's monitors, monitor group, on-call policy and episodes; its alerts and incidents through the label rules |
-| `<group>` | `labels_config` | wherever its components' label is, directly or through the label rules |
+| `<group>` | `labels_config` | wherever its components' label is: directly on monitors and status pages, through the label rules on alerts and incidents |
 
 Every component and group in `rbac_component_mapping` must be a label name in `labels_config`.
 Labels are never written on a monitor: they are derived from `monitors_component_mapping`, so the
