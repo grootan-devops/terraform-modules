@@ -962,9 +962,9 @@ run "a_domain_given_by_id_skips_the_name_lookup" {
   assert {
     condition = (
       oneuptime_status_page_domain.this["core"].domain_id == "domain-direct"
-      && oneuptime_status_page_domain.this["core"].subdomain == "@"
+      && oneuptime_status_page_domain.this["core"].subdomain == ""
       && length(data.oneuptime_domain.by_name) == 0
     )
-    error_message = "A domain given by domain_id should be attached as is, without looking up a domain by name."
+    error_message = "A domain given by domain_id should be attached without a name lookup, and subdomain \"@\" sent as the empty subdomain OneUptime stores."
   }
 }

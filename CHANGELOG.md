@@ -15,7 +15,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- A status page `domain` takes `domain_id` as an alternative to `domain_name`. OneUptime 14 cannot list domains by name ("Invalid column on Domain - name"), so the name lookup fails there; a page given the domain's id attaches it without a lookup. Exactly one of the two must be set.
+- A status page `domain` takes `domain_id` as an alternative to `domain_name`. OneUptime 14 cannot list domains by name ("Invalid column on Domain - name"), so the name lookup fails there; a page given the domain's id attaches it without a lookup. Exactly one of the two must be set. `subdomain = "@"` is sent as `""`, the value OneUptime stores for the domain itself, so the apply does not fail with an inconsistent `subdomain`.
 
 ### Changed
 
