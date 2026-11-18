@@ -10,6 +10,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - On-call paging: each component's incidents run its on-call policy, through an `oneuptime_incident_on_call_rule` per component, and the policy's escalation rule pages every team that owns the component (`oneuptime_team_on_call_duty_escalation_rule`). Until now the policies existed but nothing reached them and nobody was on them.
+- `on_call_overrides` gives a component its own on-call timings - how often its policy pages again and how many times - while every other component keeps the stack-wide `on_call_escalation_rules` and `on_call_policy_config`. A field left out keeps the stack-wide value, and a key that is not a component fails validation.
 - `on_call_routing` chooses which records page: `incidents` (default `true`) and `alerts` (default `false`, through `oneuptime_alert_on_call_rule`), so one outage pages once.
 
 ### Changed

@@ -231,6 +231,7 @@ module "oneuptime" {
 | `incident_grouping_rule_config` | The same shape for incidents. | `object({...})` | see `variables-incidents.tf` | No |
 | `on_call_policy_config` | Repeat the policy while nobody acknowledges: on, up to 10 times. Every field is optional. | `object({...})` | `{}` | No |
 | `on_call_escalation_rules` | Page the owning teams again every 10 minutes, order 1. Every field is optional. | `object({...})` | `{}` | No |
+| `on_call_overrides` | Per-component timings: `{ <component> = { escalate_after_in_minutes, repeat_policy_if_no_one_acknowledges, repeat_policy_if_no_one_acknowledges_no_of_times } }`. A field left out keeps the stack-wide value; a component left out keeps all of them. Keys must be components of `rbac_component_mapping`. | `map(object({...}))` | `{}` | No |
 | `on_call_routing` | Which records page a component's on-call policy: `incidents` (default `true`) and `alerts` (default `false`), so one outage pages once. | `object({...})` | `{}` | No |
 | `on_call_schedule_layer_config` | The one schedule layer per component: weekly rotation covering the whole clock. See [on-call](oncall/README.md#the-schedule-layer). | `object({...})` | `{}` | No |
 | `status_page_defaults` | Baseline for every status page. See [status pages §1](status-pages/README.md#1-status_page_defaults). | `object({...})` | `{}` | No |

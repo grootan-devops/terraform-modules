@@ -15,7 +15,14 @@ One on-call setup per component in `rbac_component_mapping`:
 Timings come from `on_call_policy_config` and `on_call_escalation_rules` in
 [../variables-oncall.tf](../variables-oncall.tf): page the owning teams again
 every 10 minutes and repeat up to 10 times while nobody acknowledges. Paging stops
-when someone acknowledges the incident or it resolves. `on_call_routing` decides
+when someone acknowledges the incident or it resolves. `on_call_overrides` gives one
+component its own timings and leaves the rest on the stack-wide ones:
+
+```hcl
+on_call_overrides = {
+  "security" = { escalate_after_in_minutes = 5 }
+}
+``` `on_call_routing` decides
 which records start the policy (incidents by default; see
 [incidents](../incidents/README.md) and [alerts](../alerts/README.md)).
 

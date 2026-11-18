@@ -701,3 +701,15 @@ run "rejects_contents_for_an_undeclared_variable" {
 
   expect_failures = [var.workflow_variable_contents]
 }
+
+run "rejects_an_on_call_override_for_an_unknown_component" {
+  command = plan
+
+  variables {
+    on_call_overrides = {
+      "not-a-component" = { escalate_after_in_minutes = 5 }
+    }
+  }
+
+  expect_failures = [var.on_call_overrides]
+}

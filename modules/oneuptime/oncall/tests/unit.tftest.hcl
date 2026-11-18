@@ -429,3 +429,34 @@ run "escalation_rule_pages_every_owning_team" {
     error_message = "Each component's escalation rule should page every group that owns the component, one entry per component and group."
   }
 }
+
+run "a_component_override_replaces_only_its_own_timings" {
+  command = plan
+
+  variables {
+    on_call_overrides = {
+      "platform" = {
+        escalate_after_in_minutes            = 5
+        repeat_policy_if_no_one_acknowledges = false
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      oneuptime_escalation_rule.this["platform"].escalate_after_in_minutes == 5
+      && oneuptime_on_call_policy.this["platform"].repeat_policy_if_no_one_acknowledges == false
+      && oneuptime_on_call_policy.this["platform"].repeat_policy_if_no_one_acknowledges_no_of_times == 10
+    )
+    error_message = "An override should replace the fields it sets, including false, and keep the stack-wide value for the rest."
+  }
+
+  assert {
+    condition = (
+      oneuptime_escalation_rule.this["application"].escalate_after_in_minutes == 10
+      && oneuptime_on_call_policy.this["application"].repeat_policy_if_no_one_acknowledges == true
+      && oneuptime_on_call_policy.this["application"].repeat_policy_if_no_one_acknowledges_no_of_times == 10
+    )
+    error_message = "A component without an override should keep the stack-wide timings."
+  }
+}

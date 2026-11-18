@@ -18,6 +18,21 @@ variable "on_call_escalation_rules" {
   default = {}
 }
 
+variable "on_call_overrides" {
+  description = "Per-component on-call timings, keyed by a component of rbac_component_mapping. A field left out keeps on_call_policy_config or on_call_escalation_rules; a component left out keeps both."
+  type = map(object({
+    escalate_after_in_minutes                        = optional(number)
+    repeat_policy_if_no_one_acknowledges             = optional(bool)
+    repeat_policy_if_no_one_acknowledges_no_of_times = optional(number)
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for component in keys(var.on_call_overrides) : contains(keys(var.rbac_component_mapping), component)])
+    error_message = "Each on_call_overrides key must be a component in rbac_component_mapping."
+  }
+}
+
 variable "on_call_routing" {
   description = "Which records page a component's on-call policy: incidents by default, alerts not, so one outage pages once."
   type = object({
