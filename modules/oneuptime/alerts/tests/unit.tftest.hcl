@@ -266,3 +266,34 @@ run "no_components_creates_no_rules" {
     error_message = "With no components there should be no alert rules at all."
   }
 }
+
+run "no_on_call_rules_unless_routed" {
+  command = plan
+
+  assert {
+    condition     = length(oneuptime_alert_on_call_rule.this) == 0
+    error_message = "Without route_to_on_call, no alert on-call rule should be created."
+  }
+}
+
+run "routed_alerts_page_their_components_policy" {
+  command = plan
+
+  variables {
+    route_to_on_call = true
+    on_call_policy_ids = {
+      "platform"    = "policy-platform"
+      "application" = "policy-application"
+    }
+  }
+
+  assert {
+    condition = (
+      toset(keys(oneuptime_alert_on_call_rule.this)) == toset(["platform", "application"])
+      && oneuptime_alert_on_call_rule.this["platform"].on_call_duty_policies == toset(["policy-platform"])
+      && oneuptime_alert_on_call_rule.this["platform"].monitor_labels == toset(["label-platform"])
+      && oneuptime_alert_on_call_rule.this["application"].is_enabled
+    )
+    error_message = "A routed component's alerts should match its label and run its own on-call policy."
+  }
+}

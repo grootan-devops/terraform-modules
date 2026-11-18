@@ -20,3 +20,15 @@ variable "incident_grouping_rule_config" {
   type        = any
   description = "Incident grouping rule configuration, normalized by the parent module"
 }
+
+variable "on_call_policy_ids" {
+  type        = map(string)
+  description = "component -> oneuptime_on_call_policy id"
+  default     = {}
+}
+
+variable "route_to_on_call" {
+  type        = bool
+  description = "Whether a component's incidents run its on-call policy"
+  default     = false
+}

@@ -30,6 +30,9 @@ module "alerts" {
 
   alert_grouping_rule_config = var.alert_grouping_rule_config
 
+  on_call_policy_ids = module.oncall.on_call_policy_ids
+  route_to_on_call   = var.on_call_routing.alerts
+
   component_definitions = local.component_definitions
   label_ids             = local.label_ids
   team_ids              = local.team_ids
@@ -39,6 +42,9 @@ module "incidents" {
   source = "./incidents"
 
   incident_grouping_rule_config = var.incident_grouping_rule_config
+
+  on_call_policy_ids = module.oncall.on_call_policy_ids
+  route_to_on_call   = var.on_call_routing.incidents
 
   component_definitions = local.component_definitions
   label_ids             = local.label_ids
@@ -50,6 +56,7 @@ module "oncall" {
 
   on_call_policy_config    = var.on_call_policy_config
   on_call_escalation_rules = var.on_call_escalation_rules
+  on_call_overrides        = var.on_call_overrides
 
   on_call_schedule_layer_config = var.on_call_schedule_layer_config
 

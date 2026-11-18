@@ -8,6 +8,7 @@ component in `rbac_component_mapping`:
 | `oneuptime_incident_owner_rule` | Any incident on a monitor labelled with the component is owned by the groups that own that component. |
 | `oneuptime_incident_label_rule` | Adds the component label and the labels of its owning groups to those incidents. |
 | `oneuptime_incident_grouping_rule` | Rolls repeated incidents into one episode, per `incident_grouping_rule_config`. Each component's rule gets its own `priority` - 10, 20, 30 and so on in component name order - because OneUptime keeps a project's grouping rules in one ordered list where two rules cannot share a number; a number nobody else holds is kept as written. |
+| `oneuptime_incident_on_call_rule` | Runs the component's on-call policy for its incidents, when `on_call_routing.incidents` is on (on by default). |
 
 A component owned by two groups produces **one** rule naming both teams, not one
 rule per group — `component_definitions` resolves the group list into a set.

@@ -1,26 +1,45 @@
 // Inputs consumed by ./oncall.
 
 variable "on_call_policy_config" {
+  description = "How often a component's on-call policy runs again while nobody acknowledges: on by default, up to 10 times."
   type = object({
-    repeat_policy_if_no_one_acknowledges             = bool
-    repeat_policy_if_no_one_acknowledges_no_of_times = number
+    repeat_policy_if_no_one_acknowledges             = optional(bool, true)
+    repeat_policy_if_no_one_acknowledges_no_of_times = optional(number, 10)
   })
-  default = {
-    repeat_policy_if_no_one_acknowledges             = true
-    repeat_policy_if_no_one_acknowledges_no_of_times = 3
+  default = {}
+}
+
+variable "on_call_escalation_rules" {
+  description = "When the escalation rule pages the owning teams again: every 10 minutes by default."
+  type = object({
+    escalate_after_in_minutes = optional(number, 10)
+    order                     = optional(number, 1)
+  })
+  default = {}
+}
+
+variable "on_call_overrides" {
+  description = "Per-component on-call timings, keyed by a component of rbac_component_mapping. A field left out keeps on_call_policy_config or on_call_escalation_rules; a component left out keeps both."
+  type = map(object({
+    escalate_after_in_minutes                        = optional(number)
+    repeat_policy_if_no_one_acknowledges             = optional(bool)
+    repeat_policy_if_no_one_acknowledges_no_of_times = optional(number)
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for component in keys(var.on_call_overrides) : contains(keys(var.rbac_component_mapping), component)])
+    error_message = "Each on_call_overrides key must be a component in rbac_component_mapping."
   }
 }
 
-
-variable "on_call_escalation_rules" {
+variable "on_call_routing" {
+  description = "Which records page a component's on-call policy: incidents by default, alerts not, so one outage pages once."
   type = object({
-    escalate_after_in_minutes = number
-    order                     = number
+    incidents = optional(bool, true)
+    alerts    = optional(bool, false)
   })
-  default = {
-    escalate_after_in_minutes = 30
-    order                     = 1
-  }
+  default = {}
 }
 
 

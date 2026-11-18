@@ -34,11 +34,11 @@ variables {
   // The shipped defaults in modules/oneuptime/variables-oncall.tf.
   on_call_policy_config = {
     repeat_policy_if_no_one_acknowledges             = true
-    repeat_policy_if_no_one_acknowledges_no_of_times = 3
+    repeat_policy_if_no_one_acknowledges_no_of_times = 10
   }
 
   on_call_escalation_rules = {
-    escalate_after_in_minutes = 30
+    escalate_after_in_minutes = 10
     order                     = 1
   }
 
@@ -162,17 +162,17 @@ run "default_timings_flow_through" {
     condition = alltrue([
       for policy in oneuptime_on_call_policy.this :
       policy.repeat_policy_if_no_one_acknowledges == true
-      && policy.repeat_policy_if_no_one_acknowledges_no_of_times == 3
+      && policy.repeat_policy_if_no_one_acknowledges_no_of_times == 10
     ])
-    error_message = "Policies should repeat 3 times when nobody acknowledges."
+    error_message = "Policies should repeat 10 times when nobody acknowledges."
   }
 
   assert {
     condition = alltrue([
       for rule in oneuptime_escalation_rule.this :
-      rule.escalate_after_in_minutes == 30 && rule.order == 1
+      rule.escalate_after_in_minutes == 10 && rule.order == 1
     ])
-    error_message = "Escalation rules should escalate after 30 minutes at order 1."
+    error_message = "Escalation rules should escalate after 10 minutes at order 1."
   }
 
   assert {
@@ -414,5 +414,49 @@ run "escalation_rule_pages_the_components_schedule" {
   assert {
     condition     = output.on_call_schedule_ids == { for key, schedule in oneuptime_on_call_policy_schedule.this : key => schedule.id }
     error_message = "on_call_schedule_ids should map each component to its schedule id."
+  }
+}
+
+run "escalation_rule_pages_every_owning_team" {
+  command = plan
+
+  assert {
+    condition = (
+      toset(keys(oneuptime_team_on_call_duty_escalation_rule.this)) == toset(["platform.devops", "application.developers", "application.devops"])
+      && oneuptime_team_on_call_duty_escalation_rule.this["application.developers"].team_id == "team-developers"
+      && oneuptime_team_on_call_duty_escalation_rule.this["platform.devops"].team_id == "team-devops"
+    )
+    error_message = "Each component's escalation rule should page every group that owns the component, one entry per component and group."
+  }
+}
+
+run "a_component_override_replaces_only_its_own_timings" {
+  command = plan
+
+  variables {
+    on_call_overrides = {
+      "platform" = {
+        escalate_after_in_minutes            = 5
+        repeat_policy_if_no_one_acknowledges = false
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      oneuptime_escalation_rule.this["platform"].escalate_after_in_minutes == 5
+      && oneuptime_on_call_policy.this["platform"].repeat_policy_if_no_one_acknowledges == false
+      && oneuptime_on_call_policy.this["platform"].repeat_policy_if_no_one_acknowledges_no_of_times == 10
+    )
+    error_message = "An override should replace the fields it sets, including false, and keep the stack-wide value for the rest."
+  }
+
+  assert {
+    condition = (
+      oneuptime_escalation_rule.this["application"].escalate_after_in_minutes == 10
+      && oneuptime_on_call_policy.this["application"].repeat_policy_if_no_one_acknowledges == true
+      && oneuptime_on_call_policy.this["application"].repeat_policy_if_no_one_acknowledges_no_of_times == 10
+    )
+    error_message = "A component without an override should keep the stack-wide timings."
   }
 }

@@ -19,8 +19,8 @@ resource "oneuptime_on_call_policy" "this" {
     for label_name in each.value.label_names : var.label_ids[label_name]
   ])
 
-  repeat_policy_if_no_one_acknowledges             = var.on_call_policy_config.repeat_policy_if_no_one_acknowledges
-  repeat_policy_if_no_one_acknowledges_no_of_times = var.on_call_policy_config.repeat_policy_if_no_one_acknowledges_no_of_times
+  repeat_policy_if_no_one_acknowledges             = coalesce(try(var.on_call_overrides[each.key].repeat_policy_if_no_one_acknowledges, null), var.on_call_policy_config.repeat_policy_if_no_one_acknowledges)
+  repeat_policy_if_no_one_acknowledges_no_of_times = coalesce(try(var.on_call_overrides[each.key].repeat_policy_if_no_one_acknowledges_no_of_times, null), var.on_call_policy_config.repeat_policy_if_no_one_acknowledges_no_of_times)
 }
 
 resource "oneuptime_on_call_policy_owner_rule" "this" {
@@ -45,8 +45,23 @@ resource "oneuptime_escalation_rule" "this" {
   on_call_duty_policy_id    = oneuptime_on_call_policy.this[each.key].id
   name                      = "${each.key}-oncall-policy-escalation-rule"
   description               = "oncall policy escalation rules for component ${each.key}"
-  escalate_after_in_minutes = var.on_call_escalation_rules.escalate_after_in_minutes
+  escalate_after_in_minutes = coalesce(try(var.on_call_overrides[each.key].escalate_after_in_minutes, null), var.on_call_escalation_rules.escalate_after_in_minutes)
   order                     = var.on_call_escalation_rules.order
+}
+
+resource "oneuptime_team_on_call_duty_escalation_rule" "this" {
+  for_each = merge([
+    for component, definition in var.component_definitions : {
+      for group in definition.groups : "${component}.${group}" => {
+        component = component
+        group     = group
+      }
+    }
+  ]...)
+
+  on_call_duty_policy_id                 = oneuptime_on_call_policy.this[each.value.component].id
+  on_call_duty_policy_escalation_rule_id = oneuptime_escalation_rule.this[each.value.component].id
+  team_id                                = var.team_ids[each.value.group]
 }
 
 resource "oneuptime_on_call_policy_schedule" "this" {

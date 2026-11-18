@@ -26,6 +26,12 @@ variable "on_call_escalation_rules" {
   description = "Escalation rule configuration, normalized by the parent module"
 }
 
+variable "on_call_overrides" {
+  type        = any
+  description = "component -> on-call timings that replace the stack-wide ones for that component"
+  default     = {}
+}
+
 variable "on_call_schedule_layer_config" {
   type        = any
   description = "Schedule layer configuration, normalized by the parent module"
