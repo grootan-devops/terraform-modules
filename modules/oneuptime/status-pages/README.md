@@ -187,7 +187,7 @@ each resource in it.
 
 | Key | Notes |
 | --- | --- |
-| `owner_group_names` | Groups from `rbac_team_mapping`. Resolves to `oneuptime_team`. |
+| `owner_group_names` | Groups from `rbac_team_mapping`. Resolves to `oneuptime_team`. A group that already owns one of the page's component labels is skipped: `oneuptime_status_page_owner_rule` makes it an owner, and OneUptime refuses the same team twice. |
 | `owner_user_ids` | Raw user ids — looking users up by name needs an API key wider than project scope, the same reason team membership is commented out in `../teams.tf`. |
 | `label_names` | Defaults to the project label. Give a page its **component** label and the label-driven `oneuptime_status_page_owner_rule` hands it to the groups that own that component, exactly like the alert, incident and monitor owner rules. The page also carries the labels of those owning groups, which `oneuptime_status_page_label_rule` would add on the server; setting them here keeps the plan and the page in agreement. |
 | `private_users` | Only meaningful with `is_public_status_page = false`. |

@@ -10,6 +10,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Alert and incident grouping rules take distinct priorities - 10, 20, 30 and so on in component name order - instead of priority `1` each. OneUptime 14 keeps a project's grouping rules in one ordered list where two rules cannot share a number, so it moved the duplicates to 2, 3 and so on, and every apply failed with "Provider produced inconsistent result after apply". A number no other rule holds is kept as written, so the plan and the server now agree.
+- A status page's `owner_group_names` skips a group that owns one of the page's component labels. The module's status page owner rule already makes that group an owner, and OneUptime 14 refuses the second, with "This team is already an owner of this status page".
 - A status page carries the labels of the groups that own its component labels. The module's status page label rule adds those labels on the server as soon as the page is created, so a page planned without them failed the apply with an inconsistent `labels` value.
 
 ### Changed

@@ -218,12 +218,26 @@ locals {
     key => merge(page.domain, { status_page_key = key }) if page.domain != null
   }
 
+  status_page_label_names = {
+    for key, page in var.status_page_configs : key => distinct(flatten([
+      for name in coalesce(page.label_names, [var.application]) :
+      try(var.component_definitions[name].label_names, [name])
+    ]))
+  }
+
+  status_page_rule_owner_groups = {
+    for key, page in var.status_page_configs : key => distinct(flatten([
+      for name in coalesce(page.label_names, [var.application]) :
+      try(var.component_definitions[name].groups, [])
+    ]))
+  }
+
   status_page_owner_teams = merge([
     for key, page in var.status_page_configs : {
       for group in page.owner_group_names : "${key}.${group}" => {
         status_page_key = key
         group           = group
-      }
+      } if !contains(local.status_page_rule_owner_groups[key], group)
     }
   ]...)
 

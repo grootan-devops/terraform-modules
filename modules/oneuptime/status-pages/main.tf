@@ -18,11 +18,7 @@ resource "oneuptime_status_page" "this" {
   // A page with no label_names of its own carries the project label, which is
   // what the status page owner and label rules below match on.
   labels = toset([
-    for label_name in distinct(flatten([
-      for name in coalesce(var.status_page_configs[each.key].label_names, [var.application]) :
-      try(var.component_definitions[name].label_names, [name])
-    ])) :
-    var.label_ids[label_name]
+    for label_name in local.status_page_label_names[each.key] : var.label_ids[label_name]
   ])
 
   // Copy and SEO - passed straight through, omitted when not set.

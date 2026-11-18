@@ -21,6 +21,10 @@ No required action: change `?ref=` to `2.0.1`.
 - A status page given component `label_names` may show its owning groups' labels being added.
   OneUptime normally adds them already through the status page label rule, in which case the
   plan shows nothing.
+- A status page that lists a group in `owner_group_names` which also owns one of its component
+  labels shows that `oneuptime_status_page_team_owner` being destroyed: the status page owner rule
+  keeps the group an owner. After the apply, check the page's owners in OneUptime and add the team
+  again if an older server had not applied the rule to the page.
 - A grouping rule or status page left tainted by a failed 2.0.0 apply against OneUptime 14 is
   replaced once; the next plan is clean.
 

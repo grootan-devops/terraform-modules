@@ -355,7 +355,7 @@ variables {
         })
       }
 
-      owner_group_names = toset(["devops"])
+      owner_group_names = toset(["devops", "developers"])
       owner_user_ids    = toset(["user-1234"])
     })
 
@@ -769,10 +769,10 @@ run "subscribers_private_users_and_owners" {
 
   assert {
     condition = (
-      keys(oneuptime_status_page_team_owner.this) == ["core.devops"]
-      && oneuptime_status_page_team_owner.this["core.devops"].team_id == "team-devops"
+      keys(oneuptime_status_page_team_owner.this) == ["core.developers"]
+      && oneuptime_status_page_team_owner.this["core.developers"].team_id == "team-developers"
     )
-    error_message = "owner_group_names should resolve to team ids."
+    error_message = "owner_group_names should resolve to team ids, except groups the status page owner rule already makes owners through the page's component labels."
   }
 
   assert {
