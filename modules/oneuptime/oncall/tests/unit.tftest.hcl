@@ -42,6 +42,13 @@ variables {
     order                     = 1
   }
 
+  // Schedules are off unless a component asks; both ask here so the schedule
+  // and layer runs below have something to check.
+  on_call_overrides = {
+    "platform"    = { schedule_enabled = true }
+    "application" = { schedule_enabled = true }
+  }
+
   // on_call_schedule_layer_config = {} after the parent's optional() defaults.
   on_call_schedule_layer_config = {
     starts_at     = "2026-01-01T00:00:00.000Z"
@@ -461,11 +468,11 @@ run "a_component_override_replaces_only_its_own_timings" {
   }
 }
 
-run "schedules_off_leaves_team_paging_only" {
+run "schedules_are_off_by_default" {
   command = apply
 
   variables {
-    on_call_schedules_enabled = false
+    on_call_overrides = {}
   }
 
   assert {
@@ -474,7 +481,7 @@ run "schedules_off_leaves_team_paging_only" {
       && length(oneuptime_on_call_schedule_layer.this) == 0
       && length(oneuptime_schedules_on_call_duty_escalation_rule.this) == 0
     )
-    error_message = "With schedules off, no schedule, layer or schedule binding should be created."
+    error_message = "Without schedule_enabled, no schedule, layer or schedule binding should be created."
   }
 
   assert {
@@ -483,11 +490,43 @@ run "schedules_off_leaves_team_paging_only" {
       && toset(keys(oneuptime_escalation_rule.this)) == toset(["platform", "application"])
       && toset(keys(oneuptime_team_on_call_duty_escalation_rule.this)) == toset(["platform.devops", "application.developers", "application.devops"])
     )
-    error_message = "With schedules off, every policy and escalation rule should still page its owning teams."
+    error_message = "Without schedules, every policy and escalation rule should still page its owning teams."
   }
 
   assert {
     condition     = output.on_call_schedule_ids == {}
-    error_message = "on_call_schedule_ids should be empty when schedules are off."
+    error_message = "on_call_schedule_ids should be empty when no component has a schedule."
+  }
+}
+
+run "only_a_component_that_asks_gets_a_schedule" {
+  command = apply
+
+  variables {
+    on_call_overrides = {
+      "platform"    = { schedule_enabled = true }
+      "application" = { escalate_after_in_minutes = 5 }
+    }
+  }
+
+  assert {
+    condition = alltrue([
+      for instances in [
+        oneuptime_on_call_policy_schedule.this,
+        oneuptime_on_call_schedule_layer.this,
+        oneuptime_schedules_on_call_duty_escalation_rule.this,
+      ] : toset(keys(instances)) == toset(["platform"])
+    ])
+    error_message = "Only platform asked for a schedule; application's timing-only override should not create one."
+  }
+
+  assert {
+    condition     = oneuptime_schedules_on_call_duty_escalation_rule.this["platform"].on_call_duty_policy_escalation_rule_id == oneuptime_escalation_rule.this["platform"].id
+    error_message = "platform's schedule should be bound to platform's escalation rule."
+  }
+
+  assert {
+    condition     = keys(output.on_call_schedule_ids) == ["platform"]
+    error_message = "on_call_schedule_ids should list only the components with a schedule."
   }
 }

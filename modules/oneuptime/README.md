@@ -231,10 +231,9 @@ module "oneuptime" {
 | `incident_grouping_rule_config` | The same shape for incidents. | `object({...})` | see `variables-incidents.tf` | No |
 | `on_call_policy_config` | Repeat the policy while nobody acknowledges: on, up to 10 times. Every field is optional. | `object({...})` | `{}` | No |
 | `on_call_escalation_rules` | Page the owning teams again every 10 minutes, order 1. Every field is optional. | `object({...})` | `{}` | No |
-| `on_call_overrides` | Per-component timings: `{ <component> = { escalate_after_in_minutes, repeat_policy_if_no_one_acknowledges, repeat_policy_if_no_one_acknowledges_no_of_times } }`. A field left out keeps the stack-wide value; a component left out keeps all of them. Keys must be components of `rbac_component_mapping`. | `map(object({...}))` | `{}` | No |
+| `on_call_overrides` | Per-component settings: `{ <component> = { escalate_after_in_minutes, repeat_policy_if_no_one_acknowledges, repeat_policy_if_no_one_acknowledges_no_of_times, schedule_enabled } }`. A timing left out keeps the stack-wide value. `schedule_enabled` (default `false`) gives the component an on-call schedule and layer that its escalation rule also pages. Keys must be components of `rbac_component_mapping`. | `map(object({...}))` | `{}` | No |
 | `on_call_routing` | Which records page a component's on-call policy: `incidents` (default `true`) and `alerts` (default `false`), so one outage pages once. | `object({...})` | `{}` | No |
-| `on_call_schedules_enabled` | Create each component's on-call schedule, its layer and the binding to the escalation rule. Off, the escalation rule pages only the owning teams. | `bool` | `true` | No |
-| `on_call_schedule_layer_config` | The one schedule layer per component: weekly rotation covering the whole clock. See [on-call](oncall/README.md#the-schedule-layer). | `object({...})` | `{}` | No |
+| `on_call_schedule_layer_config` | The layer of each component that has a schedule: weekly rotation covering the whole clock. See [on-call](oncall/README.md#the-schedule-layer). | `object({...})` | `{}` | No |
 | `status_page_defaults` | Baseline for every status page. See [status pages §1](status-pages/README.md#1-status_page_defaults). | `object({...})` | `{}` | No |
 | `status_page_configs` | One entry per status page, everything optional. See [status pages §2](status-pages/README.md#2-configuring-a-page). | `map(object({...}))` | `{}` | No |
 | `status_page_announcements` | Announcements published across status pages. | `map(object({...}))` | `{}` | No |

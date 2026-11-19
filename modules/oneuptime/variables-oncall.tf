@@ -19,11 +19,12 @@ variable "on_call_escalation_rules" {
 }
 
 variable "on_call_overrides" {
-  description = "Per-component on-call timings, keyed by a component of rbac_component_mapping. A field left out keeps on_call_policy_config or on_call_escalation_rules; a component left out keeps both."
+  description = "Per-component on-call settings, keyed by a component of rbac_component_mapping. Timings left out keep on_call_policy_config or on_call_escalation_rules. schedule_enabled (default false) gives the component an on-call schedule and layer that its escalation rule also pages."
   type = map(object({
     escalate_after_in_minutes                        = optional(number)
     repeat_policy_if_no_one_acknowledges             = optional(bool)
     repeat_policy_if_no_one_acknowledges_no_of_times = optional(number)
+    schedule_enabled                                 = optional(bool, false)
   }))
   default = {}
 
@@ -42,12 +43,6 @@ variable "on_call_routing" {
   default = {}
 }
 
-
-variable "on_call_schedules_enabled" {
-  description = "Create each component's on-call schedule and layer and let its escalation rule page whoever is on call in it. Off, the escalation rule pages only the owning teams, and OneUptime has no empty schedules to flag."
-  type        = bool
-  default     = true
-}
 
 // Shape of the single schedule layer created per component. OneUptime requires
 // a layer before a schedule can put anyone on call, and it wants a rotation and

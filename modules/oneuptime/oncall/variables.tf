@@ -32,12 +32,6 @@ variable "on_call_overrides" {
   default     = {}
 }
 
-variable "on_call_schedules_enabled" {
-  type        = bool
-  description = "Create each component's schedule, its layer and the binding to the escalation rule"
-  default     = true
-}
-
 variable "on_call_schedule_layer_config" {
   type        = any
   description = "Schedule layer configuration, normalized by the parent module"

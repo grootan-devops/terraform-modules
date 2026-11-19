@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-11-20
+
+### Changed
+
+- On-call schedules are per component and off by default. `on_call_overrides.<component>.schedule_enabled = true` gives that component its schedule, layer and binding to its escalation rule; every other component gets none, and its escalation rule pages only the owning teams. Rota membership cannot be set with a project-scoped API key, so a schedule nobody asked for would sit empty and OneUptime would flag it.
+
+### Removed
+
+- `on_call_schedules_enabled`, the all-components switch added in 2.2.0. Use `schedule_enabled` per component instead.
+
 ## [2.2.0] - 2026-11-20
 
 ### Added
