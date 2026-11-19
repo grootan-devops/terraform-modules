@@ -1,14 +1,47 @@
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "eu-west-1"
+    }
+  }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
+    }
+  }
+
   mock_resource "aws_cognito_user_pool" {
     defaults = {
-      id  = "us-west-2_AbCdEfGhI"
-      arn = "arn:aws:cognito-idp:us-west-2:123456789012:userpool/us-west-2_AbCdEfGhI"
+      id       = "eu-west-1_AbCdEfGhI"
+      arn      = "arn:aws:cognito-idp:eu-west-1:123456789012:userpool/eu-west-1_AbCdEfGhI"
+      endpoint = "cognito-idp.eu-west-1.amazonaws.com/eu-west-1_AbCdEfGhI"
     }
   }
 
   mock_resource "aws_cloudwatch_log_group" {
     defaults = {
-      arn = "arn:aws:logs:us-west-2:123456789012:log-group:/aws/cognito/core-prod-users"
+      arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/vendedlogs/cognito/core-prod"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    }
+  }
+
+  mock_resource "aws_cognito_user_pool_domain" {
+    defaults = {
+      cloudfront_distribution         = "d111111abcdef8.cloudfront.net"
+      cloudfront_distribution_zone_id = "Z2FDTNDATAQYW2"
     }
   }
 }
@@ -16,708 +49,697 @@ mock_provider "aws" {
 variables {
   application = "core"
   environment = "prod"
-  name        = "users"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+  tags        = { Team = "identity" }
 }
 
-# ------------------------------------------------------------------------------
-# Naming
-# ------------------------------------------------------------------------------
-
-run "naming_renders_application_environment_name" {
+run "secure_defaults" {
   command = plan
 
   assert {
-    condition     = aws_cognito_user_pool.this.name == "core-prod-users"
-    error_message = "User pool name must be <application>-<environment>-<name>."
+    condition     = aws_cognito_user_pool.this.name == "core-prod" && aws_cognito_user_pool.this.user_pool_tier == "ESSENTIALS" && aws_cognito_user_pool.this.deletion_protection == "ACTIVE"
+    error_message = "The pool is <application>-<environment>, ESSENTIALS, with deletion protection (Cognito.6)."
   }
 
   assert {
-    condition     = aws_cognito_user_pool.this.tags["Name"] == "core-prod-users"
-    error_message = "User pool Name tag must be the rendered name."
+    condition     = aws_cognito_user_pool.this.mfa_configuration == "ON" && aws_cognito_user_pool.this.software_token_mfa_configuration[0].enabled && aws_cognito_user_pool.this.sign_in_policy[0].allowed_first_auth_factors == toset(["PASSWORD"])
+    error_message = "MFA is required with TOTP and passwords are the only first factor (Cognito.5)."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.password_policy[0].minimum_length == 14 && aws_cognito_user_pool.this.password_policy[0].password_history_size == 5 && aws_cognito_user_pool.this.password_policy[0].require_symbols && aws_cognito_user_pool.this.password_policy[0].temporary_password_validity_days == 7
+    error_message = "Passwords: 14 characters, all classes, history 5, 7-day temporary passwords (Cognito.3)."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.admin_create_user_config[0].allow_admin_create_user_only && aws_cognito_user_pool.this.admin_create_user_config[0].invite_message_template[0].sms_message == null
+    error_message = "Only admins create users; no hard-coded SMS invite."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.verification_message_template[0].default_email_option == "CONFIRM_WITH_LINK" && aws_cognito_user_pool.this.verification_message_template[0].email_message == "Your verification code is {####}."
+    error_message = "The verification template carries every email verification field."
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool.this.user_pool_add_ons) == 0 && length(aws_cognito_risk_configuration.this) == 0 && length(aws_cognito_user_pool.this.web_authn_configuration) == 0 && length(aws_cognito_user_pool.this.lambda_config) == 0
+    error_message = "No threat protection, passkeys or triggers by default."
+  }
+
+  assert {
+    condition     = module.log_group[0].name == "/aws/vendedlogs/cognito/core-prod" && module.log_group[0].retention_in_days == 365 && module.log_group[0].kms_key_arn == null && output.kms_key_arn == null
+    error_message = "Logs go to /aws/vendedlogs/cognito/<pool> for 365 days with service encryption."
+  }
+
+  assert {
+    condition     = [for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : "${c.event_source}:${c.log_level}"] == ["userNotification:ERROR"]
+    error_message = "Notification errors are exported on every tier."
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool_domain.this) + length(aws_cognito_managed_login_branding.this) + length(aws_sesv2_email_identity_policy.this) + length(aws_cognito_user_pool_client.this) + length(aws_cognito_user_group.this) == 0 && output.domain == null
+    error_message = "No domain, branding, SES policy, clients or groups by default."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.tags["Name"] == "core-prod" && aws_cognito_user_pool.this.tags["Team"] == "identity" && aws_cognito_user_pool.this.tags["ManagedBy"] == "Terraform"
+    error_message = "Caller and governance tags must be applied."
   }
 }
 
-run "naming_falls_back_when_name_is_empty" {
+run "lite_tier" {
   command = plan
 
   variables {
-    name = ""
+    name           = "partners"
+    user_pool_tier = "LITE"
+    clients        = { web = {} }
+    domain         = { enabled = true }
   }
 
   assert {
-    condition     = aws_cognito_user_pool.this.name == "core-prod"
-    error_message = "With an empty name the user pool name must fall back to <application>-<environment>."
+    condition     = aws_cognito_user_pool.this.name == "core-prod-partners" && length(aws_cognito_user_pool.this.sign_in_policy) == 0 && aws_cognito_user_pool.this.password_policy[0].password_history_size == null
+    error_message = "LITE pools set no sign-in policy or password history."
   }
 
   assert {
-    condition     = aws_cognito_user_pool.this.tags["Name"] == "core-prod"
-    error_message = "With an empty name the Name tag must fall back to <application>-<environment>."
+    condition     = aws_cognito_user_pool_domain.this[0].managed_login_version == 1 && length(aws_cognito_managed_login_branding.this) == 0
+    error_message = "LITE domains serve the classic hosted UI without branding styles."
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool_client.this["web"].refresh_token_rotation) == 0
+    error_message = "LITE clients set no refresh token rotation."
+  }
+
+  assert {
+    condition     = [for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : c.event_source] == ["userNotification"]
+    error_message = "LITE pools still export notification errors."
   }
 }
 
-run "naming_falls_back_when_name_is_null" {
+run "plus_without_threat_protection" {
   command = plan
-
-  variables {
-    name = null
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.name == "core-prod"
-    error_message = "With a null name the user pool name must fall back to <application>-<environment>."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Tags
-# ------------------------------------------------------------------------------
-
-run "tags_include_governance_and_caller_tags" {
-  command = plan
-
-  variables {
-    user_pool_tier = "PLUS"
-    tags = {
-      CostCenter = "1234"
-      Team       = "identity"
-    }
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.tags["Application"] == "core" && aws_cognito_user_pool.this.tags["Environment"] == "prod" && aws_cognito_user_pool.this.tags["Name"] == "core-prod-users"
-    error_message = "User pool must carry the Application, Environment and Name governance tags."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.tags["CostCenter"] == "1234" && aws_cognito_user_pool.this.tags["Team"] == "identity"
-    error_message = "Caller tags from var.tags must be preserved on the user pool."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].tags["Application"] == "core" && aws_cloudwatch_log_group.this[0].tags["Environment"] == "prod"
-    error_message = "Log group must carry the Application and Environment governance tags."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].tags["Name"] == "/aws/cognito/core-prod-users"
-    error_message = "Log group Name tag must be its log group name."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].tags["CostCenter"] == "1234"
-    error_message = "Caller tags must be preserved on the log group."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Security defaults and shipped parameter defaults
-# ------------------------------------------------------------------------------
-
-run "user_pool_security_defaults_enforced" {
-  command = plan
-
-  assert {
-    condition     = aws_cognito_user_pool.this.deletion_protection == "ACTIVE"
-    error_message = "Deletion protection must be ACTIVE."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.mfa_configuration == "OPTIONAL"
-    error_message = "MFA must default to OPTIONAL."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.software_token_mfa_configuration[0].enabled == true
-    error_message = "Software token (TOTP) MFA must be enabled."
-  }
-
-  assert {
-    condition = (
-      aws_cognito_user_pool.this.password_policy[0].require_lowercase == true &&
-      aws_cognito_user_pool.this.password_policy[0].require_uppercase == true &&
-      aws_cognito_user_pool.this.password_policy[0].require_numbers == true &&
-      aws_cognito_user_pool.this.password_policy[0].require_symbols == true
-    )
-    error_message = "Password policy must require lowercase, uppercase, numbers and symbols by default."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.password_policy[0].password_history_size == 5
-    error_message = "Password history size must default to 5."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.password_policy[0].temporary_password_validity_days == 7
-    error_message = "Temporary passwords must default to 7 days validity."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.admin_create_user_config[0].allow_admin_create_user_only == true
-    error_message = "Self sign-up must be disabled by default (admin-create-user only)."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.username_configuration[0].case_sensitive == false
-    error_message = "Usernames must be case-insensitive."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.device_configuration[0].challenge_required_on_new_device == true && aws_cognito_user_pool.this.device_configuration[0].device_only_remembered_on_user_prompt == true
-    error_message = "New devices must be challenged and only remembered on user prompt."
-  }
-
-  assert {
-    condition     = one(aws_cognito_user_pool.this.account_recovery_setting[0].recovery_mechanism).name == "verified_email"
-    error_message = "Account recovery must use the verified email only."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.username_attributes == toset(["email"]) && aws_cognito_user_pool.this.auto_verified_attributes == toset(["email"])
-    error_message = "Email must be the username attribute and be auto-verified."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.user_attribute_update_settings[0].attributes_require_verification_before_update == toset(["email"])
-    error_message = "Email changes must require verification before the update applies."
-  }
-
-  assert {
-    condition     = anytrue([for s in aws_cognito_user_pool.this.schema : s.name == "email" && s.required == true && s.mutable == true])
-    error_message = "The email schema attribute must be required and mutable."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.verification_message_template[0].default_email_option == "CONFIRM_WITH_LINK"
-    error_message = "Email verification must default to CONFIRM_WITH_LINK."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.sign_in_policy[0].allowed_first_auth_factors == toset(["PASSWORD", "EMAIL_OTP", "WEB_AUTHN"])
-    error_message = "Sign-in policy must default to PASSWORD, EMAIL_OTP and WEB_AUTHN first factors."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.web_authn_configuration[0].relying_party_id == "localhost" && aws_cognito_user_pool.this.web_authn_configuration[0].user_verification == "required"
-    error_message = "WebAuthn must default to relying party localhost with user verification required."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.user_pool_tier == "ESSENTIALS"
-    error_message = "User pool tier must default to ESSENTIALS."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.email_configuration[0].email_sending_account == "COGNITO_DEFAULT"
-    error_message = "Email sending account must default to COGNITO_DEFAULT."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.email_verification_subject == "Verify your email address" && aws_cognito_user_pool.this.email_verification_message == "Your verification code is {####}."
-    error_message = "Email verification subject and message must use the shipped defaults."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.admin_create_user_config[0].invite_message_template[0].email_subject == "Welcome to the Application"
-    error_message = "Invite email subject must use the shipped default."
-  }
-}
-
-run "optional_features_off_by_default" {
-  command = plan
-
-  assert {
-    condition     = length(aws_cognito_user_pool.this.user_pool_add_ons) == 0
-    error_message = "Advanced security add-ons must be off by default."
-  }
-
-  assert {
-    condition     = length(aws_cognito_risk_configuration.this) == 0
-    error_message = "Risk configuration must be off by default."
-  }
-
-  assert {
-    condition     = length(aws_cognito_user_pool.this.lambda_config) == 0
-    error_message = "No Lambda triggers must be configured by default."
-  }
-
-  assert {
-    condition     = length(aws_cognito_user_pool_client.this) == 0 && length(aws_cognito_user_group.this) == 0
-    error_message = "No clients or groups must be created by default."
-  }
-
-  assert {
-    condition     = length(aws_cognito_user_pool_domain.this) == 0
-    error_message = "No user pool domain must be created by default."
-  }
-
-  assert {
-    condition     = length(aws_ses_identity_policy.cognito_ses) == 0
-    error_message = "No SES identity policy must be created without email.ses_arn."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_log_group.this) == 0 && length(aws_cognito_log_delivery_configuration.this) == 0
-    error_message = "No log group or log delivery must be created on the ESSENTIALS tier."
-  }
-}
-
-run "client_defaults_are_secure" {
-  command = apply
-
-  variables {
-    clients = {
-      web = {
-        name                = "web"
-        explicit_auth_flows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
-      }
-    }
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].user_pool_id == aws_cognito_user_pool.this.id
-    error_message = "Clients must belong to the module's user pool."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].prevent_user_existence_errors == "ENABLED"
-    error_message = "Clients must prevent user existence errors by default."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].generate_secret == false
-    error_message = "Clients must not generate a secret by default."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].access_token_validity == 60 && aws_cognito_user_pool_client.this["web"].id_token_validity == 60 && aws_cognito_user_pool_client.this["web"].refresh_token_validity == 30
-    error_message = "Token validity must default to 60 (access), 60 (id) and 30 (refresh)."
-  }
-
-  assert {
-    condition = (
-      aws_cognito_user_pool_client.this["web"].token_validity_units[0].access_token == "minutes" &&
-      aws_cognito_user_pool_client.this["web"].token_validity_units[0].id_token == "minutes" &&
-      aws_cognito_user_pool_client.this["web"].token_validity_units[0].refresh_token == "days"
-    )
-    error_message = "Token validity units must default to minutes, minutes and days."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].explicit_auth_flows == toset(["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"])
-    error_message = "explicit_auth_flows must flow through to the client."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].allowed_oauth_flows_user_pool_client == false
-    error_message = "OAuth flows must be off by default."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].supported_identity_providers == toset(["COGNITO"])
-    error_message = "Clients must default to the COGNITO identity provider."
-  }
-
-  assert {
-    condition     = contains(aws_cognito_user_pool_client.this["web"].read_attributes, "email") && contains(aws_cognito_user_pool_client.this["web"].read_attributes, "email_verified")
-    error_message = "Clients must be able to read email and email_verified by default."
-  }
-
-  assert {
-    condition     = !contains(aws_cognito_user_pool_client.this["web"].write_attributes, "email_verified") && !contains(aws_cognito_user_pool_client.this["web"].write_attributes, "phone_number_verified")
-    error_message = "Clients must not be able to write the verified flags by default."
-  }
-
-  assert {
-    condition     = output.client_ids["web"] == aws_cognito_user_pool_client.this["web"].id
-    error_message = "client_ids output must map client keys to client ids."
-  }
-
-  assert {
-    condition     = output.user_pool_id == "us-west-2_AbCdEfGhI" && output.user_pool_arn == aws_cognito_user_pool.this.arn
-    error_message = "user_pool_id and user_pool_arn outputs must expose the user pool."
-  }
-}
-
-run "advanced_security_and_risk_configuration_enabled" {
-  command = apply
-
-  variables {
-    user_pool_tier            = "PLUS"
-    advanced_security_mode    = "ENFORCED"
-    enable_risk_configuration = true
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.user_pool_add_ons[0].advanced_security_mode == "ENFORCED"
-    error_message = "advanced_security_mode must flow through to user_pool_add_ons."
-  }
-
-  assert {
-    condition     = length(aws_cognito_risk_configuration.this) == 1 && aws_cognito_risk_configuration.this[0].user_pool_id == aws_cognito_user_pool.this.id
-    error_message = "Risk configuration must be created for the module's user pool when enabled."
-  }
-
-  assert {
-    condition     = aws_cognito_risk_configuration.this[0].compromised_credentials_risk_configuration[0].actions[0].event_action == "BLOCK"
-    error_message = "Compromised credentials must be blocked."
-  }
-
-  assert {
-    condition     = aws_cognito_risk_configuration.this[0].compromised_credentials_risk_configuration[0].event_filter == toset(["SIGN_IN", "PASSWORD_CHANGE", "SIGN_UP"])
-    error_message = "Compromised credential checks must cover sign-in, password change and sign-up."
-  }
-
-  assert {
-    condition = (
-      aws_cognito_risk_configuration.this[0].account_takeover_risk_configuration[0].actions[0].high_action[0].event_action == "BLOCK" &&
-      aws_cognito_risk_configuration.this[0].account_takeover_risk_configuration[0].actions[0].medium_action[0].event_action == "MFA_IF_CONFIGURED" &&
-      aws_cognito_risk_configuration.this[0].account_takeover_risk_configuration[0].actions[0].low_action[0].event_action == "NO_ACTION"
-    )
-    error_message = "Account takeover risk must block high, require MFA on medium and allow low."
-  }
-}
-
-run "plus_tier_enables_kms_encrypted_logging" {
-  command = apply
 
   variables {
     user_pool_tier = "PLUS"
   }
 
   assert {
-    condition     = length(aws_cloudwatch_log_group.this) == 1 && length(aws_cognito_log_delivery_configuration.this) == 1
-    error_message = "A log group and log delivery must be created on tiers above ESSENTIALS."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].name == "/aws/cognito/core-prod-users"
-    error_message = "Log group must be named /aws/cognito/<application>-<environment>-<name>."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].kms_key_id == var.kms_key_arn
-    error_message = "Log group must be encrypted with kms_key_arn by default."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].retention_in_days == 30 && aws_cloudwatch_log_group.this[0].log_group_class == "STANDARD"
-    error_message = "Log group must default to 30-day retention in the STANDARD class."
-  }
-
-  assert {
-    condition     = toset([for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : c.event_source]) == toset(["userNotification", "userAuthEvents"])
-    error_message = "Log delivery must cover userNotification and userAuthEvents."
-  }
-
-  assert {
-    condition     = alltrue([for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : c.log_level == "ERROR" && c.cloud_watch_logs_configuration[0].log_group_arn == aws_cloudwatch_log_group.this[0].arn])
-    error_message = "Log delivery must send ERROR level logs to the module's log group."
-  }
-
-  assert {
-    condition     = aws_cognito_log_delivery_configuration.this[0].user_pool_id == aws_cognito_user_pool.this.id
-    error_message = "Log delivery must be attached to the module's user pool."
+    condition     = [for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : c.event_source] == ["userNotification"] && length(aws_cognito_risk_configuration.this) == 0
+    error_message = "User activity logs and risk actions need threat protection."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Parameter overrides
-# ------------------------------------------------------------------------------
-
-run "user_pool_parameter_overrides_flow_through" {
+run "plus_with_threat_protection" {
   command = plan
 
   variables {
-    mfa_configuration = "ON"
-    password_policy = {
-      minimum_length                   = 14
-      password_history_size            = 10
-      temporary_password_validity_days = 3
-    }
-    allow_admin_create_user_only = false
-    allowed_first_auth_factors   = ["PASSWORD"]
-    web_authn_relying_party_id   = "auth.example.com"
-    web_authn_user_verification  = "preferred"
-    invite_email = {
-      subject = "Your core account"
-      message = "Sign in as {username} with {####}."
-    }
-    email_verification = {
-      subject = "Confirm your email"
-      message = "Your code is {####}."
-    }
-    cloudwatch_logs = {
-      log_level         = "INFO"
-      retention_in_days = 90
-      kms_key_arn       = "arn:aws:kms:us-west-2:123456789012:key/abcdefab-1234-1234-1234-abcdefabcdef"
-    }
-    user_pool_tier = "PLUS"
+    user_pool_tier    = "PLUS"
+    threat_protection = { enabled = true, custom_auth_mode = "AUDIT" }
   }
 
   assert {
-    condition     = aws_cognito_user_pool.this.mfa_configuration == "ON"
-    error_message = "mfa_configuration must flow through to the user pool."
+    condition     = aws_cognito_user_pool.this.user_pool_add_ons[0].advanced_security_mode == "ENFORCED" && aws_cognito_user_pool.this.user_pool_add_ons[0].advanced_security_additional_flows[0].custom_auth_mode == "AUDIT"
+    error_message = "Threat protection runs in full-function mode (Cognito.1)."
   }
 
   assert {
-    condition = (
-      aws_cognito_user_pool.this.password_policy[0].minimum_length == 14 &&
-      aws_cognito_user_pool.this.password_policy[0].password_history_size == 10 &&
-      aws_cognito_user_pool.this.password_policy[0].temporary_password_validity_days == 3
-    )
-    error_message = "password_policy overrides must flow through to the user pool."
+    condition     = [for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : "${c.event_source}:${c.log_level}"] == ["userNotification:ERROR", "userAuthEvents:INFO"]
+    error_message = "PLUS with threat protection also exports user activity at INFO."
   }
 
   assert {
-    condition     = aws_cognito_user_pool.this.password_policy[0].require_symbols == true
-    error_message = "Unset password_policy fields must keep their secure defaults."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.admin_create_user_config[0].allow_admin_create_user_only == false
-    error_message = "allow_admin_create_user_only must flow through to the user pool."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.sign_in_policy[0].allowed_first_auth_factors == toset(["PASSWORD"])
-    error_message = "allowed_first_auth_factors must flow through to the sign-in policy."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.web_authn_configuration[0].relying_party_id == "auth.example.com" && aws_cognito_user_pool.this.web_authn_configuration[0].user_verification == "preferred"
-    error_message = "WebAuthn overrides must flow through to the user pool."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.admin_create_user_config[0].invite_message_template[0].email_subject == "Your core account" && aws_cognito_user_pool.this.admin_create_user_config[0].invite_message_template[0].email_message == "Sign in as {username} with {####}."
-    error_message = "invite_email must flow through to the invite message template."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.email_verification_subject == "Confirm your email" && aws_cognito_user_pool.this.email_verification_message == "Your code is {####}."
-    error_message = "email_verification must flow through to the user pool."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].kms_key_id == "arn:aws:kms:us-west-2:123456789012:key/abcdefab-1234-1234-1234-abcdefabcdef"
-    error_message = "cloudwatch_logs.kms_key_arn must take precedence over kms_key_arn on the log group."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].retention_in_days == 90
-    error_message = "cloudwatch_logs.retention_in_days must flow through to the log group."
-  }
-
-  assert {
-    condition     = alltrue([for c in aws_cognito_log_delivery_configuration.this[0].log_configurations : c.log_level == "INFO"])
-    error_message = "cloudwatch_logs.log_level must flow through to log delivery."
+    condition     = aws_cognito_risk_configuration.this[0].compromised_credentials_risk_configuration[0].actions[0].event_action == "BLOCK" && aws_cognito_risk_configuration.this[0].account_takeover_risk_configuration[0].actions[0].high_action[0].event_action == "BLOCK"
+    error_message = "Compromised credentials and high-risk sign-ins are blocked."
   }
 }
 
-run "sign_in_policy_and_webauthn_omitted_when_unset" {
+run "module_key_is_planned_safely" {
   command = plan
 
   variables {
-    allowed_first_auth_factors = []
-    web_authn_relying_party_id = null
+    kms             = { create = true }
+    lambda_triggers = { custom_email_sender = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-mailer:live" } }
+    clients         = { web = {} }
+    domain          = { enabled = true }
   }
 
   assert {
-    condition     = length(aws_cognito_user_pool.this.sign_in_policy) == 0
-    error_message = "No sign-in policy must be set when allowed_first_auth_factors is empty."
+    condition     = module.encryption.created && length(aws_cognito_user_pool.this.lambda_config) == 1
+    error_message = "kms.create must plan without knowing the key ARN."
   }
 
   assert {
-    condition     = length(aws_cognito_user_pool.this.web_authn_configuration) == 0
-    error_message = "No WebAuthn configuration must be set when web_authn_relying_party_id is null."
+    condition     = length(aws_cognito_managed_login_branding.this) == 1
+    error_message = "Branding styles plan before the client IDs are known."
   }
 }
 
-run "client_overrides_flow_through" {
-  command = plan
-
-  variables {
-    clients = {
-      spa = {
-        name                                 = "spa"
-        generate_secret                      = true
-        explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH"]
-        read_attributes                      = ["email", "name"]
-        write_attributes                     = ["name"]
-        access_token_validity                = 15
-        id_token_validity                    = 15
-        refresh_token_validity               = 7
-        token_validity_units                 = { access_token = "minutes", id_token = "minutes", refresh_token = "days" }
-        callback_urls                        = ["https://app.example.com/oauth/callback"]
-        logout_urls                          = ["https://app.example.com/logout"]
-        allowed_oauth_flows_user_pool_client = true
-        allowed_oauth_flows                  = ["code"]
-        allowed_oauth_scopes                 = ["email", "openid", "profile"]
-      }
-    }
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["spa"].generate_secret == true
-    error_message = "generate_secret must flow through to the client."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["spa"].read_attributes == toset(["email", "name"]) && aws_cognito_user_pool_client.this["spa"].write_attributes == toset(["name"])
-    error_message = "Per-client read and write attributes must replace the module defaults."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["spa"].access_token_validity == 15 && aws_cognito_user_pool_client.this["spa"].id_token_validity == 15 && aws_cognito_user_pool_client.this["spa"].refresh_token_validity == 7
-    error_message = "Token validity overrides must flow through to the client."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["spa"].callback_urls == toset(["https://app.example.com/oauth/callback"]) && aws_cognito_user_pool_client.this["spa"].logout_urls == toset(["https://app.example.com/logout"])
-    error_message = "Callback and logout URLs must flow through to the client."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["spa"].allowed_oauth_flows_user_pool_client == true && aws_cognito_user_pool_client.this["spa"].allowed_oauth_flows == toset(["code"])
-    error_message = "OAuth flow settings must flow through to the client."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["spa"].allowed_oauth_scopes == toset(["email", "openid", "profile"])
-    error_message = "OAuth scopes must flow through to the client."
-  }
-}
-
-run "custom_schema_and_module_attributes_reach_clients" {
-  command = plan
-
-  variables {
-    read_attributes  = ["email", "name"]
-    write_attributes = ["name"]
-    custom_schema_attributes = [
-      {
-        name                = "tenant_id"
-        attribute_data_type = "String"
-        min_length          = "1"
-        max_length          = "64"
-      }
-    ]
-    clients = {
-      web = {
-        name                = "web"
-        explicit_auth_flows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
-      }
-    }
-  }
-
-  assert {
-    condition     = anytrue([for s in aws_cognito_user_pool.this.schema : s.name == "tenant_id" && s.attribute_data_type == "String" && s.mutable == true && s.required == false && s.string_attribute_constraints[0].max_length == "64"])
-    error_message = "Custom schema attributes must be added to the user pool with their constraints."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].read_attributes == toset(["email", "name", "custom:tenant_id"])
-    error_message = "Module read_attributes plus custom attributes must be the client's read attributes."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool_client.this["web"].write_attributes == toset(["name", "custom:tenant_id"])
-    error_message = "Module write_attributes plus custom attributes must be the client's write attributes."
-  }
-}
-
-run "optional_resources_created_when_enabled" {
+run "module_key_encrypts_logs_and_sender_codes" {
   command = apply
 
   variables {
-    domain          = "auth.example.com"
-    certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
-    email = {
-      sending_account        = "DEVELOPER"
-      ses_arn                = "arn:aws:ses:us-west-2:123456789012:identity/example.com"
-      from_email_address     = "no-reply@example.com"
-      reply_to_email_address = "support@example.com"
-    }
-    groups = [
-      {
-        name        = "admins"
-        description = "Administrators"
-      }
-    ]
+    kms = { create = true }
     lambda_triggers = {
-      pre_sign_up             = "arn:aws:lambda:us-west-2:123456789012:function:core-prod-pre-sign-up"
-      custom_email_sender_arn = "arn:aws:lambda:us-west-2:123456789012:function:core-prod-email-sender"
-      kms_key_id              = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+      custom_email_sender = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-mailer:live" }
+      custom_sms_sender   = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-sms:live" }
     }
   }
 
   assert {
-    condition     = length(aws_cognito_user_pool_domain.this) == 1 && aws_cognito_user_pool_domain.this[0].domain == "auth.example.com"
-    error_message = "A user pool domain must be created when domain is set."
+    condition     = aws_cognito_user_pool.this.lambda_config[0].kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && aws_cognito_user_pool.this.lambda_config[0].custom_email_sender[0].lambda_version == "V1_0" && aws_cognito_user_pool.this.lambda_config[0].custom_sms_sender[0].lambda_arn == "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-sms:live"
+    error_message = "Custom senders use the module key."
   }
 
   assert {
-    condition     = aws_cognito_user_pool_domain.this[0].certificate_arn == var.certificate_arn && aws_cognito_user_pool_domain.this[0].user_pool_id == aws_cognito_user_pool.this.id
-    error_message = "The domain must use certificate_arn and belong to the module's user pool."
-  }
-
-  assert {
-    condition     = length(aws_ses_identity_policy.cognito_ses) == 1 && aws_ses_identity_policy.cognito_ses[0].identity == "arn:aws:ses:us-west-2:123456789012:identity/example.com"
-    error_message = "An SES identity policy must be created when email.ses_arn is set."
-  }
-
-  assert {
-    condition     = aws_ses_identity_policy.cognito_ses[0].name == "core-prod-users-cognito-ses"
-    error_message = "SES identity policy must be named <application>-<environment>-<name>-cognito-ses."
-  }
-
-  assert {
-    condition     = jsondecode(aws_ses_identity_policy.cognito_ses[0].policy).Statement[0].Principal.Service == "cognito-idp.amazonaws.com" && jsondecode(aws_ses_identity_policy.cognito_ses[0].policy).Statement[0].Resource == "arn:aws:ses:us-west-2:123456789012:identity/example.com"
-    error_message = "SES identity policy must only allow Cognito to send from the configured identity."
-  }
-
-  assert {
-    condition = (
-      aws_cognito_user_pool.this.email_configuration[0].email_sending_account == "DEVELOPER" &&
-      aws_cognito_user_pool.this.email_configuration[0].source_arn == "arn:aws:ses:us-west-2:123456789012:identity/example.com" &&
-      aws_cognito_user_pool.this.email_configuration[0].from_email_address == "no-reply@example.com" &&
-      aws_cognito_user_pool.this.email_configuration[0].reply_to_email_address == "support@example.com"
-    )
-    error_message = "Email configuration must flow through to the user pool."
-  }
-
-  assert {
-    condition     = aws_cognito_user_group.this["admins"].description == "Administrators" && aws_cognito_user_group.this["admins"].user_pool_id == aws_cognito_user_pool.this.id
-    error_message = "Groups must be created in the module's user pool."
-  }
-
-  assert {
-    condition     = length(aws_cognito_user_pool.this.lambda_config) == 1 && aws_cognito_user_pool.this.lambda_config[0].pre_sign_up == "arn:aws:lambda:us-west-2:123456789012:function:core-prod-pre-sign-up"
-    error_message = "Lambda triggers must be configured when any trigger is set."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.lambda_config[0].custom_email_sender[0].lambda_arn == "arn:aws:lambda:us-west-2:123456789012:function:core-prod-email-sender" && aws_cognito_user_pool.this.lambda_config[0].custom_email_sender[0].lambda_version == "V1_0"
-    error_message = "The custom email sender must be configured with the default V1_0 version."
-  }
-
-  assert {
-    condition     = aws_cognito_user_pool.this.lambda_config[0].kms_key_id == "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
-    error_message = "lambda_triggers.kms_key_id must flow through to lambda_config."
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && output.kms_key_arn == module.log_group[0].kms_key_arn
+    error_message = "The module key encrypts the log group."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Validation
-# ------------------------------------------------------------------------------
+run "caller_key_id_and_log_override" {
+  command = plan
+
+  variables {
+    kms             = { key_id = "11111111-2222-3333-4444-555555555555" }
+    cloudwatch_logs = { kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555", retention_in_days = 731 }
+  }
+
+  assert {
+    condition     = output.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && module.log_group[0].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555" && module.log_group[0].retention_in_days == 731
+    error_message = "A key ID becomes the key ARN; cloudwatch_logs overrides key and retention."
+  }
+}
+
+run "logs_disabled" {
+  command = plan
+
+  variables {
+    cloudwatch_logs = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.log_group) == 0 && length(aws_cognito_log_delivery_configuration.this) == 0 && output.log_group_name == null
+    error_message = "cloudwatch_logs.enabled = false creates no log group or delivery."
+  }
+}
+
+run "triggers" {
+  command = plan
+
+  variables {
+    lambda_triggers = {
+      pre_sign_up          = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-signup:live" }
+      pre_token_generation = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-claims:live", version = "V2_0" }
+    }
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.lambda_config[0].pre_sign_up == "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-signup:live" && aws_cognito_user_pool.this.lambda_config[0].pre_token_generation_config[0].lambda_version == "V2_0" && aws_cognito_user_pool.this.lambda_config[0].kms_key_id == null
+    error_message = "Triggers are wired; no key without custom senders."
+  }
+}
+
+run "clients_groups_and_prefix_domain" {
+  command = apply
+
+  variables {
+    custom_attributes = { tenant = { max_length = 64 } }
+    clients = {
+      web = { callback_urls = ["https://app.example.com/callback"], allowed_oauth_flows = ["code"], allowed_oauth_scopes = ["openid", "email"] }
+      api = { generate_secret = true, explicit_auth_flows = ["ALLOW_REFRESH_TOKEN_AUTH"], allowed_oauth_flows = ["client_credentials"], allowed_oauth_scopes = ["orders/read"] }
+    }
+    groups = { admins = { description = "Administrators", precedence = 1 } }
+    domain = { enabled = true }
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_client.this["web"].name == "web" && aws_cognito_user_pool_client.this["web"].explicit_auth_flows == toset(["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]) && aws_cognito_user_pool_client.this["web"].allowed_oauth_flows_user_pool_client
+    error_message = "Clients default to SRP and refresh tokens."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_client.this["web"].prevent_user_existence_errors == "ENABLED" && aws_cognito_user_pool_client.this["web"].enable_token_revocation && contains(aws_cognito_user_pool_client.this["web"].read_attributes, "custom:tenant")
+    error_message = "Clients hide user existence, revoke tokens and read custom attributes."
+  }
+
+  assert {
+    condition     = keys(output.client_ids) == ["api", "web"] && aws_cognito_user_group.this["admins"].precedence == 1
+    error_message = "Client IDs are exported by name; groups are created."
+  }
+
+  assert {
+    condition     = output.domain == "core-prod-123456789012-eu-west-1" && aws_cognito_user_pool_domain.this[0].managed_login_version == 2 && output.endpoint == "cognito-idp.eu-west-1.amazonaws.com/eu-west-1_AbCdEfGhI"
+    error_message = "The prefix domain is <application>-<environment>-<account>-<region>."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_domain.this[0].managed_login_version == 2 && keys(aws_cognito_managed_login_branding.this) == ["api", "web"] && aws_cognito_managed_login_branding.this["web"].use_cognito_provided_values && aws_cognito_managed_login_branding.this["web"].client_id == aws_cognito_user_pool_client.this["web"].id
+    error_message = "ESSENTIALS domains default to managed login with a Cognito style per client."
+  }
+
+  assert {
+    condition     = length(aws_cognito_user_pool_client.this["web"].refresh_token_rotation) == 0
+    error_message = "Refresh token rotation is off by default."
+  }
+
+  assert {
+    condition     = output.id == "eu-west-1_AbCdEfGhI" && output.arn == "arn:aws:cognito-idp:eu-west-1:123456789012:userpool/eu-west-1_AbCdEfGhI"
+    error_message = "Outputs expose the pool."
+  }
+}
+
+run "refresh_token_rotation" {
+  command = plan
+
+  variables {
+    user_pool_tier = "PLUS"
+    clients = {
+      spa = { explicit_auth_flows = ["ALLOW_USER_SRP_AUTH"], refresh_token_rotation = { enabled = true, retry_grace_period_seconds = 10 } }
+    }
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_client.this["spa"].refresh_token_rotation[0].feature == "ENABLED" && aws_cognito_user_pool_client.this["spa"].refresh_token_rotation[0].retry_grace_period_seconds == 10
+    error_message = "Rotation is set per client with its grace period."
+  }
+
+  assert {
+    condition     = length(aws_cognito_managed_login_branding.this) == 0
+    error_message = "No branding styles without a domain."
+  }
+}
+
+run "custom_domain" {
+  command = apply
+
+  variables {
+    clients = { web = {} }
+    domain  = { enabled = true, custom_domain = "auth.example.com", certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/11111111-2222-3333-4444-555555555555", managed_login_version = 1 }
+  }
+
+  assert {
+    condition     = output.domain == "auth.example.com" && output.domain_dns_name == "d111111abcdef8.cloudfront.net" && output.domain_zone_id == "Z2FDTNDATAQYW2"
+    error_message = "A custom domain exports its alias target."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool_domain.this[0].managed_login_version == 1 && length(aws_cognito_managed_login_branding.this) == 0
+    error_message = "An explicit version 1 keeps the classic hosted UI without branding styles."
+  }
+}
+
+run "ses_sending" {
+  command = apply
+
+  variables {
+    email = { sending_account = "DEVELOPER", ses_identity_arn = "arn:aws:ses:eu-west-1:123456789012:identity/mail.example.com", from_email_address = "no-reply@mail.example.com" }
+  }
+
+  assert {
+    condition     = aws_sesv2_email_identity_policy.this[0].email_identity == "mail.example.com" && aws_sesv2_email_identity_policy.this[0].region == "eu-west-1" && aws_sesv2_email_identity_policy.this[0].policy_name == "core-prod-cognito"
+    error_message = "The SES v2 policy targets the identity name from the ARN, in its Region."
+  }
+
+  assert {
+    condition     = jsondecode(aws_sesv2_email_identity_policy.this[0].policy).Statement[0].Resource == "arn:aws:ses:eu-west-1:123456789012:identity/mail.example.com" && jsondecode(aws_sesv2_email_identity_policy.this[0].policy).Statement[0].Action == ["ses:SendEmail", "ses:SendRawEmail"] && jsondecode(aws_sesv2_email_identity_policy.this[0].policy).Statement[0].Condition.ArnLike["aws:SourceArn"] == "arn:aws:cognito-idp:eu-west-1:123456789012:userpool/eu-west-1_AbCdEfGhI" && jsondecode(aws_sesv2_email_identity_policy.this[0].policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == "123456789012"
+    error_message = "Only this pool may send through the SES identity."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.email_configuration[0].email_sending_account == "DEVELOPER" && aws_cognito_user_pool.this.email_configuration[0].source_arn == "arn:aws:ses:eu-west-1:123456789012:identity/mail.example.com"
+    error_message = "The pool sends through SES."
+  }
+}
+
+run "passkeys_and_self_sign_up" {
+  command = plan
+
+  variables {
+    mfa_configuration          = "OPTIONAL"
+    allowed_first_auth_factors = ["PASSWORD", "WEB_AUTHN", "EMAIL_OTP"]
+    web_authn                  = { relying_party_id = "auth.example.com" }
+    self_sign_up               = { enabled = true }
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.this.web_authn_configuration[0].relying_party_id == "auth.example.com" && aws_cognito_user_pool.this.web_authn_configuration[0].user_verification == "required" && !aws_cognito_user_pool.this.admin_create_user_config[0].allow_admin_create_user_only
+    error_message = "Passkeys are bound to the relying party; self sign-up is opt-in."
+  }
+}
+
+run "rejects_invalid_name" {
+  command = plan
+
+  variables {
+    name = "Users_Pool"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "rejects_invalid_application" {
+  command = plan
+
+  variables {
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
 
 run "rejects_invalid_environment" {
   command = plan
 
   variables {
-    environment = "Prod_Env"
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
+}
+
+run "rejects_create_and_key_id" {
+  command = plan
+
+  variables {
+    kms = { create = true, key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "alias/cognito" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_tier" {
+  command = plan
+
+  variables {
+    user_pool_tier = "PRO"
+  }
+
+  expect_failures = [var.user_pool_tier]
+}
+
+run "rejects_threat_protection_without_plus" {
+  command = plan
+
+  variables {
+    threat_protection = { enabled = true }
+  }
+
+  expect_failures = [var.threat_protection]
+}
+
+run "rejects_invalid_threat_mode" {
+  command = plan
+
+  variables {
+    user_pool_tier    = "PLUS"
+    threat_protection = { enabled = true, mode = "OFF" }
+  }
+
+  expect_failures = [var.threat_protection]
+}
+
+run "rejects_short_passwords" {
+  command = plan
+
+  variables {
+    password_policy = { minimum_length = 12 }
+  }
+
+  expect_failures = [var.password_policy]
+}
+
+run "rejects_invalid_password_history" {
+  command = plan
+
+  variables {
+    password_policy = { password_history_size = 30 }
+  }
+
+  expect_failures = [var.password_policy]
+}
+
+run "rejects_invalid_mfa" {
+  command = plan
+
+  variables {
+    mfa_configuration = "REQUIRED"
+  }
+
+  expect_failures = [var.mfa_configuration]
+}
+
+run "rejects_required_mfa_with_otp_factor" {
+  command = plan
+
+  variables {
+    allowed_first_auth_factors = ["PASSWORD", "EMAIL_OTP"]
+  }
+
+  expect_failures = [var.mfa_configuration]
+}
+
+run "rejects_factors_without_password" {
+  command = plan
+
+  variables {
+    mfa_configuration          = "OPTIONAL"
+    allowed_first_auth_factors = ["EMAIL_OTP"]
+  }
+
+  expect_failures = [var.allowed_first_auth_factors]
+}
+
+run "rejects_passwordless_on_lite" {
+  command = plan
+
+  variables {
+    user_pool_tier             = "LITE"
+    allowed_first_auth_factors = ["PASSWORD", "WEB_AUTHN"]
+    web_authn                  = { relying_party_id = "auth.example.com" }
+  }
+
+  expect_failures = [var.allowed_first_auth_factors]
+}
+
+run "rejects_passkeys_without_relying_party" {
+  command = plan
+
+  variables {
+    allowed_first_auth_factors = ["PASSWORD", "WEB_AUTHN"]
+  }
+
+  expect_failures = [var.web_authn]
+}
+
+run "rejects_invalid_user_verification" {
+  command = plan
+
+  variables {
+    web_authn = { user_verification = "discouraged" }
+  }
+
+  expect_failures = [var.web_authn]
+}
+
+run "rejects_invite_without_placeholders" {
+  command = plan
+
+  variables {
+    invite_message = { email_message = "Welcome!" }
+  }
+
+  expect_failures = [var.invite_message]
+}
+
+run "rejects_invalid_verification_option" {
+  command = plan
+
+  variables {
+    verification_message = { default_email_option = "CONFIRM_WITH_SMS" }
+  }
+
+  expect_failures = [var.verification_message]
+}
+
+run "rejects_verification_without_code" {
+  command = plan
+
+  variables {
+    verification_message = { email_message = "Verify your email." }
+  }
+
+  expect_failures = [var.verification_message]
+}
+
+run "rejects_invalid_sending_account" {
+  command = plan
+
+  variables {
+    email = { sending_account = "SES" }
+  }
+
+  expect_failures = [var.email]
+}
+
+run "rejects_developer_email_without_identity" {
+  command = plan
+
+  variables {
+    email = { sending_account = "DEVELOPER" }
+  }
+
+  expect_failures = [var.email]
+}
+
+run "rejects_invalid_ses_identity_arn" {
+  command = plan
+
+  variables {
+    email = { sending_account = "DEVELOPER", ses_identity_arn = "example.com" }
+  }
+
+  expect_failures = [var.email]
+}
+
+run "rejects_unknown_trigger" {
+  command = plan
+
+  variables {
+    lambda_triggers = { post_login = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:x" } }
+  }
+
+  expect_failures = [var.lambda_triggers]
+}
+
+run "rejects_invalid_trigger_version" {
+  command = plan
+
+  variables {
+    lambda_triggers = { pre_token_generation = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:x", version = "V4_0" } }
+  }
+
+  expect_failures = [var.lambda_triggers]
+}
+
+run "rejects_custom_sender_without_key" {
+  command = plan
+
+  variables {
+    lambda_triggers = { custom_email_sender = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:x" } }
+  }
+
+  expect_failures = [var.lambda_triggers]
+}
+
+run "rejects_invalid_custom_attribute" {
+  command = plan
+
+  variables {
+    custom_attributes = { "tenant-id" = {} }
+  }
+
+  expect_failures = [var.custom_attributes]
+}
+
+run "rejects_invalid_auth_flow" {
+  command = plan
+
+  variables {
+    clients = { web = { explicit_auth_flows = ["USER_PASSWORD_AUTH"] } }
+  }
+
+  expect_failures = [var.clients]
+}
+
+run "rejects_implicit_grant" {
+  command = plan
+
+  variables {
+    clients = { web = { allowed_oauth_flows = ["implicit"] } }
+  }
+
+  expect_failures = [var.clients]
+}
+
+run "rejects_invalid_token_validity" {
+  command = plan
+
+  variables {
+    clients = { web = { access_token_validity_minutes = 2 } }
+  }
+
+  expect_failures = [var.clients]
+}
+
+run "rejects_invalid_grace_period" {
+  command = plan
+
+  variables {
+    clients = { spa = { explicit_auth_flows = ["ALLOW_USER_SRP_AUTH"], refresh_token_rotation = { enabled = true, retry_grace_period_seconds = 90 } } }
+  }
+
+  expect_failures = [var.clients]
+}
+
+run "rejects_rotation_on_lite" {
+  command = plan
+
+  variables {
+    user_pool_tier = "LITE"
+    clients        = { spa = { explicit_auth_flows = ["ALLOW_USER_SRP_AUTH"], refresh_token_rotation = { enabled = true } } }
+  }
+
+  expect_failures = [var.clients]
+}
+
+run "rejects_rotation_with_refresh_token_auth" {
+  command = plan
+
+  variables {
+    clients = { spa = { refresh_token_rotation = { enabled = true } } }
+  }
+
+  expect_failures = [var.clients]
+}
+
+run "rejects_custom_domain_without_certificate" {
+  command = plan
+
+  variables {
+    domain = { enabled = true, custom_domain = "auth.example.com" }
+  }
+
+  expect_failures = [var.domain]
+}
+
+run "rejects_invalid_managed_login_version" {
+  command = plan
+
+  variables {
+    domain = { enabled = true, managed_login_version = 3 }
+  }
+
+  expect_failures = [var.domain]
+}
+
+run "rejects_managed_login_on_lite" {
+  command = plan
+
+  variables {
+    user_pool_tier = "LITE"
+    domain         = { enabled = true, managed_login_version = 2 }
+  }
+
+  expect_failures = [var.domain]
 }

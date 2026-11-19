@@ -1,81 +1,51 @@
-locals {
-  flow_logs_enabled   = lookup(var.cloudwatch_logs, "enabled", true)
-  flow_logs_exports   = lookup(var.cloudwatch_logs, "exports", ["vpc_flow"])
-  flow_logs_retention = lookup(var.cloudwatch_logs, "retention_in_days", { vpc_flow = 90 })
-  flow_logs_kms_key   = lookup(var.cloudwatch_logs, "kms_key_arn", null)
+module "log_group" {
+  source = "../../observability/log-group"
+  count  = local.flow_logs_to_cloudwatch ? 1 : 0
 
-  create_vpc_flow_log = local.flow_logs_enabled && contains(local.flow_logs_exports, "vpc_flow")
+  application                 = var.application
+  environment                 = var.environment
+  name                        = var.name
+  tags                        = var.tags
+  log_group_name              = local.log_group_name
+  retention_in_days           = var.cloudwatch_logs.retention_in_days
+  log_group_class             = var.cloudwatch_logs.log_group_class
+  deletion_protection_enabled = var.cloudwatch_logs.deletion_protection_enabled
+  kms_key_arn                 = try(coalesce(var.cloudwatch_logs.kms_key_arn, local.kms_key_arn), null)
 }
 
-resource "aws_cloudwatch_log_group" "flow_log" {
-  count = local.create_vpc_flow_log ? 1 : 0
+module "role" {
+  source = "../../security/iam-role"
+  count  = local.flow_logs_to_cloudwatch && var.iam_role.create ? 1 : 0
 
-  name              = "/aws/vpc/${local.rendered_name}/flow-logs"
-  retention_in_days = lookup(local.flow_logs_retention, "vpc_flow", 90)
-  kms_key_id        = coalesce(local.flow_logs_kms_key, var.kms_key_arn)
-  log_group_class   = "STANDARD"
-
-  tags = merge(local.tags, {
-    Name = "${local.rendered_name}-vpc-flow-logs"
-  })
-}
-
-resource "aws_iam_role" "flow_log" {
-  count = local.create_vpc_flow_log ? 1 : 0
-
-  name = "${local.rendered_name}-vpc-flow-logs-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "vpc-flow-logs.amazonaws.com"
-        }
-      }
+  application              = var.application
+  environment              = var.environment
+  name                     = var.name
+  purpose                  = "flow-logs"
+  tags                     = var.tags
+  role_name                = var.iam_role.name
+  path                     = var.iam_role.path
+  permissions_boundary_arn = var.iam_role.permissions_boundary_arn
+  managed_policy_arns      = var.iam_role.managed_policy_arns
+  policy_statements        = var.iam_role.policy_statements
+  policy_documents         = [jsonencode({ Version = "2012-10-17", Statement = local.flow_log_statements })]
+  trust = {
+    services = ["vpc-flow-logs.${module.naming.dns_suffix}"]
+    conditions = [
+      { test = "StringEquals", variable = "aws:SourceAccount", values = [module.naming.account_id] },
+      { test = "ArnLike", variable = "aws:SourceArn", values = ["arn:${module.naming.partition}:ec2:${module.naming.region}:${module.naming.account_id}:vpc-flow-log/*"] }
     ]
-  })
-
-  tags = merge(local.tags, {
-    Name = "${local.rendered_name}-vpc-flow-logs-role"
-  })
-}
-
-resource "aws_iam_role_policy" "flow_log" {
-  count = local.create_vpc_flow_log ? 1 : 0
-
-  name = "${local.rendered_name}-vpc-flow-logs-policy"
-  role = aws_iam_role.flow_log[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
-        ]
-        Effect   = "Allow"
-        Resource = "${aws_cloudwatch_log_group.flow_log[0].arn}:*"
-      }
-    ]
-  })
+  }
 }
 
 resource "aws_flow_log" "this" {
-  count = local.create_vpc_flow_log ? 1 : 0
+  count = var.flow_logs.enabled ? 1 : 0
 
-  iam_role_arn    = aws_iam_role.flow_log[0].arn
-  log_destination = aws_cloudwatch_log_group.flow_log[0].arn
-  traffic_type    = "ALL"
-  vpc_id          = aws_vpc.main.id
+  vpc_id                   = aws_vpc.this.id
+  traffic_type             = var.flow_logs.traffic_type
+  max_aggregation_interval = var.flow_logs.max_aggregation_interval
+  log_destination_type     = local.flow_logs_to_cloudwatch ? "cloud-watch-logs" : "s3"
+  log_destination          = local.flow_logs_to_cloudwatch ? one(module.log_group[*].arn) : var.flow_logs.s3_bucket_arn
+  iam_role_arn             = local.flow_logs_to_cloudwatch ? local.flow_log_role_arn : null
 
-  tags = merge(local.tags, {
-    Name = "${local.rendered_name}-vpc-flow-logs"
-  })
+  tags = module.naming.tags
 }

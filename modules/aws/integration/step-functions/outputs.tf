@@ -1,14 +1,34 @@
-output "state_machine_arn" {
-  description = "ARN of the created state machine."
+output "arn" {
+  description = "State machine ARN."
   value       = aws_sfn_state_machine.this.arn
 }
 
-output "state_machine_name" {
-  description = "Name of the created state machine."
+output "name" {
+  description = "State machine name."
   value       = aws_sfn_state_machine.this.name
 }
 
 output "role_arn" {
-  description = "ARN of the state machine execution role."
-  value       = aws_iam_role.this.arn
+  description = "Execution role ARN."
+  value       = local.role_arn
+}
+
+output "role_name" {
+  description = "Execution role name; null for a role brought by the caller."
+  value       = try(module.role[0].name, null)
+}
+
+output "log_group_name" {
+  description = "Log group name."
+  value       = module.log_group.name
+}
+
+output "log_group_arn" {
+  description = "Log group ARN."
+  value       = module.log_group.arn
+}
+
+output "kms_key_arn" {
+  description = "Key ARN in use; null for the AWS owned key."
+  value       = local.kms_key_arn
 }

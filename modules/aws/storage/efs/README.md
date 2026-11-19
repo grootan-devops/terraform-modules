@@ -1,31 +1,45 @@
 # AWS EFS File System Module
 
-The `efs` module provisions scalable Amazon Elastic File System (EFS) resources with POSIX compliance, in-transit transport encryption policies, and automated AWS Backup integration.
+Scope: `workload`
+
+An encrypted EFS file system with one mount target per subnet, a mount target security group that admits NFS only
+from the listed sources, a file system policy that enforces TLS and squashes root, and access points with an enforced
+POSIX identity. Backups belong to [`storage/backup`](../backup).
 
 ## Architecture & Managed Resources
 
-- `aws_efs_file_system.this`: Encrypted primary file system.
-- `aws_efs_mount_target.this`: Network mount targets placed across VPC private subnets.
-- `aws_efs_file_system_policy.this`: Enforces mandatory TLS for all client mount connections.
-- `aws_efs_backup_policy.this`: Native automated daily backups via AWS Backup.
-- `aws_security_group.this`: Dedicated security group controlling inbound NFS (TCP 2049) traffic.
+- `aws_efs_file_system.this`: `<application>-<environment>-<name>`, always encrypted; transitions to IA after 7 days,
+  to Archive after 30 days and back to Standard on first access (`NONE` turns one off).
+- `aws_efs_mount_target.this`: one per entry in `subnet_ids`.
+- `module.security_group` ([`network/security-group`](../../network/security-group)): `<...>-efs`, TCP 2049 from
+  `ingress_security_group_ids`, `ingress_cidr_blocks` and `ingress_prefix_list_ids`; no egress rule.
+- `aws_efs_file_system_policy.this` via `module.policy` ([`core/policy-document`](../../core/policy-document)).
+- `aws_efs_access_point.this`: one per `access_points` key.
+- `aws_efs_backup_policy.this`: EFS automatic backups, `DISABLED` unless `backup.enabled`.
+- `module.encryption` ([`core/encryption`](../../core/encryption)): AWS managed key, module key or your key.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **Mandatory KMS CMK**: File system encryption at rest is strictly enforced (`encrypted = true`, `kms_key_id = var.kms_key_arn`).
-- **In-Transit TLS Deny Policy**: Resource policy explicitly denies all NFS actions when `aws:SecureTransport = false`.
-- **Private Subnet Isolation**: Mount targets are strictly restricted to internal VPC subnets.
+- **Encryption at rest (EFS.1, EFS.8):** always on; `aws/elasticfilesystem` by default.
+- **TLS:** the file system policy denies every request without TLS; mount with the EFS mount helper's `tls` option.
+- **Root squash and no anonymous access:** clients may `ClientMount` and `ClientWrite` only through a mount target
+  (`elasticfilesystem:AccessedViaMountTarget`); `ClientRootAccess` only with `client_access.root_access`.
+  `client_access.principal_arns` limits clients to listed roles and `read_only` drops `ClientWrite`. Extra
+  `policy_statements` follow and default to the file system ARN.
+- **Access points (EFS.3, EFS.4):** every access point enforces a POSIX user and a root directory other than `/`,
+  created with that owner and `permissions` (default `0750`).
+- **Network (EFS.6):** ingress only on 2049, never from `0.0.0.0/0` or `::/0`; no egress. Use private subnets.
+- **Backups (EFS.7):** recovery points come from `storage/backup`; turn `backup.enabled` on only without it.
 
----
+EFS has no deletion protection argument. A key passed in `kms.key_id` must allow the principal that creates the file
+system to `kms:CreateGrant` and `kms:DescribeKey`.
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
@@ -35,13 +49,12 @@ The `efs` module provisions scalable Amazon Elastic File System (EFS) resources 
 module "efs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=<version>"
 
-  application = "core"
-  environment = "prod"
-  name        = "shared"
-
-  vpc_id      = "vpc-0a1b2c3d4e5f67890"
-  subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  application    = "core"
+  environment    = "prod"
+  name           = "shared"
+  vpc_id         = "vpc-0a1b2c3d4e5f67890"
+  subnet_ids     = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+  security_group = { ingress_cidr_blocks = ["10.0.0.0/16"] }
 }
 ```
 
@@ -51,64 +64,51 @@ module "efs" {
 module "efs" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=<version>"
 
-  application = "enterprise"
+  application = "core"
   environment = "prod"
-  name        = "k8s-pv"
+  name        = "shared"
+  kms         = { create = true }
 
-  vpc_id      = "vpc-0a1b2c3d4e5f67890"
-  subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  security_group = { ingress_security_group_ids = [module.ecs.security_group_id] }
 
-  performance_mode                = "generalPurpose"
-  throughput_mode                 = "bursting"
-  transition_to_ia                = ["AFTER_30_DAYS"]
-  transition_to_primary_storage_class = ["AFTER_1_ACCESS"]
-  enable_backup_policy            = true
-
-  allowed_security_group_ids = ["sg-0123456789abcdef0"]
-  allowed_cidr_blocks        = ["10.0.0.0/16"]
-
-  tags = {
-    StorageClass = "SharedPOSIX"
-    Workload     = "EKS-PersistentVolumes"
+  client_access = { principal_arns = [module.ecs.task_role_arns["api"]] }
+  access_points = {
+    api = { uid = 1000, gid = 1000, path = "/api" }
   }
 }
 ```
 
----
-
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `application` | Logical application or product name used for resource naming and tagging. | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod) used for isolation and tagging. | `string` | **Required** | Yes |
-| `name` | Optional additional identifier appended to the resource name. | `string` | `null` | No |
-| `tags` | A map of additional tags to apply to all resources created by this module. | `map(string)` | `{}` | No |
-| `vpc_id` | VPC ID where the EFS mount targets and security groups are provisioned. | `string` | **Required** | Yes |
-| `subnet_ids` | List of private subnet IDs to create mount targets in. | `list(string)` | **Required** | Yes |
-| `kms_key_arn` | ARN of the customer-managed KMS key used to encrypt the EFS file system at rest. | `string` | **Required** | Yes |
-| `performance_mode` | EFS performance mode: generalPurpose or maxIO. | `string` | `"generalPurpose"` | No |
-| `throughput_mode` | EFS throughput mode: elastic, bursting, or provisioned. | `string` | `"elastic"` | No |
-| `provisioned_throughput_in_mibps` | Provisioned throughput in MiB/s; only used when throughput_mode is provisioned. | `number` | `null` | No |
-| `transition_to_ia` | Number of days before transitioning files to Infrequent Access storage. | `string` | `"AFTER_7_DAYS"` | No |
-| `transition_to_archive` | Number of days before transitioning files to Archive storage class (null to disable). | `string` | `"AFTER_30_DAYS"` | No |
-| `enable_backup` | Whether to enable AWS Backup automatic policy for EFS. | `bool` | `true` | No |
-| `security_group_ids` | Optional list of existing security group IDs to associate with mount targets. If empty, a default SG is created. | `list(string)` | `[]` | No |
-| `allowed_security_group_ids` | List of security group IDs permitted to connect to EFS on port 2049. | `list(string)` | `[]` | No |
-| `allowed_cidr_blocks` | List of CIDR blocks permitted to connect to EFS on port 2049. | `list(string)` | `[]` | No |
-| `allowed_client_role_arns` | List of IAM role ARNs allowed to mount and write to the file system. | `list(string)` | `[]` | No |
-| `access_points` | Map of access point configurations to create for this file system. | `map(object({...}))` | `{}` | No |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | File system name. | `string` | **Required** | Yes |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `vpc_id` | VPC ID. | `string` | **Required** | Yes |
+| `subnet_ids` | Private subnet IDs, one mount target each. | `list(string)` | **Required** | Yes |
+| `security_group` | Mount target security group: NFS sources and extra groups. | `object({...})` | `{}` | No |
+| `kms` | Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `performance_mode` | generalPurpose or maxIO. | `string` | `"generalPurpose"` | No |
+| `throughput` | Throughput mode and provisioned MiB/s. | `object({...})` | `{}` | No |
+| `lifecycle_policy` | Storage class transitions; NONE turns one off. | `object({...})` | `{}` | No |
+| `backup` | EFS automatic backups; storage/backup owns backups. | `object({...})` | `{}` | No |
+| `client_access` | Mount target clients: principals, read only, root access. | `object({...})` | `{}` | No |
+| `policy_statements` | Extra file system policy statements; resources default to the file system. | `list(object({...}))` | `[]` | No |
+| `access_points` | Access points by key with an enforced POSIX user and root directory (EFS.3, EFS.4). | `map(object({...}))` | `{}` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `id` | ID of the EFS file system. | No |
-| `arn` | ARN of the EFS file system. | No |
-| `dns_name` | DNS name of the EFS file system. | No |
-| `mount_target_ids` | Map of subnet IDs to mount target IDs. | No |
-| `security_group_id` | ID of the created EFS security group (if created). | No |
-| `access_points` | Map of created EFS access points. | No |
+| --- | --- | --- |
+| `id` | File system ID. | No |
+| `arn` | File system ARN. | No |
+| `name` | File system name. | No |
+| `dns_name` | File system DNS name. | No |
+| `security_group_id` | Mount target security group ID; null when not created. | No |
+| `access_point_ids` | Access point IDs by key. | No |
+| `access_point_arns` | Access point ARNs by key. | No |
+| `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |

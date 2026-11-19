@@ -1,7 +1,44 @@
 mock_provider "aws" {
-  mock_data "aws_iam_policy_document" {
+  mock_data "aws_caller_identity" {
     defaults = {
-      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "eu-west-1"
+    }
+  }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
+    }
+  }
+
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:role/core-prod-orders-exec-eu-west-1"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    }
+  }
+
+  mock_resource "aws_cloudwatch_log_group" {
+    defaults = {
+      arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/vendedlogs/states/core-prod-orders"
+    }
+  }
+
+  mock_resource "aws_sfn_state_machine" {
+    defaults = {
+      arn = "arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders"
     }
   }
 }
@@ -9,294 +46,300 @@ mock_provider "aws" {
 variables {
   application = "core"
   environment = "prod"
-  name        = "order-pipeline"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
-  definition = jsonencode({
-    Comment = "Order processing state machine"
-    StartAt = "Validate"
-    States = {
-      Validate = {
-        Type = "Pass"
-        End  = true
-      }
-    }
-  })
-  cloudwatch_logs = {
-    retention_in_days = 30
-  }
+  name        = "orders"
+  tags        = { Team = "payments" }
+  definition  = "{\"StartAt\":\"Done\",\"States\":{\"Done\":{\"Type\":\"Pass\",\"End\":true}}}"
 }
 
-run "verify_naming" {
+run "secure_defaults" {
   command = plan
 
   assert {
-    condition     = aws_sfn_state_machine.this.name == "core-prod-order-pipeline"
-    error_message = "State machine name must render as <application>-<environment>-<name>."
+    condition     = aws_sfn_state_machine.this.name == "core-prod-orders" && aws_sfn_state_machine.this.type == "STANDARD"
+    error_message = "The state machine must be <application>-<environment>-<name>, STANDARD by default."
   }
 
   assert {
-    condition     = aws_iam_role.this.name == "core-prod-order-pipeline-sfn"
-    error_message = "Execution role name must render as <rendered_name>-sfn."
+    condition     = aws_sfn_state_machine.this.encryption_configuration[0].type == "AWS_OWNED_KEY" && aws_sfn_state_machine.this.encryption_configuration[0].kms_key_id == null && output.kms_key_arn == null
+    error_message = "No kms input means the AWS owned key."
   }
 
   assert {
-    condition     = aws_iam_role_policy.execution.name == "core-prod-order-pipeline-sfn-execution"
-    error_message = "Execution role policy name must render as <rendered_name>-sfn-execution."
+    condition     = aws_sfn_state_machine.this.logging_configuration[0].level == "ERROR" && !aws_sfn_state_machine.this.logging_configuration[0].include_execution_data && aws_sfn_state_machine.this.tracing_configuration[0].enabled
+    error_message = "Logging ERROR without execution data and X-Ray tracing by default (StepFunctions.1)."
   }
 
   assert {
-    condition     = aws_cloudwatch_log_group.this.name == "/aws/step_function/core-prod-order-pipeline"
-    error_message = "Log group name must render as /aws/step_function/<rendered_name>."
+    condition     = module.log_group.name == "/aws/vendedlogs/states/core-prod-orders" && module.log_group.retention_in_days == 365 && module.log_group.kms_key_arn == null
+    error_message = "Logs go to /aws/vendedlogs/states/<name>, 365 days, service encryption."
   }
 
   assert {
-    condition     = output.state_machine_name == "core-prod-order-pipeline"
-    error_message = "state_machine_name output must expose the rendered state machine name."
+    condition     = aws_sfn_state_machine.this.tags["Name"] == "core-prod-orders" && aws_sfn_state_machine.this.tags["Team"] == "payments" && aws_sfn_state_machine.this.tags["ManagedBy"] == "Terraform"
+    error_message = "Caller and governance tags must be applied."
   }
 }
 
-run "verify_tags" {
-  command = plan
-
-  variables {
-    tags = {
-      WorkflowTier = "OrderOrchestration"
-      CostCenter   = "1234"
-    }
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.tags["Application"] == "core" && aws_sfn_state_machine.this.tags["Environment"] == "prod" && aws_sfn_state_machine.this.tags["Name"] == "core-prod-order-pipeline"
-    error_message = "State machine must carry Application, Environment and Name governance tags."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.tags["WorkflowTier"] == "OrderOrchestration" && aws_sfn_state_machine.this.tags["CostCenter"] == "1234"
-    error_message = "Caller tags must be preserved on the state machine."
-  }
-
-  assert {
-    condition     = aws_iam_role.this.tags["Application"] == "core" && aws_iam_role.this.tags["Environment"] == "prod" && aws_iam_role.this.tags["Name"] == "core-prod-order-pipeline" && aws_iam_role.this.tags["WorkflowTier"] == "OrderOrchestration"
-    error_message = "Execution role must carry governance and caller tags."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.tags["Application"] == "core" && aws_cloudwatch_log_group.this.tags["Environment"] == "prod" && aws_cloudwatch_log_group.this.tags["WorkflowTier"] == "OrderOrchestration"
-    error_message = "Log group must carry governance and caller tags."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.tags["Name"] == "/aws/step_function/core-prod-order-pipeline"
-    error_message = "Log group must override the Name tag with its log group name."
-  }
-}
-
-run "verify_security_defaults" {
+run "execution_role" {
   command = plan
 
   assert {
-    condition     = aws_sfn_state_machine.this.encryption_configuration[0].type == "CUSTOMER_MANAGED_KMS_KEY"
-    error_message = "State machine must be encrypted with a customer managed KMS key."
+    condition     = module.role[0].name == "core-prod-orders-exec-eu-west-1"
+    error_message = "The role must be <application>-<environment>-<name>-exec-<region>."
   }
 
   assert {
-    condition     = aws_sfn_state_machine.this.encryption_configuration[0].kms_key_id == var.kms_key_arn
-    error_message = "State machine must be encrypted with the caller-supplied KMS key."
+    condition     = jsondecode(module.role[0].trust_policy_json).Statement[0].Principal.Service == ["states.amazonaws.com"] && jsondecode(module.role[0].trust_policy_json).Statement[0].Condition.StringEquals["aws:SourceAccount"] == ["123456789012"] && jsondecode(module.role[0].trust_policy_json).Statement[0].Condition.ArnLike["aws:SourceArn"] == ["arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders", "arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders:*"]
+    error_message = "Only this state machine in this account may assume the role."
   }
 
   assert {
-    condition     = aws_cloudwatch_log_group.this.kms_key_id == var.kms_key_arn
-    error_message = "Log group must fall back to kms_key_arn when cloudwatch_logs.kms_key_arn is not set."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.retention_in_days == 30
-    error_message = "Log group retention must follow cloudwatch_logs.retention_in_days."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.log_group_class == "STANDARD"
-    error_message = "Log group must use the STANDARD class."
-  }
-
-  assert {
-    condition     = toset(data.aws_iam_policy_document.assume.statement[0].actions) == toset(["sts:AssumeRole"])
-    error_message = "Execution role trust policy must only allow sts:AssumeRole."
-  }
-
-  assert {
-    condition     = toset(flatten([for p in data.aws_iam_policy_document.assume.statement[0].principals : [for i in p.identifiers : "${p.type}:${i}"]])) == toset(["Service:states.amazonaws.com"])
-    error_message = "Execution role must only be assumable by the Step Functions service."
-  }
-
-  assert {
-    condition     = aws_iam_role.this.assume_role_policy == data.aws_iam_policy_document.assume.json
-    error_message = "Execution role trust policy must be rendered from the assume policy document."
+    condition     = [for s in jsondecode(module.role[0].policy_json).Statement : s.Sid] == ["DeliverLogs", "WriteTraces"]
+    error_message = "By default the role may only deliver logs and write traces."
   }
 }
 
-run "verify_parameter_defaults" {
-  command = plan
-
-  assert {
-    condition     = aws_sfn_state_machine.this.type == "STANDARD"
-    error_message = "State machine type must default to STANDARD."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.definition == var.definition
-    error_message = "State machine definition must flow through unchanged."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.tracing_configuration[0].enabled == true
-    error_message = "X-Ray tracing must be enabled by default."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.logging_configuration[0].level == "ALL"
-    error_message = "Logging level must default to ALL."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.logging_configuration[0].include_execution_data == true
-    error_message = "Execution data must be included in logs."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.deletion_protection_enabled == false
-    error_message = "Log group deletion protection must default to false."
-  }
-}
-
-run "verify_parameter_overrides" {
+run "invoke_listed_functions" {
   command = plan
 
   variables {
-    type            = "EXPRESS"
-    tracing_enabled = false
-    cloudwatch_logs = {
-      retention_in_days           = 90
-      kms_key_arn                 = "arn:aws:kms:us-west-2:123456789012:key/87654321-4321-4321-4321-210987654321"
-      deletion_protection_enabled = true
-      level                       = "ERROR"
-    }
+    lambda_function_arns = ["arn:aws:lambda:eu-west-1:123456789012:function:core-prod-validate", "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-charge"]
   }
 
   assert {
-    condition     = aws_sfn_state_machine.this.type == "EXPRESS"
-    error_message = "type must flow through to the state machine."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.tracing_configuration[0].enabled == false
-    error_message = "tracing_enabled must flow through to the state machine."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.logging_configuration[0].level == "ERROR"
-    error_message = "cloudwatch_logs.level must flow through to the logging configuration."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.kms_key_id == "arn:aws:kms:us-west-2:123456789012:key/87654321-4321-4321-4321-210987654321"
-    error_message = "cloudwatch_logs.kms_key_arn must take precedence over kms_key_arn for the log group."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.encryption_configuration[0].kms_key_id == var.kms_key_arn
-    error_message = "State machine encryption must keep using kms_key_arn when the log group uses a different key."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this.retention_in_days == 90 && aws_cloudwatch_log_group.this.deletion_protection_enabled == true
-    error_message = "cloudwatch_logs retention and deletion protection must flow through to the log group."
-  }
-}
-
-run "verify_lambda_invoke_scope" {
-  command = plan
-
-  variables {
-    lambda_function_arns = [
-      "arn:aws:lambda:us-west-2:123456789012:function:core-prod-validate",
-      "arn:aws:lambda:us-west-2:123456789012:function:core-prod-charge",
+    condition = jsondecode(module.role[0].policy_json).Statement[0].Sid == "InvokeFunctions" && jsondecode(module.role[0].policy_json).Statement[0].Action == ["lambda:InvokeFunction"] && jsondecode(module.role[0].policy_json).Statement[0].Resource == [
+      "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-validate", "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-validate:*",
+      "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-charge", "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-charge:*"
     ]
-  }
-
-  assert {
-    condition     = data.aws_iam_policy_document.execution.statement[0].sid == "InvokeLambdas" && toset(data.aws_iam_policy_document.execution.statement[0].actions) == toset(["lambda:InvokeFunction"])
-    error_message = "Execution policy must contain an InvokeLambdas statement granting only lambda:InvokeFunction."
-  }
-
-  assert {
-    condition = toset(data.aws_iam_policy_document.execution.statement[0].resources) == toset([
-      "arn:aws:lambda:us-west-2:123456789012:function:core-prod-validate",
-      "arn:aws:lambda:us-west-2:123456789012:function:core-prod-validate:*",
-      "arn:aws:lambda:us-west-2:123456789012:function:core-prod-charge",
-      "arn:aws:lambda:us-west-2:123456789012:function:core-prod-charge:*",
-    ])
-    error_message = "Lambda invoke permission must be scoped to the supplied functions and their versions or aliases."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy.execution.policy == data.aws_iam_policy_document.execution.json
-    error_message = "Execution role policy must be rendered from the execution policy document."
+    error_message = "Invoke is limited to the listed functions, their versions and aliases."
   }
 }
 
-run "verify_wiring" {
+run "tracing_off" {
+  command = plan
+
+  variables {
+    tracing = { enabled = false }
+    type    = "EXPRESS"
+  }
+
+  assert {
+    condition     = !aws_sfn_state_machine.this.tracing_configuration[0].enabled && !contains(jsondecode(module.role[0].policy_json).Statement[*].Sid, "WriteTraces") && aws_sfn_state_machine.this.type == "EXPRESS"
+    error_message = "X-Ray permissions only when tracing is on."
+  }
+}
+
+run "log_destination" {
   command = apply
 
-  override_resource {
-    target = aws_cloudwatch_log_group.this
-    values = {
-      arn = "arn:aws:logs:us-west-2:123456789012:log-group:/aws/step_function/core-prod-order-pipeline"
-    }
-  }
-
-  override_resource {
-    target = aws_iam_role.this
-    values = {
-      id  = "core-prod-order-pipeline-sfn"
-      arn = "arn:aws:iam::123456789012:role/core-prod-order-pipeline-sfn"
-    }
-  }
-
-  override_resource {
-    target = aws_sfn_state_machine.this
-    values = {
-      arn = "arn:aws:states:us-west-2:123456789012:stateMachine:core-prod-order-pipeline"
-    }
+  assert {
+    condition     = aws_sfn_state_machine.this.logging_configuration[0].log_destination == "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/vendedlogs/states/core-prod-orders:*" && output.log_group_arn == "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/vendedlogs/states/core-prod-orders"
+    error_message = "Execution history must go to the module log group."
   }
 
   assert {
-    condition     = aws_sfn_state_machine.this.logging_configuration[0].log_destination == "arn:aws:logs:us-west-2:123456789012:log-group:/aws/step_function/core-prod-order-pipeline:*"
-    error_message = "State machine must log to the module's log group."
-  }
-
-  assert {
-    condition     = aws_sfn_state_machine.this.role_arn == "arn:aws:iam::123456789012:role/core-prod-order-pipeline-sfn"
-    error_message = "State machine must run as the module's execution role."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy.execution.role == "core-prod-order-pipeline-sfn"
-    error_message = "Execution policy must be attached to the module's execution role."
-  }
-
-  assert {
-    condition     = output.state_machine_arn == "arn:aws:states:us-west-2:123456789012:stateMachine:core-prod-order-pipeline" && output.role_arn == "arn:aws:iam::123456789012:role/core-prod-order-pipeline-sfn"
-    error_message = "state_machine_arn and role_arn outputs must expose the state machine and its role."
+    condition     = output.arn == "arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders" && output.role_arn == "arn:aws:iam::123456789012:role/core-prod-orders-exec-eu-west-1"
+    error_message = "Outputs must expose the state machine and role ARNs."
   }
 }
 
-run "verify_invalid_environment_fails" {
+run "module_key_is_planned_safely" {
   command = plan
 
   variables {
-    environment = "INVALID_UPPERCASE"
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = module.encryption.created && aws_sfn_state_machine.this.encryption_configuration[0].type == "CUSTOMER_MANAGED_KMS_KEY"
+    error_message = "kms.create must plan without knowing the key ARN."
+  }
+}
+
+run "module_key_encrypts_state_machine_and_logs" {
+  command = apply
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = aws_sfn_state_machine.this.encryption_configuration[0].kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && aws_sfn_state_machine.this.encryption_configuration[0].kms_data_key_reuse_period_seconds == 300 && module.log_group.kms_key_arn == output.kms_key_arn
+    error_message = "The module key must encrypt the execution history and the logs."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.role[0].policy_json).Statement : s.Sid] == ["DeliverLogs", "UseStateMachineKey", "UseKeyForLogDelivery", "WriteTraces"]
+    error_message = "A customer key adds the key statements."
+  }
+
+  assert {
+    condition     = jsondecode(module.role[0].policy_json).Statement[1].Resource == ["arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"] && jsondecode(module.role[0].policy_json).Statement[1].Condition.StringEquals["kms:EncryptionContext:aws:states:stateMachineArn"] == "arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders"
+    error_message = "Key use is limited to this state machine's encryption context."
+  }
+}
+
+run "caller_key_id_and_log_key_override" {
+  command = plan
+
+  variables {
+    kms             = { key_id = "11111111-2222-3333-4444-555555555555" }
+    cloudwatch_logs = { kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555", retention_in_days = 731, level = "ALL", include_execution_data = true }
+  }
+
+  assert {
+    condition     = aws_sfn_state_machine.this.encryption_configuration[0].kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "A key ID must be used as the key ARN."
+  }
+
+  assert {
+    condition     = module.log_group.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555" && module.log_group.retention_in_days == 731 && aws_sfn_state_machine.this.logging_configuration[0].level == "ALL" && aws_sfn_state_machine.this.logging_configuration[0].include_execution_data
+    error_message = "cloudwatch_logs must override the log key, retention and level."
+  }
+}
+
+run "bring_your_own_role" {
+  command = plan
+
+  variables {
+    iam_role = { create = false, arn = "arn:aws:iam::123456789012:role/shared-sfn" }
+  }
+
+  assert {
+    condition     = aws_sfn_state_machine.this.role_arn == "arn:aws:iam::123456789012:role/shared-sfn" && length(module.role) == 0 && output.role_name == null
+    error_message = "A caller role must replace the module role."
+  }
+}
+
+run "extend_the_role" {
+  command = plan
+
+  variables {
+    iam_role = {
+      managed_policy_arns      = ["arn:aws:iam::123456789012:policy/orders-read"]
+      permissions_boundary_arn = "arn:aws:iam::123456789012:policy/boundary"
+      policy_statements        = [{ sid = "PublishEvents", actions = ["events:PutEvents"], resources = ["arn:aws:events:eu-west-1:123456789012:event-bus/core-prod"] }]
+    }
+  }
+
+  assert {
+    condition     = contains(jsondecode(module.role[0].policy_json).Statement[*].Sid, "PublishEvents") && contains(jsondecode(module.role[0].policy_json).Statement[*].Sid, "DeliverLogs")
+    error_message = "Caller statements must be added to the module statements."
+  }
+}
+
+run "long_names_are_truncated" {
+  command   = plan
+  state_key = "long"
+
+  variables {
+    application = "abcdefghijklmnopqrstuvwx"
+    environment = "abcdefghijkl"
+    name        = "abcdefghijklmnopqrstuvwxyz012345"
+  }
+
+  assert {
+    condition     = length(aws_sfn_state_machine.this.name) == 70 && length(module.role[0].name) == 64
+    error_message = "The state machine keeps 80 characters; the role is cut to 64 with a hash."
+  }
+}
+
+run "rejects_invalid_name" {
+  command = plan
+
+  variables {
+    name = "Orders_Flow"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "rejects_invalid_application" {
+  command = plan
+
+  variables {
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
+
+run "rejects_invalid_environment" {
+  command = plan
+
+  variables {
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
+}
+
+run "rejects_invalid_definition" {
+  command = plan
+
+  variables {
+    definition = "{\"States\":{}}"
+  }
+
+  expect_failures = [var.definition]
+}
+
+run "rejects_invalid_type" {
+  command = plan
+
+  variables {
+    type = "SYNC"
+  }
+
+  expect_failures = [var.type]
+}
+
+run "rejects_qualified_function_arn" {
+  command = plan
+
+  variables {
+    lambda_function_arns = ["arn:aws:lambda:eu-west-1:123456789012:function:core-prod-validate:live"]
+  }
+
+  expect_failures = [var.lambda_function_arns]
+}
+
+run "rejects_create_and_key_id" {
+  command = plan
+
+  variables {
+    kms = { create = true, key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "alias/orders" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_role_without_arn" {
+  command = plan
+
+  variables {
+    iam_role = { create = false }
+  }
+
+  expect_failures = [var.iam_role]
+}
+
+run "rejects_logging_off" {
+  command = plan
+
+  variables {
+    cloudwatch_logs = { level = "OFF" }
+  }
+
+  expect_failures = [var.cloudwatch_logs]
 }

@@ -1,8 +1,38 @@
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "eu-west-1"
+    }
+  }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
+    }
+  }
+
   mock_resource "aws_secretsmanager_secret" {
     defaults = {
-      arn = "arn:aws:secretsmanager:us-west-2:123456789012:secret:core-prod-db-credentials-AbCdEf"
-      id  = "arn:aws:secretsmanager:us-west-2:123456789012:secret:core-prod-db-credentials-AbCdEf"
+      arn = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:core-prod-db-AbCdEf"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/mrk-0123456789abcdef0123456789abcdef"
+    }
+  }
+
+  mock_resource "aws_kms_replica_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-central-1:123456789012:key/mrk-0123456789abcdef0123456789abcdef"
     }
   }
 }
@@ -10,533 +40,267 @@ mock_provider "aws" {
 variables {
   application = "core"
   environment = "prod"
-  name        = "db-credentials"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+  name        = "db"
+  tags        = { Team = "data" }
 }
 
-# ------------------------------------------------------------------------------
-# Naming
-# ------------------------------------------------------------------------------
-
-run "naming_renders_application_environment_name" {
+run "secure_defaults" {
   command = plan
 
   assert {
-    condition     = aws_secretsmanager_secret.this.name == "core-prod-db-credentials"
-    error_message = "Secret name must be <application>-<environment>-<name>."
+    condition     = aws_secretsmanager_secret.this.name == "core-prod-db" && aws_secretsmanager_secret.this.description == "core-prod-db secret" && output.name == "core-prod-db"
+    error_message = "The secret is <application>-<environment>-<name>."
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.tags["Name"] == "core-prod-db-credentials"
-    error_message = "Name tag must be the rendered secret name."
-  }
-}
-
-run "naming_does_not_double_prefix_a_rendered_name" {
-  command = plan
-
-  variables {
-    name = "core-prod-db-credentials"
+    condition     = aws_secretsmanager_secret.this.kms_key_id == null && output.kms_key_arn == null && aws_secretsmanager_secret.this.recovery_window_in_days == 30
+    error_message = "No kms input means aws/secretsmanager; 30-day recovery window."
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.name == "core-prod-db-credentials"
-    error_message = "A name already starting with <application>-<environment> must not be prefixed again."
+    condition     = length(aws_secretsmanager_secret_version.this) + length(aws_secretsmanager_secret_policy.this) + length(aws_secretsmanager_secret_rotation.this) + length(aws_secretsmanager_secret.this.replica) == 0 && output.version_id == null
+    error_message = "No value, policy, rotation or replica by default."
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret.this.tags["Name"] == "core-prod-db" && aws_secretsmanager_secret.this.tags["Team"] == "data" && aws_secretsmanager_secret.this.tags["ManagedBy"] == "Terraform"
+    error_message = "Caller and governance tags must be applied (SecretsManager.5)."
   }
 }
 
-run "naming_falls_back_when_name_is_null" {
+run "module_key_is_planned_safely" {
   command = plan
 
   variables {
-    name = null
+    kms             = { create = true }
+    replica_regions = { eu-central-1 = {} }
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.name == "core-prod"
-    error_message = "With a null name the secret name must fall back to <application>-<environment>."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["Name"] == "core-prod"
-    error_message = "With a null name the Name tag must fall back to <application>-<environment>."
+    condition     = length(module.key) == 1 && module.encryption.created == false && length(aws_secretsmanager_secret.this.replica) == 1
+    error_message = "kms.create with replicas must plan a multi-Region key without knowing its ARN."
   }
 }
 
-run "naming_falls_back_when_name_is_empty" {
-  command = plan
+run "module_key_encrypts_secret" {
+  command = apply
 
   variables {
-    name = ""
+    kms = { create = true }
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.name == "core-prod"
-    error_message = "With an empty name the secret name must fall back to <application>-<environment>."
+    condition     = module.encryption.created && length(module.key) == 0 && aws_secretsmanager_secret.this.kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/mrk-0123456789abcdef0123456789abcdef" && output.kms_key_arn == aws_secretsmanager_secret.this.kms_key_id
+    error_message = "Without replicas the module key comes from core/encryption."
   }
 }
 
-run "naming_uses_name_prefix_when_set" {
-  command = plan
+run "module_key_replicated" {
+  command   = apply
+  state_key = "replicas"
 
   variables {
-    name        = null
-    name_prefix = "core-prod-api-key-"
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.name_prefix == "core-prod-api-key-"
-    error_message = "name_prefix must flow through to the secret."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["Name"] == "core-prod-api-key-"
-    error_message = "With name_prefix the Name tag must be the prefix."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Tags
-# ------------------------------------------------------------------------------
-
-run "tags_include_governance_and_caller_tags" {
-  command = plan
-
-  variables {
-    tags = {
-      CostCenter = "1234"
-      Team       = "platform"
+    kms = { create = true }
+    replica_regions = {
+      eu-central-1 = {}
+      us-east-1    = { kms_key_arn = "arn:aws:kms:us-east-1:123456789012:key/22222222-2222-3333-4444-555555555555" }
     }
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.tags["Application"] == "core"
-    error_message = "Secret must carry the Application governance tag."
+    condition     = output.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/mrk-0123456789abcdef0123456789abcdef" && toset(keys(module.key[0].replica_arns)) == toset(["eu-central-1", "us-east-1"])
+    error_message = "The module key is multi-Region and replicated to every replica Region."
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.tags["Environment"] == "prod"
-    error_message = "Secret must carry the Environment governance tag."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["Name"] == "core-prod-db-credentials"
-    error_message = "Secret must carry the Name governance tag."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["ManagedBy"] == "Terraform"
-    error_message = "Secret must carry ManagedBy = Terraform."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["CostCenter"] == "1234" && aws_secretsmanager_secret.this.tags["Team"] == "platform"
-    error_message = "Caller tags from var.tags must be preserved on the secret."
+    condition     = { for r in aws_secretsmanager_secret.this.replica : r.region => r.kms_key_id } == { "eu-central-1" = "arn:aws:kms:eu-central-1:123456789012:key/mrk-0123456789abcdef0123456789abcdef", "us-east-1" = "arn:aws:kms:us-east-1:123456789012:key/22222222-2222-3333-4444-555555555555" }
+    error_message = "Replicas use the key replica unless a Region key is given."
   }
 }
 
-run "tags_governance_take_precedence_over_caller_tags" {
+run "caller_key_with_region_keys" {
   command = plan
 
   variables {
-    tags = {
-      Application = "other-app"
-      Environment = "dev"
-      Name        = "other-name"
-      ManagedBy   = "Manual"
-      CostCenter  = "1234"
-    }
+    kms             = { key_id = "11111111-2222-3333-4444-555555555555" }
+    replica_regions = { eu-central-1 = { kms_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/33333333-2222-3333-4444-555555555555" } }
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.tags["Application"] == "core"
-    error_message = "A caller tag must not overwrite the Application governance tag."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["Environment"] == "prod"
-    error_message = "A caller tag must not overwrite the Environment governance tag."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["Name"] == "core-prod-db-credentials"
-    error_message = "A caller tag must not overwrite the Name governance tag."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["ManagedBy"] == "Terraform"
-    error_message = "A caller tag must not overwrite the ManagedBy governance tag."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.tags["CostCenter"] == "1234"
-    error_message = "Non-governance caller tags must still be preserved."
+    condition     = aws_secretsmanager_secret.this.kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && length(module.key) == 0
+    error_message = "A key ID must be used as the key ARN."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Security defaults and shipped parameter defaults
-# ------------------------------------------------------------------------------
-
-run "security_defaults_enforced" {
-  command = plan
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.kms_key_id == var.kms_key_arn
-    error_message = "The secret must be encrypted with the caller's KMS key."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.recovery_window_in_days == 30
-    error_message = "Default recovery window must be 30 days."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.force_overwrite_replica_secret == false
-    error_message = "Replica secrets must not be force-overwritten by default."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.description == null && aws_secretsmanager_secret.this.type == null
-    error_message = "description and type must default to null."
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_policy.this) == 0
-    error_message = "No resource policy must be attached by default."
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_rotation.this) == 0
-    error_message = "Rotation must be off by default."
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_version.this) == 0
-    error_message = "No secret version must be created without a payload."
-  }
-
-  assert {
-    condition     = output.version_id == null && output.policy_id == null
-    error_message = "version_id and policy_id outputs must be null when those resources are not created."
-  }
-}
-
-run "resource_policy_blocks_public_access_by_default" {
-  command = apply
-
-  variables {
-    policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAppRole\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:role/core-prod-app\"},\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"*\"}]}"
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_policy.this) == 1
-    error_message = "A resource policy must be attached when policy is set."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_policy.this[0].block_public_policy == true
-    error_message = "block_public_policy must default to true."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_policy.this[0].policy == var.policy
-    error_message = "The resource policy must be the policy passed in."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_policy.this[0].secret_arn == aws_secretsmanager_secret.this.arn
-    error_message = "The resource policy must be attached to the module's secret."
-  }
-
-  assert {
-    condition     = output.policy_id == aws_secretsmanager_secret_policy.this[0].id
-    error_message = "policy_id output must expose the resource policy id."
-  }
-}
-
-run "rotation_wired_when_configured" {
-  command = apply
-
-  variables {
-    rotation_config = {
-      rotation_lambda_arn = "arn:aws:lambda:us-west-2:123456789012:function:core-prod-secrets-rotator"
-      rotation_rules = {
-        automatically_after_days = 30
-      }
-    }
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_rotation.this) == 1
-    error_message = "Rotation must be configured when rotation_config is set."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].secret_id == aws_secretsmanager_secret.this.id
-    error_message = "Rotation must target the module's secret."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_lambda_arn == "arn:aws:lambda:us-west-2:123456789012:function:core-prod-secrets-rotator"
-    error_message = "rotation_lambda_arn must flow through to the rotation."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotate_immediately == true
-    error_message = "rotate_immediately must default to true."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].automatically_after_days == 30
-    error_message = "rotation_rules.automatically_after_days must flow through to the rotation."
-  }
-}
-
-run "rotation_schedule_overrides_flow_through" {
+run "default_key_replicas" {
   command = plan
 
   variables {
-    rotation_config = {
-      rotation_lambda_arn = "arn:aws:lambda:us-west-2:123456789012:function:core-prod-secrets-rotator"
-      rotate_immediately  = false
-      rotation_rules = {
-        duration            = "3h"
-        schedule_expression = "rate(10 days)"
-      }
-    }
+    replica_regions = { eu-central-1 = {} }
   }
 
   assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotate_immediately == false
-    error_message = "rotate_immediately = false must flow through to the rotation."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].schedule_expression == "rate(10 days)"
-    error_message = "rotation_rules.schedule_expression must flow through to the rotation."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].duration == "3h"
-    error_message = "rotation_rules.duration must flow through to the rotation."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].automatically_after_days == null
-    error_message = "Unset rotation_rules.automatically_after_days must stay null."
+    condition     = length(aws_secretsmanager_secret.this.replica) == 1 && length(module.key) == 0
+    error_message = "Without a key, replicas use aws/secretsmanager."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Secret payloads
-# ------------------------------------------------------------------------------
-
-run "secret_string_creates_version" {
+run "write_only_value" {
   command = apply
 
   variables {
-    secret_string = "{\"username\":\"app\",\"password\":\"example-only\"}"
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_version.this) == 1
-    error_message = "A secret version must be created when secret_string is set."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_id == aws_secretsmanager_secret.this.id
-    error_message = "The secret version must belong to the module's secret."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_string == var.secret_string
-    error_message = "secret_string must flow through to the secret version."
-  }
-
-  assert {
-    condition     = output.version_id == aws_secretsmanager_secret_version.this[0].version_id
-    error_message = "version_id output must expose the secret version id."
-  }
-}
-
-run "secret_binary_creates_version" {
-  command = plan
-
-  variables {
-    secret_binary = base64encode("example-binary-payload")
-  }
-
-  assert {
-    condition     = length(aws_secretsmanager_secret_version.this) == 1
-    error_message = "A secret version must be created when secret_binary is set."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_binary == var.secret_binary
-    error_message = "secret_binary must flow through to the secret version."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_string == null
-    error_message = "secret_string must stay null when only secret_binary is set."
-  }
-}
-
-run "write_only_secret_string_kept_out_of_state" {
-  command = apply
-
-  variables {
-    secret_string_wo         = "{\"username\":\"app\",\"password\":\"example-only\"}"
+    secret_string_wo         = "{\"password\":\"example-only\"}"
     secret_string_wo_version = 1
   }
 
   assert {
-    condition     = length(aws_secretsmanager_secret_version.this) == 1
-    error_message = "A secret version must be created when secret_string_wo is set."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_string_wo == null
-    error_message = "secret_string_wo is write-only and must never be persisted in state."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_string == null
-    error_message = "The write-only payload must not be copied into the stateful secret_string."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].secret_string_wo_version == 1
-    error_message = "secret_string_wo_version must flow through to trigger write-only updates."
+    condition     = aws_secretsmanager_secret_version.this[0].secret_string_wo_version == 1 && aws_secretsmanager_secret_version.this[0].secret_string_wo == null && aws_secretsmanager_secret_version.this[0].secret_string == null
+    error_message = "The value is written only through the write-only argument and never stored."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Parameter overrides
-# ------------------------------------------------------------------------------
-
-run "parameter_overrides_flow_through" {
-  command = plan
+run "rotation_and_policy" {
+  command = apply
 
   variables {
-    description                    = "Database credentials for the core service"
-    recovery_window_in_days        = 7
-    force_overwrite_replica_secret = true
-    region                         = "us-west-2"
-    policy                         = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAppRole\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:role/core-prod-app\"},\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"*\"}]}"
-    block_public_policy            = false
-    secret_string                  = "example-only"
-    version_stages                 = ["AWSCURRENT", "INITIAL"]
+    rotation = { enabled = true, lambda_arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-rotate:live" }
+    policy_statements = [
+      { sid = "ReadFromApi", actions = ["secretsmanager:GetSecretValue"], principals = { AWS = ["arn:aws:iam::123456789012:role/core-prod-api-exec-eu-west-1"] } },
+      { sid = "DenyOtherAccounts", effect = "Deny", actions = ["secretsmanager:*"], principals = { AWS = ["*"] }, conditions = [{ test = "StringNotEquals", variable = "aws:PrincipalAccount", values = ["123456789012"] }] }
+    ]
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.description == "Database credentials for the core service"
-    error_message = "description must flow through to the secret."
+    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].automatically_after_days == 30 && aws_secretsmanager_secret_rotation.this[0].rotate_immediately
+    error_message = "Rotation runs every 30 days by default (SecretsManager.4)."
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.recovery_window_in_days == 7
-    error_message = "recovery_window_in_days must flow through to the secret."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.force_overwrite_replica_secret == true
-    error_message = "force_overwrite_replica_secret must flow through to the secret."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret.this.region == "us-west-2" && aws_secretsmanager_secret_policy.this[0].region == "us-west-2" && aws_secretsmanager_secret_version.this[0].region == "us-west-2"
-    error_message = "region must flow through to the secret, its policy and its version."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_policy.this[0].block_public_policy == false
-    error_message = "block_public_policy must flow through to the resource policy."
-  }
-
-  assert {
-    condition     = aws_secretsmanager_secret_version.this[0].version_stages == toset(["AWSCURRENT", "INITIAL"])
-    error_message = "version_stages must flow through to the secret version."
+    condition     = aws_secretsmanager_secret_policy.this[0].block_public_policy && [for s in jsondecode(aws_secretsmanager_secret_policy.this[0].policy).Statement : s.Sid] == ["ReadFromApi", "DenyOtherAccounts"] && jsondecode(aws_secretsmanager_secret_policy.this[0].policy).Statement[0].Resource == ["*"]
+    error_message = "The resource policy blocks public access and defaults to the secret."
   }
 }
 
-run "recovery_window_zero_allows_force_delete" {
+run "rotation_schedule" {
   command = plan
 
   variables {
-    recovery_window_in_days = 0
+    rotation = { enabled = true, lambda_arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-rotate:live", schedule_expression = "rate(120 days)", duration = "3h" }
   }
 
   assert {
-    condition     = aws_secretsmanager_secret.this.recovery_window_in_days == 0
-    error_message = "recovery_window_in_days = 0 (force delete) must be accepted."
+    condition     = aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].schedule_expression == "rate(120 days)" && aws_secretsmanager_secret_rotation.this[0].rotation_rules[0].automatically_after_days == null
+    error_message = "A schedule expression replaces the day count."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Validation
-# ------------------------------------------------------------------------------
-
-run "rejects_invalid_environment" {
+run "rejects_invalid_name" {
   command = plan
 
   variables {
-    environment = "Prod_Env"
-  }
-
-  expect_failures = [var.environment]
-}
-
-run "rejects_name_and_name_prefix_together" {
-  command = plan
-
-  variables {
-    name        = "db-credentials"
-    name_prefix = "core-prod-db-"
+    name = "DB_Secret"
   }
 
   expect_failures = [var.name]
 }
 
-run "rejects_recovery_window_between_1_and_6_days" {
+run "rejects_invalid_application" {
   command = plan
 
   variables {
-    recovery_window_in_days = 5
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
+
+run "rejects_invalid_environment" {
+  command = plan
+
+  variables {
+    environment = "PROD"
+  }
+
+  expect_failures = [var.environment]
+}
+
+run "rejects_create_and_key_id" {
+  command = plan
+
+  variables {
+    kms = { create = true, key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "alias/aws/secretsmanager" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_recovery_window" {
+  command = plan
+
+  variables {
+    recovery_window_in_days = 3
   }
 
   expect_failures = [var.recovery_window_in_days]
 }
 
-run "rejects_recovery_window_above_30_days" {
+run "rejects_value_without_version" {
   command = plan
 
   variables {
-    recovery_window_in_days = 31
-  }
-
-  expect_failures = [var.recovery_window_in_days]
-}
-
-run "rejects_secret_string_with_write_only_string" {
-  command = plan
-
-  variables {
-    secret_string    = "example-only"
     secret_string_wo = "example-only"
   }
 
-  expect_failures = [aws_secretsmanager_secret_version.this]
+  expect_failures = [var.secret_string_wo_version]
 }
 
-run "rejects_secret_string_with_secret_binary" {
+run "rejects_rotation_without_lambda" {
   command = plan
 
   variables {
-    secret_string = "example-only"
-    secret_binary = base64encode("example-binary-payload")
+    rotation = { enabled = true }
   }
 
-  expect_failures = [aws_secretsmanager_secret_version.this]
+  expect_failures = [var.rotation]
+}
+
+run "rejects_long_rotation_interval" {
+  command = plan
+
+  variables {
+    rotation = { enabled = true, lambda_arn = "arn:aws:lambda:eu-west-1:123456789012:function:x", automatically_after_days = 120 }
+  }
+
+  expect_failures = [var.rotation]
+}
+
+run "rejects_invalid_replica_region" {
+  command = plan
+
+  variables {
+    replica_regions = { Frankfurt = {} }
+  }
+
+  expect_failures = [var.replica_regions]
+}
+
+run "rejects_caller_key_without_region_keys" {
+  command = plan
+
+  variables {
+    kms             = { key_id = "11111111-2222-3333-4444-555555555555" }
+    replica_regions = { eu-central-1 = {} }
+  }
+
+  expect_failures = [var.replica_regions]
 }

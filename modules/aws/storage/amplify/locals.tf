@@ -1,12 +1,19 @@
 locals {
-  rendered_name = var.name != null && var.name != "" ? "${var.application}-${var.environment}-${var.name}" : "${var.application}-${var.environment}"
+  name = module.naming.names.app
 
-  tags = merge(
-    {
-      Application = var.application
-      Environment = var.environment
-      Name        = local.rendered_name
-    },
-    var.tags
-  )
+  security_headers = <<-EOT
+    customHeaders:
+      - pattern: '**'
+        headers:
+          - key: 'Strict-Transport-Security'
+            value: 'max-age=31536000; includeSubDomains'
+          - key: 'X-Content-Type-Options'
+            value: 'nosniff'
+          - key: 'X-Frame-Options'
+            value: 'SAMEORIGIN'
+          - key: 'Referrer-Policy'
+            value: 'strict-origin-when-cross-origin'
+  EOT
+
+  custom_headers = var.custom_headers.enabled ? coalesce(var.custom_headers.yaml, local.security_headers) : null
 }

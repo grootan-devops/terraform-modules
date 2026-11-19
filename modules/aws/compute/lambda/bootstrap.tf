@@ -1,12 +1,11 @@
-data "archive_file" "bootstrap" {
-  count = local.use_generated_bootstrap ? 1 : 0
+data "archive_file" "placeholder" {
+  count = local.placeholder ? 1 : 0
 
-  type = "zip"
+  type        = "zip"
+  output_path = "${path.root}/.terraform/${local.function_name}-placeholder.zip"
 
   source {
-    filename = local.bootstrap_filename
-    content  = local.bootstrap_content
+    filename = local.runtime_family == "nodejs" ? "index.js" : "lambda_function.py"
+    content  = local.runtime_family == "nodejs" ? "exports.handler = async () => ({ statusCode: 501, body: \"not deployed\" });\n" : "def handler(event, context):\n    return {\"statusCode\": 501, \"body\": \"not deployed\"}\n"
   }
-
-  output_path = "${path.root}/.terraform/${local.rendered_name}-bootstrap.zip"
 }

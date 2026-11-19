@@ -4,8 +4,7 @@ Design a module's inputs and outputs from the provider's machine-readable schema
 documentation, which shows the latest provider and describes nested blocks loosely. The schema
 gives exact types, marks `sensitive` and `computed` attributes, and exposes write-only
 arguments (such as `secret_string_wo`). It proves which arguments exist; it does not prove
-runtime behaviour or migration safety — replacement decisions come from a representative plan
-(see [State migration](state-migration.md)).
+runtime behaviour or migration safety — replacement decisions come from a representative plan.
 
 ## Extract it
 
