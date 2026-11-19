@@ -58,6 +58,7 @@ module "oncall" {
   on_call_escalation_rules = var.on_call_escalation_rules
   on_call_overrides        = var.on_call_overrides
 
+  on_call_schedules_enabled     = var.on_call_schedules_enabled
   on_call_schedule_layer_config = var.on_call_schedule_layer_config
 
   component_definitions = local.component_definitions

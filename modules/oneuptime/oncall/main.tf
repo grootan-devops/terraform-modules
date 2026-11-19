@@ -64,8 +64,9 @@ resource "oneuptime_team_on_call_duty_escalation_rule" "this" {
   team_id                                = var.team_ids[each.value.group]
 }
 
+// Without a schedule the escalation rule still pages the owning teams above.
 resource "oneuptime_on_call_policy_schedule" "this" {
-  for_each    = var.component_definitions
+  for_each    = local.schedule_components
   name        = "${each.key}-oncall-schedule"
   description = "On-call schedule for ${each.key}"
 }
@@ -74,14 +75,14 @@ resource "oneuptime_on_call_policy_schedule" "this" {
 // schedule has on call. The schedule id is optional in the provider schema but
 // the API rejects the create without it.
 resource "oneuptime_schedules_on_call_duty_escalation_rule" "this" {
-  for_each                               = var.component_definitions
+  for_each                               = local.schedule_components
   on_call_duty_policy_id                 = oneuptime_on_call_policy.this[each.key].id
   on_call_duty_policy_escalation_rule_id = oneuptime_escalation_rule.this[each.key].id
   on_call_duty_policy_schedule_id        = oneuptime_on_call_policy_schedule.this[each.key].id
 }
 
 resource "oneuptime_on_call_schedule_layer" "this" {
-  for_each                        = var.component_definitions
+  for_each                        = local.schedule_components
   name                            = "${each.key}-oncall-schedule-layer"
   on_call_duty_policy_schedule_id = oneuptime_on_call_policy_schedule.this[each.key].id
   order                           = var.on_call_schedule_layer_config.order
