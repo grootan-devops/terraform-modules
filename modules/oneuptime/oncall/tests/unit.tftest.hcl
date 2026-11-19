@@ -460,3 +460,34 @@ run "a_component_override_replaces_only_its_own_timings" {
     error_message = "A component without an override should keep the stack-wide timings."
   }
 }
+
+run "schedules_off_leaves_team_paging_only" {
+  command = apply
+
+  variables {
+    on_call_schedules_enabled = false
+  }
+
+  assert {
+    condition = (
+      length(oneuptime_on_call_policy_schedule.this) == 0
+      && length(oneuptime_on_call_schedule_layer.this) == 0
+      && length(oneuptime_schedules_on_call_duty_escalation_rule.this) == 0
+    )
+    error_message = "With schedules off, no schedule, layer or schedule binding should be created."
+  }
+
+  assert {
+    condition = (
+      toset(keys(oneuptime_on_call_policy.this)) == toset(["platform", "application"])
+      && toset(keys(oneuptime_escalation_rule.this)) == toset(["platform", "application"])
+      && toset(keys(oneuptime_team_on_call_duty_escalation_rule.this)) == toset(["platform.devops", "application.developers", "application.devops"])
+    )
+    error_message = "With schedules off, every policy and escalation rule should still page its owning teams."
+  }
+
+  assert {
+    condition     = output.on_call_schedule_ids == {}
+    error_message = "on_call_schedule_ids should be empty when schedules are off."
+  }
+}

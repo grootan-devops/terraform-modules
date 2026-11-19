@@ -8,6 +8,21 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 2.2.0
+
+No required action: change `?ref=` to `2.2.0`. Schedules stay on by default.
+
+### Recommended
+
+- A stack that pages whole teams and keeps nobody in the schedules sets
+  `on_call_schedules_enabled = false`, so OneUptime stops flagging the empty schedules.
+
+### Verify
+
+- With `on_call_schedules_enabled = false`, `terraform plan` destroys one `oneuptime_on_call_policy_schedule`,
+  one `oneuptime_on_call_schedule_layer` and one `oneuptime_schedules_on_call_duty_escalation_rule` per
+  component, and changes nothing else.
+
 ## 2.1.0
 
 ### Required

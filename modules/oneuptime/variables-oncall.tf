@@ -43,6 +43,12 @@ variable "on_call_routing" {
 }
 
 
+variable "on_call_schedules_enabled" {
+  description = "Create each component's on-call schedule and layer and let its escalation rule page whoever is on call in it. Off, the escalation rule pages only the owning teams, and OneUptime has no empty schedules to flag."
+  type        = bool
+  default     = true
+}
+
 // Shape of the single schedule layer created per component. OneUptime requires
 // a layer before a schedule can put anyone on call, and it wants a rotation and
 // a restriction window on every one of them.

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-11-20
+
+### Added
+
+- `on_call_schedules_enabled` (default `true`) switches off each component's on-call schedule, its layer and the binding to the escalation rule. The escalation rule keeps paging the owning teams, and OneUptime's Setup Health no longer flags a schedule nobody is in. Rota membership cannot be managed with a project-scoped API key, so a stack that pages whole teams has no use for the empty schedules.
+
 ## [2.1.0] - 2026-11-18
 
 ### Added

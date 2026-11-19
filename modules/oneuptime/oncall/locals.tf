@@ -1,4 +1,6 @@
 locals {
+  schedule_components = var.on_call_schedules_enabled ? var.component_definitions : {}
+
   restriction = var.on_call_schedule_layer_config.restriction
 
   // OneUptime serializes its own value types as an `_type` tag plus a `value`
