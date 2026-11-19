@@ -305,3 +305,23 @@ variable "services" {
     error_message = "services[*].efs_volumes: absolute root_directory, only without access_point_id."
   }
 }
+
+variable "alarms" {
+  description = "Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides."
+  type = object({
+    enabled    = optional(bool, true)
+    topic_arns = optional(map(string), {})
+    overrides = optional(object({
+      cpu           = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+      memory        = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+      running_tasks = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+    }), {})
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for s, arn in var.alarms.topic_arns : can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", arn))])
+    error_message = "alarms.topic_arns: SNS topic ARNs by severity."
+  }
+}

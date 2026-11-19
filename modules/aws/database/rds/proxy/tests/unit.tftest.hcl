@@ -514,3 +514,90 @@ run "rejects_invalid_endpoint_key" {
 
   expect_failures = [var.endpoints]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["rdsproxy-proxy-borrowed-connections", "rdsproxy-proxy-client-auth-failures", "rdsproxy-proxy-connection-setup-failures"])
+    error_message = "Default alarms: connection setup failures, client auth failures and pool saturation."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-orders-rdsproxy-proxy-")]) && module.alarms[0].alarm_settings["rdsproxy-proxy-borrowed-connections"].threshold == 80
+    error_message = "Alarm names start with the module base name; pool saturation alarms at 80 %."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command   = apply
+  state_key = "alarms"
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        borrowed_connections = { threshold = 90 }
+        client_auth_failures = { enabled = false }
+        client_connections   = { enabled = true, threshold = 500 }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["rdsproxy-proxy-borrowed-connections", "rdsproxy-proxy-client-connections", "rdsproxy-proxy-connection-setup-failures"])
+    error_message = "A disabled alarm is dropped; an opt-in alarm is added."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["rdsproxy-proxy-borrowed-connections"].threshold == 90 && module.alarms[0].alarm_settings["rdsproxy-proxy-borrowed-connections"].evaluation_periods == 5 && module.alarms[0].alarm_settings["rdsproxy-proxy-client-connections"].threshold == 500
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["rdsproxy-proxy-connection-setup-failures"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["rdsproxy-proxy-borrowed-connections"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarms_plan"
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 3
+    error_message = "Alarm keys and names must be known at plan with an unknown role ARN."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

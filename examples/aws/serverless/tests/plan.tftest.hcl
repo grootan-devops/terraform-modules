@@ -59,4 +59,19 @@ run "plans_with_unknown_arns" {
     condition     = module.fulfilment.role_name == "shop-dev-fulfilment-sfn-eu-west-1" && !contains(output.role_names, module.fulfilment.role_name)
     error_message = "The state machine has its own execution role, never a function's."
   }
+
+  assert {
+    condition     = sort(keys(module.worker_fn.alarm_names)) == tolist(["lambda-function-duration-p99", "lambda-function-error-rate", "lambda-function-iterator-age", "lambda-function-throttles"]) && length(module.api_fn.alarm_names) == 3
+    error_message = "Each function gets its built-in alarms; the stream consumer also watches iterator age."
+  }
+
+  assert {
+    condition     = contains(keys(module.orders_queue.alarm_names), "sqs-queue-dlq-messages-visible") && length(module.events.alarm_names) == 6 && length(module.api.alarm_names) == 4 && length(module.http_api.alarm_names) == 2 && length(module.orders_table.alarm_names) == 3
+    error_message = "Queue, rule, schedule group, both APIs and the table get their built-in alarms without hand wiring."
+  }
+
+  assert {
+    condition     = length(module.fulfilment.alarm_names) == 4
+    error_message = "The state machine gets its built-in alarms."
+  }
 }

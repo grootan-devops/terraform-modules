@@ -467,3 +467,92 @@ run "rejects_kms_with_s3_logging" {
 
   expect_failures = [var.logging]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["cloudfront-distribution-5xx-error-rate"])
+    error_message = "Default alarms: 5xx error rate only."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-cloudfront-distribution-")]) && module.alarms[0].alarm_settings["cloudfront-distribution-5xx-error-rate"].threshold == 5
+    error_message = "Alarm names start with the module base name; 5xx error rate above 5 %."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null && r.region == "us-east-1"])
+    error_message = "Without topic_arns, alarms have no actions; they live in us-east-1."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:us-east-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:us-east-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:us-east-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        server_error_rate = { threshold = 2 }
+        client_error_rate = { enabled = true, threshold = 15 }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["cloudfront-distribution-4xx-error-rate", "cloudfront-distribution-5xx-error-rate"])
+    error_message = "The 4xx error rate alarm is opt-in."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["cloudfront-distribution-5xx-error-rate"].threshold == 2 && module.alarms[0].alarm_settings["cloudfront-distribution-5xx-error-rate"].evaluation_periods == 5 && module.alarms[0].alarm_settings["cloudfront-distribution-4xx-error-rate"].threshold == 15
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["cloudfront-distribution-5xx-error-rate"].topic_arn == "arn:aws:sns:us-east-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["cloudfront-distribution-4xx-error-rate"].topic_arn == "arn:aws:sns:us-east-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the us-east-1 topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarms_unknown_arns"
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 1
+    error_message = "Alarm keys and names must be known at plan before the distribution ID."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:us-east-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

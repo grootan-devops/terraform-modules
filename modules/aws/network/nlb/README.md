@@ -22,6 +22,8 @@ pass their ARNs and IDs in.
   (`targets`). `alb` target groups are TCP with an HTTP(S) health check and register one ALB on the group port;
   `preserve_client_ip`, `proxy_protocol_v2` and `connection_termination` do not apply to them.
 - `aws_vpc_endpoint_service.this`: with `endpoint_service = { enabled = true }`.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -110,6 +112,42 @@ module "nlb" {
 }
 ```
 
+### Built-in Alarms
+
+The `nlbs` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by default:
+`nlb-lb-<target group>-unhealthy-hosts` and `nlb-lb-<target group>-no-healthy-hosts` (both critical) for each
+`target_groups` key. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "nlb" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/nlb?ref=<version>"
+
+  application   = "core"
+  environment   = "prod"
+  vpc_id        = module.vpc.vpc_id
+  subnet_ids    = module.vpc.private_subnet_ids
+  listeners     = { app = { port = 443, target_group = "app" } }
+  target_groups = { app = { port = 8443 } }
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      no_healthy_hosts = { evaluation_periods = 3 }
+      unhealthy_hosts  = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -133,6 +171,7 @@ module "nlb" {
 | `dns_record_client_routing_policy` | DNS client routing policy. | `string` | `"any_availability_zone"` | No |
 | `enforce_security_group_inbound_rules_on_private_link_traffic` | Apply security group ingress to PrivateLink traffic: on or off. | `string` | `"on"` | No |
 | `deletion_protection` | Block deletion of the load balancer. | `bool` | `true` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -150,3 +189,5 @@ module "nlb" {
 | `target_group_arn_suffixes` | Target group ARN suffixes by key, for CloudWatch metrics. | No |
 | `endpoint_service_name` | PrivateLink endpoint service name; null when disabled. | No |
 | `endpoint_service_id` | PrivateLink endpoint service ID; null when disabled. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

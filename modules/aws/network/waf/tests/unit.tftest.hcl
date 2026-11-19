@@ -431,3 +431,105 @@ run "rejects_kms_with_s3_logging" {
 
   expect_failures = [var.logging]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 0
+    error_message = "Without a blocked_requests threshold, no alarm is created."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false, overrides = { blocked_requests = { threshold = 1000 } } }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        blocked_requests = { threshold = 1000 }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["waf-acl-blocked-requests"]) && alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-waf-acl-")])
+    error_message = "A blocked_requests threshold turns the alarm on; names start with the module base name."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["waf-acl-blocked-requests"].threshold == 1000 && module.alarms[0].alarm_settings["waf-acl-blocked-requests"].evaluation_periods == 1 && module.alarms[0].alarm_settings["waf-acl-blocked-requests"].period == 300
+    error_message = "The threshold is the caller's; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["waf-acl-blocked-requests"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning" && module.alarms[0].alarm_routes["waf-acl-blocked-requests"].region == "eu-west-1"
+    error_message = "A REGIONAL web ACL alarm notifies the provider Region topic for its severity."
+  }
+}
+
+run "alarms_cloudfront_scope_route_to_us_east_1" {
+  command = plan
+
+  variables {
+    scope = "CLOUDFRONT"
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:us-east-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:us-east-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:us-east-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        blocked_requests = { threshold = 500, severity = "critical" }
+      }
+    }
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["waf-acl-blocked-requests"].region == "us-east-1" && module.alarms[0].alarm_routes["waf-acl-blocked-requests"].topic_arn == "arn:aws:sns:us-east-1:123456789012:platform-prod-critical"
+    error_message = "A CLOUDFRONT web ACL alarm lives in us-east-1 and notifies the us-east-1 topic."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarms_unknown_arns"
+
+  variables {
+    kms    = { create = true }
+    alarms = { overrides = { blocked_requests = { threshold = 1000 } } }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 1
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

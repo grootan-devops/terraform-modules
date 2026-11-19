@@ -19,6 +19,8 @@ functions are other modules; pass their names or ARNs in.
 - Optional: `aws_s3_bucket_logging.this`, `aws_s3_bucket_notification.this`, `aws_s3_bucket_cors_configuration.this`,
   `aws_s3_bucket_object_lock_configuration.this`, `aws_s3_bucket_replication_configuration.this` and
   `module.replication_role` ([`security/iam-role`](../../security/iam-role), `<...>-replication-<region>`).
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -99,6 +101,40 @@ module "assets" {
 }
 ```
 
+### Built-in Alarms
+
+The `s3_buckets` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is wired in, but
+its only alarm, `s3-bucket-bucket-size` (StandardStorage bytes, daily, info), has no default threshold: it is on once
+`bucket_size.threshold` is set, so by default the module creates no alarms. Without `topic_arns` the alarms have no
+actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "s3" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/s3?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "assets"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      bucket_size = { threshold = 1099511627776, severity = "warning" }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default, and
+`bucket_size = { enabled = false }` keeps it off even with a threshold.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -118,6 +154,7 @@ module "assets" {
 | `notifications` | Event notifications (S3.11): EventBridge, SNS, SQS, Lambda. | `object({...})` | `{}` | No |
 | `object_lock` | Object Lock (set at creation) and default retention. | `object({...})` | `{}` | No |
 | `replication` | Replication rules and role. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -131,3 +168,5 @@ module "assets" {
 | `kms_key_arn` | Key ARN in use; null for SSE-S3. | No |
 | `replication_role_arn` | Replication role ARN; null without replication. | No |
 | `policy_json` | Bucket policy JSON. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

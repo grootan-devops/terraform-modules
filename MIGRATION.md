@@ -33,6 +33,10 @@ README.
 - **One account or an organization:** GuardDuty, Detective, Inspector, IAM Access Analyzer and Security Hub default to
   an organization with a delegated administrator; a single account sets `organization_configuration = { enabled = false }`
   ([account layouts](docs/AWS.md#account-layouts)).
+- **Alarms are built in:** 18 service modules create their CloudWatch alarms by default, without actions. Route them
+  with `alarms = { topic_arns = module.alarm_routing.topic_arns["<region>"] }` (us-east-1 for CloudFront and
+  `CLOUDFRONT`-scope WAF), tune one with `alarms.overrides`, or turn them off with `alarms = { enabled = false }`.
+  Drop any hand-wired `cloudwatch-alarms` preset entry for a module that now builds it in, or the alarms exist twice.
 - **Exclusive roles, security groups and permission sets:** module roles keep only the policies given through
   `iam_role`, module security groups only their module rules, Identity Center permission sets only their listed
   policies. Anything attached outside Terraform is removed on the next apply.

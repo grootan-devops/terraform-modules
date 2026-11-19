@@ -947,7 +947,7 @@ locals {
         key                 = "sqs-${k}-age-of-oldest-message"
         preset              = "sqs_queues"
         cfg                 = q.alarms.age_of_oldest_message
-        enabled             = q.alarms.age_of_oldest_message.enabled
+        enabled             = coalesce(q.alarms.age_of_oldest_message.enabled, q.alarms.age_of_oldest_message.threshold != null)
         threshold           = q.alarms.age_of_oldest_message.threshold
         description         = "SQS ${q.queue_name}: ApproximateAgeOfOldestMessage seconds (Maximum) above threshold - consumers are not keeping up."
         region              = q.region
@@ -1082,7 +1082,7 @@ locals {
         key                 = "efs-${k}-percent-io-limit"
         preset              = "efs_file_systems"
         cfg                 = f.alarms.percent_io_limit
-        enabled             = f.alarms.percent_io_limit.enabled
+        enabled             = f.alarms.percent_io_limit.enabled && f.performance_mode == "generalPurpose"
         threshold           = f.alarms.percent_io_limit.threshold
         description         = "EFS ${f.file_system_id}: PercentIOLimit (Average, General Purpose mode) above threshold."
         region              = f.region
@@ -1137,7 +1137,7 @@ locals {
       key                 = "waf-${k}-blocked-requests"
       preset              = "waf_web_acls"
       cfg                 = w.alarms.blocked_requests
-      enabled             = w.alarms.blocked_requests.enabled
+      enabled             = coalesce(w.alarms.blocked_requests.enabled, w.alarms.blocked_requests.threshold != null)
       threshold           = w.alarms.blocked_requests.threshold
       description         = "WAF web ACL ${w.web_acl_metric_name} rule ${w.rule_metric_name}: BlockedRequests (Sum) above threshold - spike in blocked traffic."
       region              = w.scope == "CLOUDFRONT" ? local.cloudfront_region : w.region
@@ -1157,7 +1157,7 @@ locals {
       key                 = "s3-${k}-bucket-size"
       preset              = "s3_buckets"
       cfg                 = b.alarms.bucket_size
-      enabled             = b.alarms.bucket_size.enabled
+      enabled             = coalesce(b.alarms.bucket_size.enabled, b.alarms.bucket_size.threshold != null)
       threshold           = b.alarms.bucket_size.threshold
       description         = "S3 ${b.bucket_name}: BucketSizeBytes in StandardStorage (Average, daily metric) above threshold."
       region              = b.region

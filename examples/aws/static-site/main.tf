@@ -108,6 +108,8 @@ module "cdn" {
     { error_code = 403, response_code = 404, response_page_path = "/404.html" },
     { error_code = 404, response_code = 404, response_page_path = "/404.html" }
   ]
+
+  alarms = { topic_arns = local.edge_alarm_topics }
 }
 
 module "admin" {

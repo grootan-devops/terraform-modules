@@ -88,6 +88,9 @@ reference suite. A suite covers:
 5. **Wiring**: security group rules, IAM statements (through `module.role[0].policy_json`), log group settings.
 6. **Switches**: every optional feature off by default and on when enabled.
 7. **Validation**: one `expect_failures` run per `validation` block.
+8. **Built-in alarms**: the default alarm keys and names, `alarms = { enabled = false }` creating none, an override
+   that changes one threshold and disables one alarm (through `module.alarms[0].alarm_settings`), `topic_arns` routing
+   by severity (`module.alarms[0].alarm_routes`) and the keys at plan with unknown ARNs.
 
 ```hcl
 mock_provider "aws" {

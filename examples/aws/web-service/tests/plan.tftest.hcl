@@ -111,4 +111,19 @@ run "plans_with_unknown_ids" {
     condition     = output.report_job_queues == { nightly = "shop-dev-reports-nightly" } && module.schedules.schedule_group_name == "shop-dev-reports" && keys(module.schedules.schedule_arns) == ["nightly-reports"]
     error_message = "The nightly report job runs on its own Batch queue from a Scheduler schedule."
   }
+
+  assert {
+    condition     = contains(keys(module.alb.alarm_names), "alb-lb-web-unhealthy-hosts") && contains(keys(module.private_link.alarm_names), "nlb-lb-alb-no-healthy-hosts") && contains(keys(module.db.alarm_names), "rds-instance-free-storage") && contains(keys(module.app.alarm_names), "ecs-web-running-tasks")
+    error_message = "Load balancers, database and service get their built-in alarms, routed without hand wiring."
+  }
+
+  assert {
+    condition     = length([for k in keys(module.vpc.alarm_names) : k if startswith(k, "nat-")]) == 2
+    error_message = "The single NAT gateway gets its port allocation and packet drop alarms."
+  }
+
+  assert {
+    condition     = length(module.proxy.alarm_names) == 3 && keys(module.shared.alarm_names) == ["efs-file-system-percent-io-limit"]
+    error_message = "The proxy and the shared file system get their built-in alarms."
+  }
 }

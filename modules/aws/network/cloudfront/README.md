@@ -26,6 +26,8 @@ modules; pass their ARNs and domain names in.
     `<prefix>/<account>/CloudFront/<distribution-id>/<yyyy>/<MM>/<dd>/<HH>/` (`prefix` default `AWSLogs`, one folder),
     the layout of other AWS logs in a log bucket.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): the log group key, in us-east-1.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms in
+  us-east-1, on by default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -112,6 +114,46 @@ module "logs" {
 }
 ```
 
+### Built-in Alarms
+
+The `cloudfront_distributions` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)
+is on by default: `cloudfront-distribution-5xx-error-rate` (critical, above 5 %). `client_error_rate`
+(`cloudfront-distribution-4xx-error-rate`) and `requests` (`cloudfront-distribution-requests`) are opt-in and need a
+`threshold`. CloudFront publishes its metrics in us-east-1, so the alarms live there and `topic_arns` must be
+us-east-1 topics: list `us-east-1` in the alarm-routing `regions` and pass
+`module.alarm_routing.topic_arns["us-east-1"]`. Without `topic_arns` the alarms have no actions;
+`alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+  regions     = ["eu-west-1", "us-east-1"]
+}
+
+module "cloudfront" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/cloudfront?ref=<version>"
+
+  application            = "core"
+  environment            = "prod"
+  origins                = { api = { domain_name = module.alb.dns_name } }
+  default_cache_behavior = { target_origin_id = "api", cache_policy = "Managed-CachingDisabled" }
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["us-east-1"]
+    overrides = {
+      server_error_rate = { threshold = 2 }
+      client_error_rate = { enabled = true, threshold = 15 }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default. To turn the default alarm
+off, set `server_error_rate = { enabled = false }`.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -135,6 +177,7 @@ module "logs" {
 | `logging` | Access log destination: cloudwatch or s3 (s3_bucket_arn, prefix). | `object({...})` | `{}` | No |
 | `cloudwatch_logs` | Access log group in us-east-1 (destination cloudwatch). | `object({...})` | `{}` | No |
 | `kms` | Log encryption in us-east-1: {} service encryption, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -147,3 +190,5 @@ module "logs" {
 | `log_group_name` | Access log group name; null unless cloudwatch. | No |
 | `log_group_arn` | Access log group ARN; null unless cloudwatch. | No |
 | `kms_key_arn` | Log key ARN; null for service encryption. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

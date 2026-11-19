@@ -72,3 +72,13 @@ output "domain_zone_id" {
   description = "Custom domain hosted zone ID for Route 53 aliases; null without a domain."
   value       = try(aws_apigatewayv2_domain_name.this[0].domain_name_configuration[0].hosted_zone_id, null)
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}
