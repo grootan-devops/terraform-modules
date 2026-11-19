@@ -8,6 +8,26 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 2.4.0
+
+### Required
+
+- **Remove `on_call_schedules_enabled`.** The input is gone; Terraform fails on an unknown argument.
+- **Schedules are now off by default.** A stack that relied on the 2.1.0 or 2.2.0 default of one schedule
+  per component sets `schedule_enabled = true` for each component that keeps one:
+
+  ```hcl
+  on_call_overrides = {
+    "databases" = { schedule_enabled = true }
+  }
+  ```
+
+### Verify
+
+- A stack that had `on_call_schedules_enabled = false`: `terraform plan` shows no changes.
+- A stack on the old default: the plan destroys the schedule, layer and binding of every component without
+  `schedule_enabled = true`, and changes nothing else.
+
 ## 2.2.0
 
 No required action: change `?ref=` to `2.2.0`. Schedules stay on by default.

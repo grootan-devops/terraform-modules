@@ -1,5 +1,10 @@
 locals {
-  schedule_components = var.on_call_schedules_enabled ? var.component_definitions : {}
+  // Off by default: rota membership cannot be set with a project-scoped API
+  // key, so a schedule nobody asked for would sit empty.
+  schedule_components = {
+    for key, definition in var.component_definitions : key => definition
+    if try(var.on_call_overrides[key].schedule_enabled, false) == true
+  }
 
   restriction = var.on_call_schedule_layer_config.restriction
 
