@@ -90,8 +90,8 @@ variable "tags" {
 
 `name` is required on modules that are normally instantiated several times per application and environment (lambda,
 sqs, dynamodb, s3, ecr, step-functions, secrets-manager, kms, iam-role, security-group, log-group, efs, rds, valkey,
-eventbridge, sns). It is optional (`default = null`) on modules that usually exist once per environment (vpc, eks, ecs,
-alb, api-gateway, cognito, cloudfront, waf, route53). Account and organization modules take no `name`.
+sns). It is optional (`default = null`) on modules that usually exist once per environment (vpc, eks, ecs, alb,
+api-gateway, cognito, cloudfront, waf, route53, eventbridge). Account and organization modules take no `name`.
 
 ### Encryption
 

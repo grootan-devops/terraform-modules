@@ -127,5 +127,5 @@ module "orders_consumer" {
 | `arn` | Table ARN. | No |
 | `name` | Table name. | No |
 | `stream_arn` | Stream ARN; null without a stream. | No |
-| `global_secondary_index_names` | Global secondary index names. | No |
+| `global_secondary_index_names` | Global secondary index names (GlobalSecondaryIndexName dimension). | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
