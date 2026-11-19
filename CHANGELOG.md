@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-11-19
+
+### Changed
+
+- Updated [`grootantech/toolkit`](https://github.com/grootan-devops/toolkit) from `2.0.1` to `2.1.0`
+- Updated [`oneuptime`](https://github.com/OneUptime/terraform-provider-oneuptime) from [`>= 13.0.6, < 14.0.0` to `< 17.0.0`](https://app.renovatebot.com/package-diff?name=oneuptime%2Foneuptime&from=13.0.8&to=16.0.0)
+
 ## [2.1.0] - 2026-11-18
 
 ### Added
