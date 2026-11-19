@@ -391,3 +391,119 @@ run "rejects_invalid_permissions" {
 
   expect_failures = [var.access_points]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["efs-file-system-percent-io-limit"])
+    error_message = "Default alarms: I/O limit for General Purpose mode."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-shared-efs-file-system-")]) && module.alarms[0].alarm_settings["efs-file-system-percent-io-limit"].threshold == 95
+    error_message = "Alarm names start with the module base name; I/O limit alarms at 95 %."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    throughput = { mode = "bursting" }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        percent_io_limit     = { threshold = 90 }
+        burst_credit_balance = { severity = "critical" }
+        client_connections   = { enabled = true, threshold = 500, severity = "info" }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["efs-file-system-burst-credit-balance", "efs-file-system-client-connections", "efs-file-system-percent-io-limit"])
+    error_message = "Bursting throughput adds the burst credit alarm; an opt-in alarm is added."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["efs-file-system-percent-io-limit"].threshold == 90 && module.alarms[0].alarm_settings["efs-file-system-percent-io-limit"].evaluation_periods == 15 && module.alarms[0].alarm_settings["efs-file-system-client-connections"].threshold == 500
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["efs-file-system-burst-credit-balance"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["efs-file-system-percent-io-limit"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning" && module.alarms[0].alarm_routes["efs-file-system-client-connections"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_none_for_max_io" {
+  command = plan
+
+  variables {
+    performance_mode = "maxIO"
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 0
+    error_message = "Max I/O mode has no I/O limit alarm."
+  }
+}
+
+run "alarms_add_burst_credits_for_bursting" {
+  command = plan
+
+  variables {
+    throughput = { mode = "bursting" }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["efs-file-system-burst-credit-balance", "efs-file-system-percent-io-limit"])
+    error_message = "Bursting throughput adds the burst credit alarm."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 1
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

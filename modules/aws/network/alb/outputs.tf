@@ -52,3 +52,13 @@ output "target_group_arn_suffixes" {
   description = "Target group ARN suffixes by key, for CloudWatch metrics."
   value       = { for k, t in aws_lb_target_group.this : k => t.arn_suffix }
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}

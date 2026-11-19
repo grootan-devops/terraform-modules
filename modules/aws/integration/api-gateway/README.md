@@ -23,6 +23,8 @@ managed key for the logs. Functions, user pools, web ACLs and certificates are o
   optional.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): service encryption, module key or your key for the
   logs.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -116,6 +118,39 @@ resource "aws_route53_record" "api" {
 }
 ```
 
+### Built-in Alarms
+
+The `api_gateways` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default, on the API name and stage: `apigw-api-5xx-rate` (critical, above 5 %), `apigw-api-4xx-rate` (above 5 %),
+`apigw-api-latency-p99` (above 2500 ms) and `apigw-api-integration-latency-p99` (above 2000 ms). None is opt-in.
+Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "api" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/api-gateway?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      latency_p99       = { threshold = 1000 }
+      client_error_rate = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -147,6 +182,7 @@ resource "aws_route53_record" "api" {
 | `cors` | CORS preflight (MOCK OPTIONS) defaults; routes override. | `object({...})` | `{}` | No |
 | `gateway_responses` | Gateway response overrides by type. | `map(object({...}))` | `{}` | No |
 | `custom_domain` | Regional custom domain mapped to the stage. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -164,3 +200,5 @@ resource "aws_route53_record" "api" {
 | `log_group_name` | Access log group name. | No |
 | `log_group_arn` | Access log group ARN. | No |
 | `kms_key_arn` | Log key ARN in use; null for service encryption. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

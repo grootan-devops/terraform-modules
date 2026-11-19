@@ -31,6 +31,8 @@ the subnets; give it CIDR lists to lay them out yourself.
   routes.
 - `aws_route.this` (`routes`), `aws_vpc_dhcp_options.this` (`dhcp_options`), `module.encryption`
   ([`core/encryption`](../../core/encryption)).
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in NAT gateway
+  alarms, on by default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -106,6 +108,42 @@ module "lambda" {
 }
 ```
 
+### Built-in Alarms
+
+The `nat_gateways` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default, one entry per NAT gateway keyed by its AZ: `nat-<az>-error-port-allocation` (critical) and
+`nat-<az>-packets-drop-rate` (warning, above 0.01 % of packets in). `nat.mode = "single"` gives two alarms,
+`"per_az"` two per AZ and `"none"` none. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }`
+creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "vpc" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  cidr_block  = "10.0.0.0/16"
+  nat         = { mode = "per_az" }
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      error_port_allocation = { threshold = 10 }
+      packets_drop_rate     = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -129,6 +167,7 @@ module "lambda" {
 | `iam_role` | Flow log role: extend it or bring your own. | `object({...})` | `{}` | No |
 | `vpc_endpoints` | VPC endpoints by service (s3, ecr.api, ssm...): type, subnet tier, private DNS, policy. | `map(object({...}))` | `{}` | No |
 | `dhcp_options` | Custom DHCP option set. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -155,3 +194,5 @@ module "lambda" {
 | `log_group_name` | Flow log group name; null unless cloudwatch. | No |
 | `log_group_arn` | Flow log group ARN; null unless cloudwatch. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

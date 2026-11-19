@@ -748,3 +748,118 @@ run "rejects_endpoint_in_disabled_tier" {
 
   expect_failures = [var.vpc_endpoints]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["nat-eu-west-1a-error-port-allocation", "nat-eu-west-1a-packets-drop-rate"])
+    error_message = "Default alarms: port allocation errors and dropped packets on the single NAT gateway."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-nat-")]) && module.alarms[0].alarm_settings["nat-eu-west-1a-packets-drop-rate"].threshold == 0.01
+    error_message = "Alarm names start with the module base name; dropped packets above 0.01 %."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        error_port_allocation = { threshold = 10 }
+        packets_drop_rate     = { enabled = false }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["nat-eu-west-1a-error-port-allocation"])
+    error_message = "A disabled alarm is dropped."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["nat-eu-west-1a-error-port-allocation"].threshold == 10 && module.alarms[0].alarm_settings["nat-eu-west-1a-error-port-allocation"].evaluation_periods == 15
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["nat-eu-west-1a-error-port-allocation"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_per_az_nat" {
+  command = plan
+
+  variables {
+    nat = { mode = "per_az" }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["nat-eu-west-1a-error-port-allocation", "nat-eu-west-1a-packets-drop-rate", "nat-eu-west-1b-error-port-allocation", "nat-eu-west-1b-packets-drop-rate", "nat-eu-west-1c-error-port-allocation", "nat-eu-west-1c-packets-drop-rate"])
+    error_message = "per_az gives each NAT gateway its own alarms, keyed by AZ."
+  }
+}
+
+run "alarms_without_nat" {
+  command = plan
+
+  variables {
+    nat = { mode = "none" }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 0
+    error_message = "Without NAT gateways there are no NAT alarms."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarms_unknown_arns"
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 2
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

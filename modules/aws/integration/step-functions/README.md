@@ -13,6 +13,8 @@ functions it calls are other modules; pass their ARNs in `lambda_function_arns`.
 - `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/aws/vendedlogs/states/<name>`
   (the `/aws/vendedlogs/` prefix keeps the CloudWatch Logs resource policy small).
 - `module.encryption` ([`core/encryption`](../../core/encryption)): AWS owned key, module key or your key.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -80,6 +82,42 @@ module "order_flow" {
 }
 ```
 
+### Built-in Alarms
+
+The `step_functions` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default, on the state machine ARN: `sfn-state-machine-executions-failed` and `sfn-state-machine-executions-timed-out`
+(critical), `sfn-state-machine-executions-aborted` and `sfn-state-machine-execution-throttled` (warning), each on a
+single occurrence in a minute. None is opt-in. Without `topic_arns` the alarms have no actions;
+`alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "order_flow" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "order-flow"
+  definition  = jsonencode({ StartAt = "Done", States = { Done = { Type = "Pass", End = true } } })
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      executions_failed   = { threshold = 2 }
+      execution_throttled = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -95,6 +133,7 @@ module "order_flow" {
 | `iam_role` | Execution role: extend it or bring your own. | `object({...})` | `{}` | No |
 | `cloudwatch_logs` | CloudWatch log group and execution log level. | `object({...})` | `{}` | No |
 | `tracing` | X-Ray tracing. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -107,3 +146,5 @@ module "order_flow" {
 | `log_group_name` | Log group name. | No |
 | `log_group_arn` | Log group ARN. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS owned key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

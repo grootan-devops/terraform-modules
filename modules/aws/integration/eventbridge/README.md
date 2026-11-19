@@ -30,6 +30,8 @@ optional bus policy and an optional customer managed key. Targets are other modu
   `aws_cloudwatch_log_delivery*` resources, only while bus logging is on.
 - `aws_cloudwatch_event_archive.this`, `aws_cloudwatch_event_bus_policy.this`: optional.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): AWS owned key, module key or your key.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 A schedules-only call sets `bus = { enabled = false }` and `scheduler = { enabled = true, schedules = {...} }`.
 
@@ -145,6 +147,47 @@ module "events_dlq" {
 }
 ```
 
+### Built-in Alarms
+
+Two presets of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) are on by default. The
+`eventbridge_rules` preset, on each rule name and its bus, adds `eventbridge-<rule key>-failed-invocations` (critical),
+`eventbridge-<rule key>-throttled-rules` and `eventbridge-<rule key>-dlq-send-failures` (critical). With
+`scheduler.enabled`, the `schedule_groups` preset, on the schedule group name, adds `scheduler-schedules-target-errors`,
+`scheduler-schedules-invocations-dropped` (critical) and `scheduler-schedules-dlq-send-failures` (critical). Each fires
+on any occurrence: in one minute, or in three minutes running for throttled rules and target errors. None is opt-in.
+Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "events" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/eventbridge?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+
+  rules = {
+    orders = { event_pattern = jsonencode({ source = ["core.orders"] }) }
+  }
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      rules     = { failed_invocations = { threshold = 2 } }
+      schedules = { target_errors = { enabled = false } }
+    }
+  }
+}
+```
+
+`overrides.rules` applies to every rule and `overrides.schedules` to the schedule group; each takes its preset's alarm
+keys and fields (`enabled`, `threshold`, `evaluation_periods`, `datapoints_to_alarm`, `period`, `severity`); a field
+left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -162,6 +205,7 @@ module "events_dlq" {
 | `scheduler` | EventBridge Scheduler: schedule group and schedules by key. | `object({...})` | `{}` | No |
 | `iam_role` | Target role: extend it or bring your own. | `object({...})` | `{}` | No |
 | `policy_statements` | Bus policy statements; resources default to the bus. | `list(object({...}))` | `[]` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -180,3 +224,5 @@ module "events_dlq" {
 | `log_group_name` | Bus log group name; null when bus logging is off. | No |
 | `log_group_arn` | Bus log group ARN; null when bus logging is off. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS owned key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

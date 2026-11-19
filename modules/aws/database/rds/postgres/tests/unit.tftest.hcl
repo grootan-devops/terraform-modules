@@ -762,3 +762,95 @@ run "rejects_subscription_without_critical_categories" {
 
   expect_failures = [var.event_subscription]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["rds-instance-cpu", "rds-instance-free-storage", "rds-instance-read-latency-p99", "rds-instance-write-latency-p99"])
+    error_message = "Default alarms: CPU, free storage and p99 read and write latency."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-orders-rds-instance-")]) && module.alarms[0].alarm_settings["rds-instance-free-storage"].threshold == 4294967296
+    error_message = "Alarm names start with the module base name; free storage alarms at 20 % of allocated storage."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command   = apply
+  state_key = "alarms"
+
+  variables {
+    storage = { allocated_storage = 100 }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        cpu              = { threshold = 70 }
+        free_storage     = { severity = "critical" }
+        freeable_memory  = { enabled = true, threshold = 268435456 }
+        read_latency_p99 = { enabled = false }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["rds-instance-cpu", "rds-instance-free-storage", "rds-instance-freeable-memory", "rds-instance-write-latency-p99"])
+    error_message = "A disabled alarm is dropped; an opt-in alarm is added."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["rds-instance-cpu"].threshold == 70 && module.alarms[0].alarm_settings["rds-instance-cpu"].evaluation_periods == 5 && module.alarms[0].alarm_settings["rds-instance-free-storage"].threshold == 21474836480
+    error_message = "Overrides change one setting; the rest keep the preset defaults and follow the storage size."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["rds-instance-free-storage"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["rds-instance-cpu"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 4
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

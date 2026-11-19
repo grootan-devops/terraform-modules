@@ -39,7 +39,7 @@ resource "aws_eks_addon" "this" {
 
   tags = merge(module.naming.tags, { Name = "${local.cluster_name}-${each.key}" })
 
-  depends_on = [aws_eks_node_group.this, aws_eks_fargate_profile.this]
+  depends_on = [aws_eks_node_group.this, aws_eks_fargate_profile.this, module.insights_log_group]
 }
 
 resource "aws_eks_pod_identity_association" "lb_controller" {

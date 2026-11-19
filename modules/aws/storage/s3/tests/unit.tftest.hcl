@@ -609,3 +609,94 @@ run "rejects_invalid_replication_storage_class" {
 
   expect_failures = [var.replication]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 0 && length(module.alarms[0].alarm_settings) == 0
+    error_message = "No default alarms: bucket size needs a threshold."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false, overrides = { bucket_size = { threshold = 1099511627776 } } }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        bucket_size = { threshold = 1099511627776 }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["s3-bucket-bucket-size"]) && alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-assets-s3-bucket-")])
+    error_message = "A threshold turns on the bucket size alarm; names start with the module base name."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["s3-bucket-bucket-size"].threshold == 1099511627776 && module.alarms[0].alarm_settings["s3-bucket-bucket-size"].period == 86400 && module.alarms[0].alarm_settings["s3-bucket-bucket-size"].evaluation_periods == 1
+    error_message = "The threshold is set; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["s3-bucket-bucket-size"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_bucket_size_disabled" {
+  command = plan
+
+  variables {
+    alarms = { overrides = { bucket_size = { threshold = 1099511627776, enabled = false } } }
+  }
+
+  assert {
+    condition     = length(output.alarm_names) == 0
+    error_message = "enabled = false wins over a threshold."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms    = { create = true }
+    alarms = { overrides = { bucket_size = { threshold = 1099511627776 } } }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && sort(keys(output.alarm_names)) == tolist(["s3-bucket-bucket-size"])
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

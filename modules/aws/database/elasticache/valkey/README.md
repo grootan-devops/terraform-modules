@@ -82,6 +82,31 @@ module "valkey" {
 }
 ```
 
+### Alarms
+
+This module has no built-in alarms. The `elasticache_clusters` preset of
+[`observability/cloudwatch-alarms`](../../../observability/cloudwatch-alarms) keys its alarms by member cluster ID, and
+`member_clusters` is only known after apply (and changes after a failover or a new replica count). Once the cache
+exists, pass the IDs to `cloudwatch-alarms` directly:
+
+```hcl
+module "valkey_alarms" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/cloudwatch-alarms?ref=<version>"
+
+  application   = "core"
+  environment   = "prod"
+  name          = "sessions"
+  notifications = { enabled = true, topic_arns = module.alarm_routing.topic_arns }
+
+  elasticache_clusters = {
+    sessions = {
+      replication_group_id = module.valkey.id
+      cache_cluster_ids    = ["core-prod-sessions-001", "core-prod-sessions-002", "core-prod-sessions-003"]
+    }
+  }
+}
+```
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |

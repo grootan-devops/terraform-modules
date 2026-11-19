@@ -42,3 +42,13 @@ output "log_group_name" {
   description = "Log group name; null when not created."
   value       = try(module.log_group[0].name, null)
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}
