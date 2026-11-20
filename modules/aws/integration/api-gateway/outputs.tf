@@ -57,3 +57,13 @@ output "kms_key_arn" {
   description = "Log key ARN in use; null for service encryption."
   value       = local.kms_key_arn
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}

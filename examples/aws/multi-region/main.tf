@@ -4,6 +4,8 @@ module "fn_eu" {
   application = "shop"
   environment = "prod"
   name        = "orders"
+
+  alarms = { topic_arns = module.alarm_routing.topic_arns["eu-west-1"] }
 }
 
 module "fn_us" {
@@ -15,6 +17,8 @@ module "fn_us" {
   application = "shop"
   environment = "prod"
   name        = "orders"
+
+  alarms = { topic_arns = module.alarm_routing.topic_arns["us-east-1"] }
 }
 
 module "bucket_eu" {
@@ -23,6 +27,8 @@ module "bucket_eu" {
   application = "shop"
   environment = "prod"
   name        = "assets"
+
+  alarms = { topic_arns = module.alarm_routing.topic_arns["eu-west-1"] }
 }
 
 module "bucket_us" {
@@ -34,4 +40,6 @@ module "bucket_us" {
   application = "shop"
   environment = "prod"
   name        = "assets"
+
+  alarms = { topic_arns = module.alarm_routing.topic_arns["us-east-1"] }
 }

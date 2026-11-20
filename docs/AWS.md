@@ -93,7 +93,7 @@ others.
 | Module | Scope | What it creates |
 | --- | --- | --- |
 | [`observability/alarm-routing`](../modules/aws/observability/alarm-routing) | `account` | The notification side of CloudWatch alarms for one account: one KMS-encrypted SNS topic per severity (`critical`, `warning`, `info`) in every Region of `regions`, a topic policy that lets only this account's alarms (and named AWS services) publish, and email and HTTPS subscriptions. |
-| [`observability/cloudwatch-alarms`](../modules/aws/observability/cloudwatch-alarms) | `workload` | CloudWatch metric alarms and CloudWatch Logs metric filters for the resources the other modules create. |
+| [`observability/cloudwatch-alarms`](../modules/aws/observability/cloudwatch-alarms) | `workload` | CloudWatch metric alarms and CloudWatch Logs metric filters: the presets every service module builds in through its `alarms` input, plus custom alarms, log metric filters and the CIS filters. |
 | [`observability/log-group`](../modules/aws/observability/log-group) | `workload` | A CloudWatch Logs log group with retention, encryption, class and deletion protection. |
 
 ### Governance
@@ -107,8 +107,8 @@ others.
 
 ## How the modules connect
 
-A module creates its own role, security group, log group and optional key. Everything else comes in as an ID or ARN
-from another module's outputs:
+A module creates its own role, security group, log group, optional key and built-in CloudWatch alarms. Everything
+else comes in as an ID or ARN from another module's outputs:
 
 | From | Output | Into |
 | --- | --- | --- |
@@ -128,8 +128,9 @@ from another module's outputs:
 | `database/rds/postgres` | `id`, `security_group_id`, `master_user_secret_arn` | rds/proxy `target`, ecs service `secrets` |
 | `security/iam-role` | `arn` | eks `pod_identities[*].role_arn`, any `iam_role = { create = false, arn = ... }` |
 | `security/kms` | `arn` | any `kms = { key_id = ... }` |
+| `observability/alarm-routing` | `topic_arns["<region>"]` | every module's `alarms.topic_arns` (the module's Region; `us-east-1` for cloudfront and `CLOUDFRONT`-scope waf) |
 | `observability/alarm-routing` | `topic_arns` | cloudwatch-alarms `notifications.topic_arns`, cost-guardrails `notifications.sns.topic_arn` (with `budgets.amazonaws.com` and `costalerts.amazonaws.com` in `additional_publisher_service_principals`), rds/postgres `event_subscription.sns_topic_arn` (with `events.rds.amazonaws.com`) |
-| any module | `name`, `id`, `arn_suffix` | cloudwatch-alarms presets |
+| `database/elasticache/valkey` and any module | `id`, `member_clusters`, `name`, `arn_suffix` | cloudwatch-alarms presets and custom alarms, for alarms that are not built in |
 
 ## Examples
 
@@ -138,10 +139,10 @@ Root configurations under [`examples/aws/`](../examples/aws/) wire the modules t
 
 | Example | Modules |
 | --- | --- |
-| [`serverless`](../examples/aws/serverless) | cognito, dynamodb, sqs, two lambdas, eventbridge with a nightly schedule, api-gateway, http-api with a Cognito JWT authorizer |
-| [`web-service`](../examples/aws/web-service) | vpc, log-bucket, route53, acm, alb, ecs, rds/postgres, nlb in front of the alb with a PrivateLink endpoint service |
-| [`eks-platform`](../examples/aws/eks-platform) | vpc, ecr, s3, iam-role, eks with node groups, access entries and Pod Identity |
-| [`multi-region`](../examples/aws/multi-region) | the same lambda and s3 in two Regions, proving names never collide |
+| [`serverless`](../examples/aws/serverless) | cognito, dynamodb, sqs, two lambdas, eventbridge with a nightly schedule, api-gateway, http-api with a Cognito JWT authorizer; every built-in alarm routed to alarm-routing |
+| [`web-service`](../examples/aws/web-service) | vpc, log-bucket, route53, acm, alb, ecs, rds/postgres, nlb in front of the alb with a PrivateLink endpoint service; built-in alarms routed to alarm-routing |
+| [`eks-platform`](../examples/aws/eks-platform) | vpc, ecr, s3, iam-role, eks with node groups, access entries and Pod Identity; node group and NAT alarms routed to alarm-routing |
+| [`multi-region`](../examples/aws/multi-region) | the same lambda and s3 in two Regions, proving names never collide; alarm-routing topics in both Regions, each module routed to its own |
 | [`security-baseline`](../examples/aws/security-baseline) | organizations, account-baseline, cloudtrail, config, security-hub, guardduty, alarm-routing, cloudwatch-alarms, cost-guardrails |
 
 Account and organization modules run in a fixed order across the management, security tooling and log archive

@@ -33,4 +33,14 @@ run "plans_with_unknown_ids" {
     condition     = output.cluster_name == "shop-dev" && output.repository_name == "shop-dev-web" && output.assets_bucket == "shop-dev-assets-123456789012-eu-west-1"
     error_message = "Names must follow the standard per namespace."
   }
+
+  assert {
+    condition     = sort(keys(module.cluster.alarm_names)) == tolist(["asg-general-cpu", "asg-general-status-check-failed"])
+    error_message = "Node groups get their alarms by default; cluster alarms wait for Container Insights."
+  }
+
+  assert {
+    condition     = length(module.vpc.alarm_names) == 6 && length(module.assets.alarm_names) == 0
+    error_message = "One NAT gateway per AZ gets two alarms each; the bucket size alarm needs a threshold."
+  }
 }

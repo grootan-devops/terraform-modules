@@ -5,6 +5,10 @@ action off unless the caller opts in through var.notifications; the only action 
 caller-supplied SNS topic ARN. Destinations live in the alarm-routing module, which creates
 KMS-encrypted SNS topics, topic policies and email/HTTPS subscriptions and nothing else; its only
 child modules are the core building blocks, and every topic takes the module key (never aws/sns).
+
+Service modules build their alarms in: each covered module composes cloudwatch-alarms behind the
+standard `alarms` input (enabled, topic_arns by severity, overrides) and passes only its own preset
+entries. Override keys are the preset's alarm keys without defaults, so thresholds live in one place.
 """
 
 import re
@@ -15,6 +19,34 @@ ROOT = Path(__file__).resolve().parents[1]
 OBSERVABILITY = ROOT / "modules" / "aws" / "observability"
 ALARMS = OBSERVABILITY / "cloudwatch-alarms"
 ROUTING = OBSERVABILITY / "alarm-routing"
+AWS = ROOT / "modules" / "aws"
+
+# Service module -> preset input per overrides part (None: overrides is the preset's alarms object).
+COVERED = {
+    "compute/lambda": {None: "lambda_functions"},
+    "compute/ecs": {None: "ecs_services"},
+    "compute/eks": {"cluster": "eks_clusters", "node_groups": "auto_scaling_groups"},
+    "database/rds/postgres": {None: "rds_instances"},
+    "database/rds/proxy": {None: "rds_proxies"},
+    "database/dynamodb": {None: "dynamodb_tables"},
+    "integration/sqs": {None: "sqs_queues"},
+    "integration/eventbridge": {"rules": "eventbridge_rules", "schedules": "schedule_groups"},
+    "integration/step-functions": {None: "step_functions"},
+    "integration/api-gateway": {None: "api_gateways"},
+    "integration/http-api": {None: "http_apis"},
+    "network/alb": {None: "albs"},
+    "network/nlb": {None: "nlbs"},
+    "network/cloudfront": {None: "cloudfront_distributions"},
+    "network/waf": {None: "waf_web_acls"},
+    "network/vpc": {None: "nat_gateways"},
+    "storage/efs": {None: "efs_file_systems"},
+    "storage/s3": {None: "s3_buckets"},
+}
+# Service modules whose preset keys alarms by values known only after apply.
+SKIPPED = {
+    "database/elasticache/valkey": "elasticache_clusters keys alarms by member cluster ID, computed at apply",
+}
+ALARM_KEY = re.compile(r"^\s*([a-z0-9_]+)\s*=\s*optional\(object\(\{", re.M)
 
 RESOURCE = re.compile(r'^\s*resource\s+"([a-z0-9_]+)"\s+"[^"]+"\s*\{', re.M)
 MODULE_SOURCE = re.compile(r'^module\s+"[^"]+"\s*\{[^}]*?^\s*source\s*=\s*"([^"]+)"', re.M | re.S)
@@ -69,11 +101,24 @@ def sources(module):
     return {p: p.read_text() for p in sorted(module.glob("*.tf"))}
 
 
+def object_body(text, attribute):
+    """Return the body of `attribute = optional(object({ ... }` inside text."""
+    match = re.search(rf"^\s*{attribute}\s*=\s*optional\(object\(\{{", text, re.M)
+    return None if match is None else block_after(text, match.end())
+
+
+def preset_alarm_keys(preset):
+    variables = (ALARMS / "variables.tf").read_text()
+    body = next(blocks(variables, rf'^variable\s+"{preset}"\s*\{{'))
+    return set(ALARM_KEY.findall(object_body(body, "alarms")))
+
+
 def published_documents():
     documents = []
     for module in (ALARMS, ROUTING):
         documents.append(module / "README.md")
         documents.extend(sorted((module / "tests").glob("*.tftest.hcl")))
+    documents.extend(AWS / m / "README.md" for m in COVERED)
     return documents
 
 
@@ -181,6 +226,59 @@ class AlarmRoutingContractTests(unittest.TestCase):
     def test_webhook_urls_are_sensitive(self):
         body = next(blocks(self.text, r'^variable\s+"https_subscriptions"\s*\{'))
         self.assertRegex(body, re.compile(r"^\s*sensitive\s*=\s*true\s*$", re.M))
+
+
+class BuiltInAlarmsContractTests(unittest.TestCase):
+    def test_covered_modules_compose_cloudwatch_alarms(self):
+        for rel, parts in COVERED.items():
+            text = "\n".join(sources(AWS / rel).values())
+            with self.subTest(module=rel):
+                body = next(blocks(text, r'^module\s+"alarms"\s*\{'), None)
+                self.assertIsNotNone(body, 'module "alarms" missing')
+                self.assertRegex(body, r'^\s*source\s*=\s*"(\.\./)+observability/cloudwatch-alarms"\s*$'.replace("^", "(?m)^", 1))
+                self.assertRegex(body, re.compile(r"^\s*count\s*=\s*var\.alarms\.enabled \? 1 : 0\s*$", re.M))
+                self.assertRegex(body, re.compile(r"^\s*enabled\s*=\s*length\(var\.alarms\.topic_arns\) > 0\s*$", re.M))
+                self.assertRegex(body, re.compile(r"^\s*topic_arns\s*=\s*\{ \([^)]+\) = var\.alarms\.topic_arns \}\s*$", re.M))
+                self.assertNotIn("arn:", body, "no literal ARN in the alarms call")
+                for part, preset in parts.items():
+                    self.assertRegex(body, re.compile(rf"^\s*{preset}\s*=", re.M), f"{preset} not passed")
+                    overrides = "var.alarms.overrides" + ("" if part is None else f".{part}")
+                    self.assertRegex(body, re.compile(rf"\balarms\s*=\s*{re.escape(overrides)}\s*$", re.M), f"{preset} must take {overrides}")
+                self.assertNotRegex(text, r'resource\s+"aws_cloudwatch_metric_alarm"', "alarms come from cloudwatch-alarms only")
+                for output in ("alarm_arns", "alarm_names"):
+                    self.assertRegex(text, rf'output\s+"{output}"\s*\{{', f"output {output} missing")
+
+    def test_alarms_input_is_standard(self):
+        for rel, parts in COVERED.items():
+            text = (AWS / rel / "variables.tf").read_text()
+            with self.subTest(module=rel):
+                body = next(blocks(text, r'^variable\s+"alarms"\s*\{'), None)
+                self.assertIsNotNone(body, 'variable "alarms" missing')
+                self.assertRegex(body, re.compile(r"^\s*enabled\s*=\s*optional\(bool, true\)\s*$", re.M))
+                self.assertRegex(body, re.compile(r"^\s*topic_arns\s*=\s*optional\(map\(string\), \{\}\)\s*$", re.M))
+                overrides = object_body(body, "overrides")
+                self.assertIsNotNone(overrides, "alarms.overrides missing")
+                self.assertNotRegex(overrides, r"optional\((bool|number|string)\s*,", "overrides carry no defaults; presets own them")
+                for part, preset in parts.items():
+                    scope = overrides if part is None else object_body(overrides, part)
+                    self.assertIsNotNone(scope, f"alarms.overrides.{part} missing")
+                    self.assertEqual(set(ALARM_KEY.findall(scope)) - set(parts if part is None else []), preset_alarm_keys(preset))
+
+    def test_skipped_modules_document_the_standalone_path(self):
+        for rel, reason in SKIPPED.items():
+            text = "\n".join(sources(AWS / rel).values())
+            with self.subTest(module=rel, reason=reason):
+                self.assertNotRegex(text, r'module\s+"alarms"')
+                self.assertIn("observability/cloudwatch-alarms", (AWS / rel / "README.md").read_text())
+
+    def test_no_other_module_builds_alarms_in(self):
+        for path in sorted(AWS.rglob("*.tf")):
+            rel = path.parent.relative_to(AWS).as_posix()
+            if rel.startswith("observability/") or "/tests" in rel:
+                continue
+            with self.subTest(file=path.relative_to(ROOT).as_posix()):
+                if re.search(r'^module\s+"alarms"', path.read_text(), re.M):
+                    self.assertIn(rel, COVERED)
 
 
 class PublishedExamplesTests(unittest.TestCase):

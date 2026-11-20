@@ -68,3 +68,18 @@ run "same_names_in_two_regions_do_not_collide" {
     error_message = "Globally named buckets must differ by Region."
   }
 }
+
+run "alarms_route_to_their_own_region" {
+  command = plan
+
+  assert {
+    condition     = module.fn_eu.alarm_names == module.fn_us.alarm_names && length(module.fn_eu.alarm_names) == 3
+    error_message = "Alarm names repeat across Regions; alarms are regional, so they do not collide."
+  }
+
+  assert {
+    condition     = sort(keys(module.alarm_routing.topic_arns)) == tolist(["eu-west-1", "us-east-1"])
+    error_message = "alarm-routing creates topics in both Regions, one map per Region for the modules there."
+  }
+}
+

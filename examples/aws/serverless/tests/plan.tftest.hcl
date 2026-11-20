@@ -49,4 +49,14 @@ run "plans_with_unknown_arns" {
     condition     = module.http_api.name == "shop-dev-public" && module.http_api.stage_name == "$default"
     error_message = "The HTTP API serves the same function behind the Cognito JWT authorizer."
   }
+
+  assert {
+    condition     = sort(keys(module.worker_fn.alarm_names)) == tolist(["lambda-function-duration-p99", "lambda-function-error-rate", "lambda-function-iterator-age", "lambda-function-throttles"]) && length(module.api_fn.alarm_names) == 3
+    error_message = "Each function gets its built-in alarms; the stream consumer also watches iterator age."
+  }
+
+  assert {
+    condition     = contains(keys(module.orders_queue.alarm_names), "sqs-queue-dlq-messages-visible") && length(module.events.alarm_names) == 6 && length(module.api.alarm_names) == 4 && length(module.http_api.alarm_names) == 2 && length(module.orders_table.alarm_names) == 3
+    error_message = "Queue, rule, schedule group, both APIs and the table get their built-in alarms without hand wiring."
+  }
 }

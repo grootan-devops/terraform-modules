@@ -38,4 +38,14 @@ run "plans_with_unknown_ids" {
     condition     = output.nlb_name == "shop-dev-partners-nlb" && output.nlb_name != output.alb_name
     error_message = "The NLB never shares a name with the ALB."
   }
+
+  assert {
+    condition     = contains(keys(module.alb.alarm_names), "alb-lb-web-unhealthy-hosts") && contains(keys(module.private_link.alarm_names), "nlb-lb-alb-no-healthy-hosts") && contains(keys(module.db.alarm_names), "rds-instance-free-storage") && contains(keys(module.app.alarm_names), "ecs-web-running-tasks")
+    error_message = "Load balancers, database and service get their built-in alarms, routed without hand wiring."
+  }
+
+  assert {
+    condition     = length([for k in keys(module.vpc.alarm_names) : k if startswith(k, "nat-")]) == 2
+    error_message = "The single NAT gateway gets its port allocation and packet drop alarms."
+  }
 }

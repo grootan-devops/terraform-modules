@@ -19,6 +19,8 @@ extra read/write endpoints and a pre-created log group.
 - `aws_db_proxy_endpoint.this`: `endpoints`, `<proxy>-<key>`, read/write.
 - `module.log_group` ([`observability/log-group`](../../../observability/log-group)): opt-in
   `/aws/rds/proxy/<proxy>`, created before the proxy.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../../observability/cloudwatch-alarms)): built-in alarms, on
+  by default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -107,6 +109,44 @@ module "proxy" {
 }
 ```
 
+### Built-in Alarms
+
+The `rds_proxies` preset of [`observability/cloudwatch-alarms`](../../../observability/cloudwatch-alarms) is on by
+default: `rdsproxy-proxy-connection-setup-failures` and `rdsproxy-proxy-client-auth-failures` (critical, any failure)
+and `rdsproxy-proxy-borrowed-connections` (pool saturation above 80 %). `rdsproxy-proxy-client-connections` is opt-in
+and needs a `threshold`. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "proxy" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+  vpc_id      = module.vpc.vpc_id
+  subnet_ids  = module.vpc.private_subnet_ids
+  target      = { db_instance_identifier = module.db.id, security_group_ids = [module.db.security_group_id] }
+  auth        = [{ secret_arn = module.db.master_user_secret_arn }]
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      borrowed_connections = { threshold = 90 }
+      client_auth_failures = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -128,6 +168,7 @@ module "proxy" {
 | `iam_role` | Proxy role: extend it or bring your own. | `object({...})` | `{}` | No |
 | `cloudwatch_logs` | Pre-created proxy log group. | `object({...})` | `{}` | No |
 | `endpoints` | Extra read/write endpoints by key; empty lists use the proxy subnets and groups. | `map(object({...}))` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -142,3 +183,5 @@ module "proxy" {
 | `role_arn` | Proxy role ARN. | No |
 | `role_name` | Proxy role name; null for a role brought by the caller. | No |
 | `log_group_name` | Log group name; null when not created. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

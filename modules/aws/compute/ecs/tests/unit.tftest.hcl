@@ -700,3 +700,122 @@ run "rejects_task_role_without_arn" {
 
   expect_failures = [var.services]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["ecs-api-cpu", "ecs-api-memory", "ecs-api-running-tasks"])
+    error_message = "Default alarms: CPU, memory and running tasks per service."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-ecs-api-")]) && module.alarms[0].alarm_settings["ecs-api-running-tasks"].threshold == 0 && module.alarms[0].alarm_settings["ecs-api-cpu"].threshold == 80
+    error_message = "Alarm names start with the module base name; preset thresholds apply."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command   = apply
+  state_key = "alarms"
+
+  variables {
+    services = {
+      api    = { image = "nginx:1.27", container_port = 8080 }
+      worker = { image = "nginx:1.27", container_port = 9090 }
+    }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        cpu    = { threshold = 70 }
+        memory = { enabled = false }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["ecs-api-cpu", "ecs-api-running-tasks", "ecs-worker-cpu", "ecs-worker-running-tasks"])
+    error_message = "One alarm set per service; a disabled alarm is dropped."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["ecs-worker-cpu"].threshold == 70 && module.alarms[0].alarm_settings["ecs-worker-cpu"].evaluation_periods == 5 && module.alarms[0].alarm_settings["ecs-api-running-tasks"].threshold == 0
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["ecs-api-running-tasks"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["ecs-api-cpu"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 3
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "alarms_without_container_insights" {
+  command = plan
+
+  variables {
+    container_insights = "disabled"
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["ecs-api-cpu", "ecs-api-memory"])
+    error_message = "The running tasks alarm needs Container Insights."
+  }
+}
+
+run "alarms_without_services" {
+  command = plan
+
+  variables {
+    services = {}
+  }
+
+  assert {
+    condition     = length(output.alarm_names) == 0
+    error_message = "A cluster without services has no alarms."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

@@ -796,3 +796,92 @@ run "rejects_invalid_private_link_enforcement" {
 
   expect_failures = [var.enforce_security_group_inbound_rules_on_private_link_traffic]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["nlb-lb-app-no-healthy-hosts", "nlb-lb-app-unhealthy-hosts"])
+    error_message = "Default alarms: unhealthy hosts and no healthy hosts per target group."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-nlb-lb-")]) && module.alarms[0].alarm_settings["nlb-lb-app-no-healthy-hosts"].threshold == 1
+    error_message = "Alarm names start with the module base name; no healthy hosts fires below one."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    target_groups = {
+      app = { port = 8443 }
+      dns = { port = 53, protocol = "UDP", health_check = { port = "8080" } }
+    }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        unhealthy_hosts  = { threshold = 1, severity = "warning" }
+        no_healthy_hosts = { evaluation_periods = 3 }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["nlb-lb-app-no-healthy-hosts", "nlb-lb-app-unhealthy-hosts", "nlb-lb-dns-no-healthy-hosts", "nlb-lb-dns-unhealthy-hosts"])
+    error_message = "Each target group gets both host alarms."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["nlb-lb-dns-unhealthy-hosts"].threshold == 1 && module.alarms[0].alarm_settings["nlb-lb-dns-unhealthy-hosts"].evaluation_periods == 3 && module.alarms[0].alarm_settings["nlb-lb-app-no-healthy-hosts"].evaluation_periods == 3 && module.alarms[0].alarm_settings["nlb-lb-app-no-healthy-hosts"].datapoints_to_alarm == 2
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["nlb-lb-app-unhealthy-hosts"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning" && module.alarms[0].alarm_routes["nlb-lb-app-no-healthy-hosts"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarms_unknown_arns"
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 2
+    error_message = "Alarm keys and names must be known at plan before the ARN suffixes."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

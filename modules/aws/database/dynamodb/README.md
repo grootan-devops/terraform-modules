@@ -15,6 +15,8 @@ global table replicas with a strong-consistency witness, Contributor Insights, a
 - `aws_appautoscaling_target.this`, `aws_appautoscaling_policy.this`: `PROVISIONED` tables only, read and write
   capacity of the table and every global secondary index (keys `table-read`, `index-<name>-write`...).
 - `aws_dynamodb_contributor_insights.this`: opt-in, on the table and the listed indexes.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -92,6 +94,42 @@ module "orders_consumer" {
 }
 ```
 
+### Built-in Alarms
+
+The `dynamodb_tables` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default: `dynamodb-table-read-throttles`, `dynamodb-table-write-throttles` and `dynamodb-table-system-errors`
+(critical), plus `dynamodb-table-gsi-<index>-read-throttles` and `-write-throttles` for every global secondary index.
+`consumed_read_capacity` and `consumed_write_capacity` are opt-in and need a threshold. Without `topic_arns` the alarms
+have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "dynamodb" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/dynamodb?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+  hash_key    = "order_id"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      system_errors   = { threshold = 5 }
+      write_throttles = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -118,6 +156,7 @@ module "orders_consumer" {
 | `replicas` | Global table replicas by key: Region, key ARN, consistency mode. | `map(object({...}))` | `{}` | No |
 | `witness_region` | Witness Region for strong consistency. | `string` | `null` | No |
 | `contributor_insights` | Contributor Insights on the table and listed indexes. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -129,3 +168,5 @@ module "orders_consumer" {
 | `stream_arn` | Stream ARN; null without a stream. | No |
 | `global_secondary_index_names` | Global secondary index names (GlobalSecondaryIndexName dimension). | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

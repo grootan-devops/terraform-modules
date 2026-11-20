@@ -343,3 +343,91 @@ run "rejects_logging_off" {
 
   expect_failures = [var.cloudwatch_logs]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["sfn-state-machine-execution-throttled", "sfn-state-machine-executions-aborted", "sfn-state-machine-executions-failed", "sfn-state-machine-executions-timed-out"])
+    error_message = "Default alarms: failed, timed out, aborted and throttled executions."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-orders-sfn-state-machine-")]) && module.alarms[0].alarm_routes["sfn-state-machine-executions-failed"].severity == "critical"
+    error_message = "Alarm names start with the module base name; failed executions are critical."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        executions_failed   = { threshold = 2 }
+        execution_throttled = { enabled = false }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["sfn-state-machine-executions-aborted", "sfn-state-machine-executions-failed", "sfn-state-machine-executions-timed-out"])
+    error_message = "A disabled alarm is dropped."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["sfn-state-machine-executions-failed"].threshold == 2 && module.alarms[0].alarm_settings["sfn-state-machine-executions-failed"].evaluation_periods == 1 && module.alarms[0].alarm_settings["sfn-state-machine-executions-timed-out"].threshold == 0
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["sfn-state-machine-executions-failed"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["sfn-state-machine-executions-aborted"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 4
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

@@ -17,6 +17,8 @@ logging with sensitive headers redacted. The protected resource associates itsel
 - `module.log_group` ([`observability/log-group`](../../observability/log-group)): `aws-waf-logs-<base>` (WAF requires
   the prefix); `aws_wafv2_web_acl_logging_configuration.this` sends logs to it.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): the log key, in the web ACL's Region.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, off
+  until a threshold is set; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -80,6 +82,40 @@ module "cloudfront" {
 }
 ```
 
+### Built-in Alarms
+
+The `waf_web_acls` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) has one
+alarm, `waf-acl-blocked-requests` (warning, Sum of `BlockedRequests` over 5 minutes on all rules). Normal blocked
+traffic differs per workload, so it has no default threshold and is on only when `blocked_requests.threshold` is set:
+the default call creates no alarms. The alarm lives in the web ACL's Region, us-east-1 for `scope = "CLOUDFRONT"`;
+pass topics from that Region (`module.alarm_routing.topic_arns["us-east-1"]` for CloudFront). Without `topic_arns`
+the alarm has no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "waf" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/waf?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      blocked_requests = { threshold = 1000, severity = "critical" }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -101,6 +137,7 @@ module "cloudfront" {
 | `redacted_fields` | Request fields redacted in logs. | `object({...})` | `{}` | No |
 | `cloudwatch_logs` | WAF log group (aws-waf-logs- prefix). | `object({...})` | `{}` | No |
 | `kms` | Log encryption: {} service encryption, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -114,3 +151,5 @@ module "cloudfront" {
 | `log_group_name` | Log group name. | No |
 | `log_group_arn` | Log group ARN. | No |
 | `kms_key_arn` | Log key ARN; null for service encryption. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

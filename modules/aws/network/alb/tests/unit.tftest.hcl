@@ -502,3 +502,93 @@ run "rejects_monitor_desync_mode" {
 
   expect_failures = [var.desync_mitigation_mode]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["alb-lb-app-unhealthy-hosts", "alb-lb-elb-5xx-count", "alb-lb-rejected-connections", "alb-lb-target-5xx-rate", "alb-lb-target-response-time-p99"])
+    error_message = "Default alarms: target and ELB 5XX, p99 response time, rejected connections, unhealthy hosts per target group."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-alb-lb-")]) && module.alarms[0].alarm_settings["alb-lb-target-response-time-p99"].threshold == 48
+    error_message = "Alarm names start with the module base name; p99 response time alarms at 80 % of the idle timeout."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    idle_timeout = 120
+    target_groups = {
+      app = { port = 8080 }
+      api = { port = 9090 }
+    }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        target_5xx_rate      = { threshold = 2 }
+        rejected_connections = { enabled = false }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["alb-lb-api-unhealthy-hosts", "alb-lb-app-unhealthy-hosts", "alb-lb-elb-5xx-count", "alb-lb-target-5xx-rate", "alb-lb-target-response-time-p99"])
+    error_message = "A disabled alarm is dropped; each target group gets an unhealthy hosts alarm."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["alb-lb-target-5xx-rate"].threshold == 2 && module.alarms[0].alarm_settings["alb-lb-target-5xx-rate"].evaluation_periods == 3 && module.alarms[0].alarm_settings["alb-lb-target-response-time-p99"].threshold == 96
+    error_message = "Overrides change one setting; the rest keep the preset defaults and follow the idle timeout."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["alb-lb-target-5xx-rate"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["alb-lb-target-response-time-p99"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarms_unknown_arns"
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 5
+    error_message = "Alarm keys and names must be known at plan before the ARN suffixes."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

@@ -57,3 +57,13 @@ output "function_url" {
   description = "Function URL; null when disabled."
   value       = try(aws_lambda_function_url.this[0].function_url, null)
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}

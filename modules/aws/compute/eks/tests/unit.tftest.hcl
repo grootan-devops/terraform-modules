@@ -733,3 +733,179 @@ run "rejects_pod_identity_with_role_and_statements" {
 
   expect_failures = [var.pod_identities]
 }
+
+run "container_insights_off_by_default" {
+  command = plan
+
+  variables {
+    node_groups = { general = { instance_types = ["m7i.large"] } }
+  }
+
+  assert {
+    condition     = !contains(keys(aws_eks_addon.this), "amazon-cloudwatch-observability") && !contains(keys(module.addon_role), "cloudwatch-agent") && length(module.insights_log_group) == 0
+    error_message = "No CloudWatch Observability add-on, agent role or agent log groups by default."
+  }
+
+  assert {
+    condition     = length([for k in keys(output.alarm_names) : k if startswith(k, "eks-")]) == 0
+    error_message = "Cluster alarms need Container Insights."
+  }
+}
+
+run "container_insights" {
+  command = plan
+
+  variables {
+    container_insights = { enabled = true }
+    addons             = { versions = { amazon-cloudwatch-observability = "v4.4.0-eksbuild.1" } }
+  }
+
+  assert {
+    condition     = aws_eks_addon.this["amazon-cloudwatch-observability"].addon_version == "v4.4.0-eksbuild.1" && [for a in aws_eks_addon.this["amazon-cloudwatch-observability"].pod_identity_association : a.service_account] == ["cloudwatch-agent"]
+    error_message = "The CloudWatch Observability add-on runs after the nodes with its own Pod Identity role."
+  }
+
+  assert {
+    condition     = module.addon_role["cloudwatch-agent"].name == "core-prod-cloudwatch-agent-eu-west-1" && local.addon_roles["cloudwatch-agent"] == ["arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"] && jsondecode(module.addon_role["cloudwatch-agent"].trust_policy_json).Statement[0].Principal.Service == ["pods.eks.amazonaws.com"]
+    error_message = "The agent role has CloudWatchAgentServerPolicy and trusts Pod Identity."
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["eks-cluster-failed-nodes", "eks-cluster-node-cpu", "eks-cluster-node-memory"])
+    error_message = "Container Insights turns the cluster alarms on."
+  }
+
+  assert {
+    condition     = sort([for k, g in module.insights_log_group : g.name]) == tolist(["/aws/containerinsights/core-prod/application", "/aws/containerinsights/core-prod/dataplane", "/aws/containerinsights/core-prod/host", "/aws/containerinsights/core-prod/performance"]) && alltrue([for k, g in module.insights_log_group : g.retention_in_days == 365])
+    error_message = "The agent's log groups exist before it runs, with 365-day retention (CloudWatch.16)."
+  }
+}
+
+run "container_insights_logs_use_the_module_key" {
+  command = apply
+
+  variables {
+    container_insights = { enabled = true }
+    kms                = { create = true }
+  }
+
+  assert {
+    condition     = alltrue([for k, g in module.insights_log_group : g.kms_key_arn == module.encryption.key_arn])
+    error_message = "Container Insights log groups use the module key."
+  }
+
+  assert {
+    condition     = contains(flatten([for s in local.kms_service_statements : s.conditions[0].values if s.sid == "AllowCloudWatchLogs"]), "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/containerinsights/core-prod/performance")
+    error_message = "The key lets CloudWatch Logs encrypt the Container Insights log groups only."
+  }
+}
+
+run "alarms_by_default" {
+  command = plan
+
+  variables {
+    node_groups = { general = { instance_types = ["m7i.large"] } }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["asg-general-cpu", "asg-general-status-check-failed"])
+    error_message = "Default alarms: CPU and status checks per node group."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-asg-general-")]) && module.alarms[0].alarm_settings["asg-general-cpu"].threshold == 80 && module.alarms[0].alarm_settings["asg-general-status-check-failed"].threshold == 0
+    error_message = "Alarm names start with the module base name; preset thresholds apply."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    container_insights = { enabled = true }
+    node_groups        = { general = { instance_types = ["m7i.large"] } }
+    alarms             = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command   = apply
+  state_key = "alarms"
+
+  variables {
+    container_insights = { enabled = true }
+    node_groups        = { general = { instance_types = ["m7i.large"] } }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        cluster     = { node_cpu = { threshold = 90 } }
+        node_groups = { status_check_failed = { enabled = false } }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["asg-general-cpu", "eks-cluster-failed-nodes", "eks-cluster-node-cpu", "eks-cluster-node-memory"])
+    error_message = "Cluster alarms with Container Insights; a disabled alarm is dropped."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["eks-cluster-node-cpu"].threshold == 90 && module.alarms[0].alarm_settings["eks-cluster-node-cpu"].evaluation_periods == 5 && module.alarms[0].alarm_settings["eks-cluster-node-memory"].threshold == 80
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["eks-cluster-failed-nodes"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["asg-general-cpu"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms                = { create = true }
+    container_insights = { enabled = true }
+    node_groups        = { general = { instance_types = ["m7i.large"] } }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 5
+    error_message = "Alarm keys and names must be known at plan with a module key and unknown ASG names."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}
+
+run "rejects_container_insights_without_addons" {
+  command = plan
+
+  variables {
+    addons             = { enabled = false }
+    container_insights = { enabled = true }
+  }
+
+  expect_failures = [var.container_insights]
+}

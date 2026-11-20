@@ -438,3 +438,117 @@ run "rejects_unknown_publisher" {
 
   expect_failures = [var.allowed_publishers]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["sqs-queue-dlq-messages-visible"])
+    error_message = "Default alarms: messages in the dead-letter queue."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-orders-sqs-queue-")]) && module.alarms[0].alarm_settings["sqs-queue-dlq-messages-visible"].threshold == 0 && module.alarms[0].alarm_routes["sqs-queue-dlq-messages-visible"].severity == "critical"
+    error_message = "Alarm names start with the module base name; any dead-lettered message is critical."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        age_of_oldest_message = { threshold = 600 }
+        messages_visible      = { enabled = true, threshold = 1000, severity = "info" }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["sqs-queue-age-of-oldest-message", "sqs-queue-dlq-messages-visible", "sqs-queue-messages-visible"])
+    error_message = "A threshold turns on the age alarm; an opt-in alarm is added."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["sqs-queue-age-of-oldest-message"].threshold == 600 && module.alarms[0].alarm_settings["sqs-queue-age-of-oldest-message"].evaluation_periods == 15 && module.alarms[0].alarm_settings["sqs-queue-messages-visible"].threshold == 1000
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["sqs-queue-dlq-messages-visible"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["sqs-queue-age-of-oldest-message"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning" && module.alarms[0].alarm_routes["sqs-queue-messages-visible"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_none_without_dlq" {
+  command = plan
+
+  variables {
+    dead_letter_queue = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 0
+    error_message = "Without a dead-letter queue there is no default alarm."
+  }
+}
+
+run "alarms_age_with_threshold" {
+  command = plan
+
+  variables {
+    alarms = { overrides = { age_of_oldest_message = { threshold = 300 } } }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["sqs-queue-age-of-oldest-message", "sqs-queue-dlq-messages-visible"]) && module.alarms[0].alarm_settings["sqs-queue-age-of-oldest-message"].threshold == 300
+    error_message = "A threshold turns on the age of oldest message alarm."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 1
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

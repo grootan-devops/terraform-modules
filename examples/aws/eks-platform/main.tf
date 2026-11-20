@@ -5,6 +5,8 @@ module "vpc" {
   environment = var.environment
   cidr_block  = "10.30.0.0/16"
   nat         = { mode = "per_az" }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "images" {
@@ -22,6 +24,8 @@ module "assets" {
   environment = var.environment
   name        = "assets"
   kms         = { create = true }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "worker_role" {
@@ -68,4 +72,6 @@ module "cluster" {
       role_arn        = module.worker_role.arn
     }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }

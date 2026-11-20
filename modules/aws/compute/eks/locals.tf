@@ -15,6 +15,14 @@ locals {
   node_role_arn  = var.iam_role.create ? try(module.node_role[0].arn, null) : var.iam_role.arn
   addons_enabled = var.addons.enabled
   s3_csi_enabled = local.addons_enabled && length(var.addons.s3_csi_bucket_arns) > 0
+  insights       = local.addons_enabled && var.container_insights.enabled
+
+  insights_log_groups = local.insights ? toset(["application", "dataplane", "host", "performance"]) : toset([])
+  insights_log_names  = { for t in local.insights_log_groups : t => "/aws/containerinsights/${local.cluster_name}/${t}" }
+  kms_log_group_arns = concat(
+    local.logs_enabled ? [local.log_group_arn] : [],
+    [for t, n in local.insights_log_names : "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:${n}"],
+  )
 
   security_group_ids = concat(var.security_group.create ? [module.security_group[0].id] : [], var.security_group.additional_security_group_ids)
 
@@ -43,12 +51,12 @@ locals {
       }
     },
     {
-      when = local.logs_enabled
+      when = local.logs_enabled || local.insights
       statement = {
         sid        = "AllowCloudWatchLogs"
         actions    = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
         principals = { Service = ["logs.${local.region}.${local.dns_suffix}"] }
-        conditions = [{ test = "ArnLike", variable = "kms:EncryptionContext:aws:logs:arn", values = [local.log_group_arn] }]
+        conditions = [{ test = "ArnLike", variable = "kms:EncryptionContext:aws:logs:arn", values = local.kms_log_group_arns }]
       }
     },
     {
@@ -92,7 +100,8 @@ locals {
       efs-csi      = ["${local.arn_prefix}:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"]
       efs-csi-node = []
     },
-    local.s3_csi_enabled ? { s3-csi = [] } : {}
+    local.s3_csi_enabled ? { s3-csi = [] } : {},
+    local.insights ? { cloudwatch-agent = ["${local.arn_prefix}:iam::aws:policy/CloudWatchAgentServerPolicy"] } : {}
   )
 
   addon_role_documents = {
@@ -110,16 +119,18 @@ locals {
   }
 
   addon_associations = {
-    vpc-cni                      = { aws-node = "vpc-cni" }
-    aws-ebs-csi-driver           = { ebs-csi-controller-sa = "ebs-csi" }
-    aws-efs-csi-driver           = { efs-csi-controller-sa = "efs-csi", efs-csi-node-sa = "efs-csi-node" }
-    aws-mountpoint-s3-csi-driver = { s3-csi-driver-sa = "s3-csi" }
+    vpc-cni                         = { aws-node = "vpc-cni" }
+    aws-ebs-csi-driver              = { ebs-csi-controller-sa = "ebs-csi" }
+    aws-efs-csi-driver              = { efs-csi-controller-sa = "efs-csi", efs-csi-node-sa = "efs-csi-node" }
+    aws-mountpoint-s3-csi-driver    = { s3-csi-driver-sa = "s3-csi" }
+    amazon-cloudwatch-observability = { cloudwatch-agent = "cloudwatch-agent" }
   }
 
   addons_before_compute = local.addons_enabled ? toset(["vpc-cni", "kube-proxy", "eks-pod-identity-agent"]) : toset([])
   addons_after_compute = local.addons_enabled ? toset(concat(
     ["coredns", "aws-ebs-csi-driver", "aws-efs-csi-driver", "snapshot-controller"],
-    local.s3_csi_enabled ? ["aws-mountpoint-s3-csi-driver"] : []
+    local.s3_csi_enabled ? ["aws-mountpoint-s3-csi-driver"] : [],
+    local.insights ? ["amazon-cloudwatch-observability"] : []
   )) : toset([])
 
   s3_csi_policy = jsonencode({

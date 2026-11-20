@@ -539,3 +539,107 @@ run "rejects_contributor_insights_on_missing_index" {
 
   expect_failures = [var.contributor_insights]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["dynamodb-table-read-throttles", "dynamodb-table-system-errors", "dynamodb-table-write-throttles"])
+    error_message = "Default alarms: read and write throttles and system errors."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-orders-dynamodb-table-")]) && module.alarms[0].alarm_settings["dynamodb-table-read-throttles"].threshold == 0
+    error_message = "Alarm names start with the module base name; throttle alarms fire on any throttle."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        system_errors          = { threshold = 2 }
+        write_throttles        = { enabled = false }
+        consumed_read_capacity = { enabled = true, threshold = 1000 }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["dynamodb-table-consumed-rcu", "dynamodb-table-read-throttles", "dynamodb-table-system-errors"])
+    error_message = "A disabled alarm is dropped; an opt-in alarm is added."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["dynamodb-table-system-errors"].threshold == 2 && module.alarms[0].alarm_settings["dynamodb-table-system-errors"].evaluation_periods == 15 && module.alarms[0].alarm_settings["dynamodb-table-consumed-rcu"].threshold == 1000
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["dynamodb-table-system-errors"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["dynamodb-table-read-throttles"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning" && module.alarms[0].alarm_routes["dynamodb-table-consumed-rcu"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_cover_indexes" {
+  command = plan
+
+  variables {
+    global_secondary_indexes = {
+      by_status = { hash_key = "status" }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["dynamodb-table-gsi-by_status-read-throttles", "dynamodb-table-gsi-by_status-write-throttles", "dynamodb-table-read-throttles", "dynamodb-table-system-errors", "dynamodb-table-write-throttles"])
+    error_message = "Each global secondary index gets read and write throttle alarms."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 3
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}
