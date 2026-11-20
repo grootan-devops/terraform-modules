@@ -1,31 +1,42 @@
 locals {
-  rendered_name = var.name != null && var.name != "" ? "${var.application}-${var.environment}-${var.name}" : "${var.application}-${var.environment}"
+  pool_name      = module.naming.names.pool
+  kms_key_arn    = module.encryption.key_arn
+  pool_arn       = aws_cognito_user_pool.this.arn
+  log_group_name = "/aws/vendedlogs/cognito/${local.pool_name}"
+  log_group_arn  = "arn:${module.naming.partition}:logs:${module.naming.region}:${module.naming.account_id}:log-group:${local.log_group_name}"
+  auth_events    = var.user_pool_tier == "PLUS" && var.threat_protection.enabled
+  custom_senders = length(setintersection(toset(keys(var.lambda_triggers)), toset(["custom_email_sender", "custom_sms_sender"]))) > 0
 
-  tags = merge(
-    {
-      Application = var.application
-      Environment = var.environment
-      Name        = local.rendered_name
-    },
-    var.tags
-  )
+  managed_login_version = coalesce(var.domain.managed_login_version, var.user_pool_tier == "LITE" ? 1 : 2)
+  managed_login         = var.domain.enabled && local.managed_login_version == 2
+  ses_identity          = try(regex(":identity/(.+)$", var.email.ses_identity_arn)[0], null)
+  ses_identity_region   = try(split(":", var.email.ses_identity_arn)[3], null)
 
-  default_read_attributes = [
-    "address", "birthdate", "email", "email_verified", "family_name", "gender",
-    "given_name", "locale", "middle_name", "name", "nickname", "phone_number",
-    "phone_number_verified", "picture", "preferred_username", "profile",
-    "updated_at", "website", "zoneinfo"
-  ]
+  kms_service_statements = [{
+    sid        = "AllowCloudWatchLogs"
+    actions    = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    principals = { Service = ["logs.${module.naming.region}.${module.naming.dns_suffix}"] }
+    conditions = [{ test = "ArnLike", variable = "kms:EncryptionContext:aws:logs:arn", values = [local.log_group_arn] }]
+  }]
 
-  default_write_attributes = [
-    "address", "birthdate", "email", "family_name", "gender", "given_name",
-    "locale", "middle_name", "name", "nickname", "phone_number",
-    "picture", "preferred_username", "profile",
-    "updated_at", "website", "zoneinfo"
-  ]
+  custom_attribute_names = [for k in keys(var.custom_attributes) : "custom:${k}"]
+  read_attributes        = concat(var.read_attributes, local.custom_attribute_names)
+  write_attributes       = concat(var.write_attributes, local.custom_attribute_names)
 
-  custom_attributes_names = [for attr in var.custom_schema_attributes : "custom:${attr.name}"]
+  trigger = { for k, t in var.lambda_triggers : k => t.arn }
 
-  final_read_attributes  = concat(coalesce(var.read_attributes, local.default_read_attributes), local.custom_attributes_names)
-  final_write_attributes = concat(coalesce(var.write_attributes, local.default_write_attributes), local.custom_attributes_names)
+  ses_identity_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowCognitoToSend"
+      Effect    = "Allow"
+      Principal = { Service = ["cognito-idp.${module.naming.dns_suffix}", "email.cognito-idp.${module.naming.dns_suffix}"] }
+      Action    = ["ses:SendEmail", "ses:SendRawEmail"]
+      Resource  = var.email.ses_identity_arn
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = module.naming.account_id }
+        ArnLike      = { "aws:SourceArn" = local.pool_arn }
+      }
+    }]
+  })
 }

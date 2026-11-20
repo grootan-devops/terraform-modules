@@ -1,539 +1,611 @@
-mock_provider "aws" {}
+mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "eu-west-1"
+    }
+  }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
+    }
+  }
+
+  mock_resource "aws_s3_bucket" {
+    defaults = {
+      id                          = "core-prod-assets-123456789012-eu-west-1"
+      arn                         = "arn:aws:s3:::core-prod-assets-123456789012-eu-west-1"
+      bucket_domain_name          = "core-prod-assets-123456789012-eu-west-1.s3.amazonaws.com"
+      bucket_regional_domain_name = "core-prod-assets-123456789012-eu-west-1.s3.eu-west-1.amazonaws.com"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    }
+  }
+
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:role/core-prod-assets-replication-eu-west-1"
+    }
+  }
+}
 
 variables {
   application = "core"
   environment = "prod"
   name        = "assets"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+  tags        = { Team = "platform" }
 }
 
-run "verify_naming" {
+run "secure_defaults" {
   command = plan
 
   assert {
-    condition     = aws_s3_bucket.this.bucket == "core-prod-assets"
-    error_message = "Bucket name must render as <application>-<environment>-<name>."
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.tags["Name"] == "core-prod-assets"
-    error_message = "Bucket Name tag must match the rendered bucket name."
-  }
-}
-
-run "verify_name_fallback_when_null" {
-  command = plan
-
-  variables {
-    name = null
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.bucket == "core-prod"
-    error_message = "Bucket name must fall back to <application>-<environment> when name is null."
-  }
-}
-
-run "verify_name_fallback_when_empty" {
-  command = plan
-
-  variables {
-    name = ""
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.bucket == "core-prod"
-    error_message = "Bucket name must fall back to <application>-<environment> when name is empty."
-  }
-}
-
-run "verify_bucket_name_override" {
-  command = plan
-
-  variables {
-    bucket_name_override = "core-prod-assets-us-west-2-123456789012"
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.bucket == "core-prod-assets-us-west-2-123456789012"
-    error_message = "bucket_name_override must replace the rendered bucket name verbatim."
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.tags["Name"] == "core-prod-assets-us-west-2-123456789012"
-    error_message = "Bucket Name tag must follow bucket_name_override."
-  }
-}
-
-run "verify_tags" {
-  command = plan
-
-  variables {
-    tags = {
-      DataClassification = "Confidential"
-      CostCenter         = "1234"
-    }
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.tags["Application"] == "core" && aws_s3_bucket.this.tags["Environment"] == "prod" && aws_s3_bucket.this.tags["Name"] == "core-prod-assets"
-    error_message = "Bucket must carry Application, Environment and Name governance tags."
-  }
-
-  assert {
-    condition     = aws_s3_bucket.this.tags["DataClassification"] == "Confidential" && aws_s3_bucket.this.tags["CostCenter"] == "1234"
-    error_message = "Caller tags must be preserved on the bucket."
-  }
-}
-
-run "verify_security_defaults" {
-  command = plan
-
-  assert {
-    condition     = one(aws_s3_bucket_server_side_encryption_configuration.this.rule).apply_server_side_encryption_by_default[0].sse_algorithm == "aws:kms"
-    error_message = "Bucket default encryption must be SSE-KMS."
-  }
-
-  assert {
-    condition     = one(aws_s3_bucket_server_side_encryption_configuration.this.rule).apply_server_side_encryption_by_default[0].kms_master_key_id == var.kms_key_arn
-    error_message = "Bucket default encryption must use the caller-supplied KMS key."
-  }
-
-  assert {
-    condition     = one(aws_s3_bucket_server_side_encryption_configuration.this.rule).bucket_key_enabled == true
-    error_message = "S3 Bucket Keys must be enabled (bucket_key_enabled = true)."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_public_access_block.this.block_public_acls && aws_s3_bucket_public_access_block.this.block_public_policy && aws_s3_bucket_public_access_block.this.ignore_public_acls && aws_s3_bucket_public_access_block.this.restrict_public_buckets
-    error_message = "All four public access blocks must be enabled."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_versioning.this.versioning_configuration[0].status == "Enabled"
-    error_message = "Versioning must be enabled by default."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_versioning.this.versioning_configuration[0].mfa_delete == "Disabled"
-    error_message = "MFA delete must be explicitly set to Disabled."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_ownership_controls.this.rule[0].object_ownership == "BucketOwnerEnforced"
-    error_message = "Object ownership must default to BucketOwnerEnforced (ACLs disabled)."
+    condition     = aws_s3_bucket.this.bucket == "core-prod-assets-123456789012-eu-west-1" && output.name == "core-prod-assets-123456789012-eu-west-1"
+    error_message = "The bucket must be <application>-<environment>-<name>-<account>-<region>."
   }
 
   assert {
     condition     = aws_s3_bucket.this.force_destroy == false && aws_s3_bucket.this.object_lock_enabled == false
-    error_message = "Bucket must not be force-destroyable and object lock must be off by default."
-  }
-}
-
-run "verify_tls_bucket_policy" {
-  command = apply
-
-  override_resource {
-    target = aws_s3_bucket.this
-    values = {
-      id  = "core-prod-assets"
-      arn = "arn:aws:s3:::core-prod-assets"
-    }
-  }
-
-  assert {
-    condition     = aws_s3_bucket_policy.this.bucket == "core-prod-assets"
-    error_message = "Bucket policy must be attached to the module's bucket."
-  }
-
-  assert {
-    condition     = length(jsondecode(aws_s3_bucket_policy.this.policy).Statement) == 2
-    error_message = "Bucket policy must contain exactly the two TLS deny statements when no custom statements are given."
-  }
-
-  assert {
-    condition = anytrue([
-      for s in jsondecode(aws_s3_bucket_policy.this.policy).Statement :
-      s.Sid == "EnforceTLSRequestsOnly" && s.Effect == "Deny" && s.Principal == "*" && s.Action == "s3:*" && s.Condition.Bool["aws:SecureTransport"] == "false"
-    ])
-    error_message = "Bucket policy must deny all s3 actions when aws:SecureTransport is false."
-  }
-
-  assert {
-    condition = anytrue([
-      for s in jsondecode(aws_s3_bucket_policy.this.policy).Statement :
-      s.Sid == "EnforceTLSVersion" && s.Effect == "Deny" && s.Principal == "*" && s.Action == "s3:*" && s.Condition.NumericLessThan["s3:TlsVersion"] == "1.2"
-    ])
-    error_message = "Bucket policy must deny all s3 actions when s3:TlsVersion is below 1.2."
-  }
-
-  assert {
-    condition = alltrue([
-      for s in jsondecode(aws_s3_bucket_policy.this.policy).Statement :
-      s.Resource == ["arn:aws:s3:::core-prod-assets", "arn:aws:s3:::core-prod-assets/*"]
-    ])
-    error_message = "TLS deny statements must cover both the bucket and every object in it."
-  }
-
-  assert {
-    condition     = output.bucket_arn == "arn:aws:s3:::core-prod-assets" && output.bucket_name == "core-prod-assets"
-    error_message = "bucket_arn and bucket_name outputs must expose the bucket."
-  }
-}
-
-run "verify_deprecated_public_access_block_ignored" {
-  command = plan
-
-  variables {
-    public_access_block = {
-      block_public_acls       = false
-      block_public_policy     = false
-      ignore_public_acls      = false
-      restrict_public_buckets = false
-    }
+    error_message = "No force_destroy and no Object Lock by default."
   }
 
   assert {
     condition     = aws_s3_bucket_public_access_block.this.block_public_acls && aws_s3_bucket_public_access_block.this.block_public_policy && aws_s3_bucket_public_access_block.this.ignore_public_acls && aws_s3_bucket_public_access_block.this.restrict_public_buckets
-    error_message = "The deprecated public_access_block input must be ignored; all four public access blocks must stay enabled."
+    error_message = "All four public access block settings must be on (S3.8)."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_ownership_controls.this.rule[0].object_ownership == "BucketOwnerEnforced" && aws_s3_bucket_versioning.this.versioning_configuration[0].status == "Enabled"
+    error_message = "ACLs disabled (S3.12) and versioning on (S3.14)."
+  }
+
+  assert {
+    condition     = [for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.apply_server_side_encryption_by_default[0].sse_algorithm] == ["AES256"] && [for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.bucket_key_enabled] == [false]
+    error_message = "No kms input means SSE-S3."
+  }
+
+  assert {
+    condition     = flatten([for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.blocked_encryption_types]) == ["SSE-C"] && output.kms_key_arn == null
+    error_message = "SSE-C is blocked; no key output for SSE-S3."
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket_lifecycle_configuration.this.rule) == 1 && aws_s3_bucket_lifecycle_configuration.this.rule[0].id == "abort-incomplete-multipart-uploads" && aws_s3_bucket_lifecycle_configuration.this.rule[0].abort_incomplete_multipart_upload[0].days_after_initiation == 7
+    error_message = "Only the abort-incomplete-uploads rule by default (S3.13)."
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket_logging.this) + length(aws_s3_bucket_notification.this) + length(aws_s3_bucket_cors_configuration.this) + length(aws_s3_bucket_object_lock_configuration.this) + length(aws_s3_bucket_replication_configuration.this) + length(module.replication_role) == 0
+    error_message = "No logging, notifications, CORS, Object Lock or replication by default."
+  }
+
+  assert {
+    condition     = aws_s3_bucket.this.tags["Name"] == "core-prod-assets-123456789012-eu-west-1" && aws_s3_bucket.this.tags["Team"] == "platform" && aws_s3_bucket.this.tags["ManagedBy"] == "Terraform"
+    error_message = "Caller and governance tags must be applied."
   }
 }
 
-run "verify_parameter_defaults" {
+run "bucket_policy_guards_and_caller_statements" {
   command = plan
 
-  assert {
-    condition     = length(aws_s3_bucket_lifecycle_configuration.this.rule) == 1
-    error_message = "Exactly one default lifecycle rule must be configured."
+  variables {
+    policy_statements = [
+      { sid = "ReadObjects", actions = ["s3:GetObject"], principals = { AWS = ["arn:aws:iam::123456789012:role/reader"] } },
+      { sid = "WriteUploads", actions = ["s3:PutObject"], resources = ["arn:aws:s3:::core-prod-assets-123456789012-eu-west-1/uploads/*"], principals = { AWS = ["arn:aws:iam::123456789012:role/writer"] } }
+    ]
   }
 
   assert {
-    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[0].id == "abort-incomplete-multipart" && aws_s3_bucket_lifecycle_configuration.this.rule[0].status == "Enabled"
-    error_message = "Default lifecycle rule must be the enabled abort-incomplete-multipart rule."
+    condition     = [for s in jsondecode(output.policy_json).Statement : s.Sid] == ["DenyInsecureTransport", "DenyOutdatedTls", "ReadObjects", "WriteUploads"]
+    error_message = "Guard statements come first, then caller statements."
   }
 
   assert {
-    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[0].abort_incomplete_multipart_upload[0].days_after_initiation == 7
-    error_message = "Default lifecycle rule must abort incomplete multipart uploads after 7 days."
+    condition     = jsondecode(output.policy_json).Statement[0].Effect == "Deny" && jsondecode(output.policy_json).Statement[0].Condition.Bool["aws:SecureTransport"] == ["false"] && jsondecode(output.policy_json).Statement[1].Condition.NumericLessThan["s3:TlsVersion"] == ["1.2"]
+    error_message = "Requests without TLS or below TLS 1.2 must be denied (S3.5)."
   }
 
   assert {
-    condition     = length(aws_s3_bucket_cors_configuration.this) == 0
-    error_message = "No CORS configuration must be created by default."
+    condition     = jsondecode(output.policy_json).Statement[0].Resource == ["arn:aws:s3:::core-prod-assets-123456789012-eu-west-1", "arn:aws:s3:::core-prod-assets-123456789012-eu-west-1/*"] && jsondecode(output.policy_json).Statement[2].Resource == jsondecode(output.policy_json).Statement[0].Resource
+    error_message = "Statements without resources apply to the bucket and its objects."
   }
 
   assert {
-    condition     = length(aws_s3_bucket_acl.this) == 0
-    error_message = "No bucket ACL must be created by default."
-  }
-
-  assert {
-    condition     = length(aws_s3_bucket_replication_configuration.this) == 0
-    error_message = "No replication configuration must be created by default."
-  }
-
-  assert {
-    condition     = length(aws_iam_role.replication) == 0 && length(aws_iam_policy.replication) == 0 && length(aws_iam_role_policy_attachment.replication) == 0
-    error_message = "No replication IAM resources must be created by default."
+    condition     = jsondecode(output.policy_json).Statement[3].Resource == ["arn:aws:s3:::core-prod-assets-123456789012-eu-west-1/uploads/*"]
+    error_message = "A caller Resource must never be overwritten."
   }
 }
 
-run "verify_parameter_overrides" {
+run "long_names_are_truncated" {
+  command = plan
+
+  variables {
+    application = "analytics-platform-core"
+    environment = "production1"
+    name        = "a-very-long-bucket-name-for-test"
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.this.bucket) == 63 && startswith(aws_s3_bucket.this.bucket, "analytics-platform-core-production1-a-very-long-bucket-")
+    error_message = "Bucket names are cut to 63 characters with a hash suffix."
+  }
+}
+
+run "exact_bucket_name" {
+  command = plan
+
+  variables {
+    bucket_name = "aws-waf-logs-core-prod"
+  }
+
+  assert {
+    condition     = aws_s3_bucket.this.bucket == "aws-waf-logs-core-prod" && aws_s3_bucket.this.tags["Name"] == "aws-waf-logs-core-prod"
+    error_message = "bucket_name must be used as is."
+  }
+}
+
+run "module_key_is_planned_safely" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+    replication = {
+      enabled = true
+      rules   = [{ id = "dr", destination_bucket_arn = "arn:aws:s3:::core-prod-assets-dr", replica_kms_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/99999999-2222-3333-4444-555555555555" }]
+    }
+  }
+
+  assert {
+    condition     = module.encryption.created && length(module.replication_role) == 1 && length(aws_s3_bucket_replication_configuration.this) == 1
+    error_message = "kms.create and replication must plan without knowing the key and role ARNs."
+  }
+
+  assert {
+    condition     = [for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.apply_server_side_encryption_by_default[0].sse_algorithm] == ["aws:kms"] && [for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.bucket_key_enabled] == [true]
+    error_message = "A KMS key means SSE-KMS with a bucket key."
+  }
+}
+
+run "module_key_encrypts_bucket" {
   command = apply
 
   variables {
-    enable_versioning = false
-    object_ownership  = "BucketOwnerPreferred"
+    kms = { create = true }
+  }
 
+  assert {
+    condition     = [for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.apply_server_side_encryption_by_default[0].kms_master_key_id] == ["arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"] && output.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "The module key must encrypt the bucket."
+  }
+
+  assert {
+    condition     = output.arn == "arn:aws:s3:::core-prod-assets-123456789012-eu-west-1" && output.regional_domain_name == "core-prod-assets-123456789012-eu-west-1.s3.eu-west-1.amazonaws.com" && output.domain_name == "core-prod-assets-123456789012-eu-west-1.s3.amazonaws.com"
+    error_message = "Outputs must expose the bucket ARN and domain names."
+  }
+}
+
+run "caller_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  assert {
+    condition     = output.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && [for r in aws_s3_bucket_server_side_encryption_configuration.this.rule : r.apply_server_side_encryption_by_default[0].sse_algorithm] == ["aws:kms"]
+    error_message = "A key ID must become the key ARN and enable SSE-KMS."
+  }
+}
+
+run "lifecycle_rules" {
+  command = plan
+
+  variables {
+    abort_incomplete_multipart_upload_days = 3
+    noncurrent_version_expiration          = { enabled = true, days = 30, newer_noncurrent_versions = 3 }
     lifecycle_rules = [
-      {
-        id     = "transition-cold-storage"
-        status = "Enabled"
-        filter = {
-          prefix = "logs/"
-        }
-        transition = {
-          days          = 30
-          storage_class = "STANDARD_IA"
-        }
-        noncurrent_version_expiration = {
-          noncurrent_days = 90
-        }
-        expiration = {
-          days = 365
-        }
-      }
+      { id = "tmp", prefix = "tmp/", expiration_days = 7 },
+      { id = "archive", tags = { class = "archive" }, transitions = [{ days = 30, storage_class = "GLACIER_IR" }] },
+      { id = "reports", prefix = "reports/", tags = { keep = "short" }, noncurrent_version_expiration_days = 14, noncurrent_version_transitions = [{ days = 7, storage_class = "STANDARD_IA" }] }
     ]
-
-    cors_rules = [
-      {
-        allowed_headers = ["*"]
-        allowed_methods = ["GET", "HEAD"]
-        allowed_origins = ["https://app.example.com"]
-        expose_headers  = ["ETag"]
-        max_age_seconds = 3600
-      }
-    ]
-
-    custom_policy_statements = [
-      {
-        Sid       = "AllowWorkerRole"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::123456789012:role/core-prod-worker" }
-        Action    = ["s3:GetObject", "s3:PutObject"]
-      }
-    ]
-
-    access_control_policy = {
-      owner = {
-        id = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      }
-      grants = [
-        {
-          grantee = {
-            type = "CanonicalUser"
-            id   = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-          }
-          permission = "FULL_CONTROL"
-        }
-      ]
-    }
-  }
-
-  override_resource {
-    target = aws_s3_bucket.this
-    values = {
-      id  = "core-prod-assets"
-      arn = "arn:aws:s3:::core-prod-assets"
-    }
   }
 
   assert {
-    condition     = aws_s3_bucket_versioning.this.versioning_configuration[0].status == "Suspended"
-    error_message = "enable_versioning = false must suspend versioning."
+    condition     = [for r in aws_s3_bucket_lifecycle_configuration.this.rule : r.id] == ["abort-incomplete-multipart-uploads", "expire-noncurrent-versions", "tmp", "archive", "reports"] && aws_s3_bucket_lifecycle_configuration.this.rule[0].abort_incomplete_multipart_upload[0].days_after_initiation == 3
+    error_message = "Module rules come first, then caller rules."
   }
 
   assert {
-    condition     = aws_s3_bucket_ownership_controls.this.rule[0].object_ownership == "BucketOwnerPreferred"
-    error_message = "object_ownership must flow through to the ownership controls."
+    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[1].noncurrent_version_expiration[0].noncurrent_days == 30 && aws_s3_bucket_lifecycle_configuration.this.rule[1].noncurrent_version_expiration[0].newer_noncurrent_versions == 3
+    error_message = "noncurrent_version_expiration must expire old versions (S3.10)."
   }
 
   assert {
-    condition     = length(aws_s3_bucket_lifecycle_configuration.this.rule) == 1 && aws_s3_bucket_lifecycle_configuration.this.rule[0].id == "transition-cold-storage"
-    error_message = "Caller lifecycle_rules must replace the default lifecycle rule."
+    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[2].filter[0].prefix == "tmp/" && aws_s3_bucket_lifecycle_configuration.this.rule[2].expiration[0].days == 7
+    error_message = "A prefix rule filters by prefix."
   }
 
   assert {
-    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[0].filter[0].prefix == "logs/"
-    error_message = "Lifecycle rule filter prefix must flow through."
+    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[3].filter[0].tag[0].key == "class" && length(aws_s3_bucket_lifecycle_configuration.this.rule[3].filter[0].and) == 0
+    error_message = "A single tag uses the tag filter."
   }
 
   assert {
-    condition     = one(aws_s3_bucket_lifecycle_configuration.this.rule[0].transition).days == 30 && one(aws_s3_bucket_lifecycle_configuration.this.rule[0].transition).storage_class == "STANDARD_IA"
-    error_message = "Lifecycle rule transition must flow through."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[0].noncurrent_version_expiration[0].noncurrent_days == 90 && aws_s3_bucket_lifecycle_configuration.this.rule[0].expiration[0].days == 365
-    error_message = "Lifecycle rule noncurrent version expiration and expiration must flow through."
-  }
-
-  assert {
-    condition     = length(aws_s3_bucket_lifecycle_configuration.this.rule[0].abort_incomplete_multipart_upload) == 0
-    error_message = "abort_incomplete_multipart_upload must be omitted when the rule does not set it."
-  }
-
-  assert {
-    condition     = length(aws_s3_bucket_cors_configuration.this) == 1
-    error_message = "A CORS configuration must be created when cors_rules are supplied."
-  }
-
-  assert {
-    condition     = one(aws_s3_bucket_cors_configuration.this[0].cors_rule).allowed_origins == toset(["https://app.example.com"]) && one(aws_s3_bucket_cors_configuration.this[0].cors_rule).allowed_methods == toset(["GET", "HEAD"])
-    error_message = "CORS allowed origins and methods must flow through."
-  }
-
-  assert {
-    condition     = one(aws_s3_bucket_cors_configuration.this[0].cors_rule).max_age_seconds == 3600 && one(aws_s3_bucket_cors_configuration.this[0].cors_rule).expose_headers == toset(["ETag"])
-    error_message = "CORS max age and exposed headers must flow through."
-  }
-
-  assert {
-    condition     = length(aws_s3_bucket_acl.this) == 1 && aws_s3_bucket_acl.this[0].access_control_policy[0].owner[0].id == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    error_message = "A bucket ACL must be created from access_control_policy."
-  }
-
-  assert {
-    condition     = one(aws_s3_bucket_acl.this[0].access_control_policy[0].grant).permission == "FULL_CONTROL" && one(aws_s3_bucket_acl.this[0].access_control_policy[0].grant).grantee[0].type == "CanonicalUser"
-    error_message = "Bucket ACL grants must flow through."
-  }
-
-  assert {
-    condition     = length(jsondecode(aws_s3_bucket_policy.this.policy).Statement) == 3
-    error_message = "Custom policy statements must be appended after the two TLS deny statements."
-  }
-
-  assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[0].Sid == "EnforceTLSRequestsOnly" && jsondecode(aws_s3_bucket_policy.this.policy).Statement[1].Sid == "EnforceTLSVersion"
-    error_message = "Custom policy statements must not displace the TLS deny statements."
-  }
-
-  assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Sid == "AllowWorkerRole" && jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Effect == "Allow"
-    error_message = "Custom policy statement must be rendered into the bucket policy."
-  }
-
-  assert {
-    condition     = jsondecode(aws_s3_bucket_policy.this.policy).Statement[2].Resource == ["arn:aws:s3:::core-prod-assets", "arn:aws:s3:::core-prod-assets/*"]
-    error_message = "The bucket and object Resource must be injected into custom policy statements."
+    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[4].filter[0].and[0].prefix == "reports/" && aws_s3_bucket_lifecycle_configuration.this.rule[4].filter[0].and[0].tags == tomap({ keep = "short" })
+    error_message = "Prefix and tags use the and filter."
   }
 }
 
-run "verify_replication_creates_role" {
-  command = apply
-
-  variables {
-    replication_configuration = {
-      rules = [
-        {
-          id     = "replicate-all"
-          status = "Enabled"
-          delete_marker_replication = {
-            status = "Enabled"
-          }
-          destination = {
-            bucket        = "arn:aws:s3:::core-prod-assets-replica"
-            storage_class = "STANDARD_IA"
-            encryption_configuration = {
-              replica_kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/87654321-4321-4321-4321-210987654321"
-            }
-          }
-        }
-      ]
-    }
-  }
-
-  override_resource {
-    target = aws_s3_bucket.this
-    values = {
-      id  = "core-prod-assets"
-      arn = "arn:aws:s3:::core-prod-assets"
-    }
-  }
-
-  override_resource {
-    target = aws_iam_role.replication
-    values = {
-      arn = "arn:aws:iam::123456789012:role/core-prod-assets-replication-role"
-    }
-  }
-
-  override_resource {
-    target = aws_iam_policy.replication
-    values = {
-      arn = "arn:aws:iam::123456789012:policy/core-prod-assets-replication-policy"
-    }
-  }
-
-  assert {
-    condition     = length(aws_iam_role.replication) == 1 && aws_iam_role.replication[0].name == "core-prod-assets-replication-role"
-    error_message = "A replication role named <rendered_name>-replication-role must be created when no role is supplied."
-  }
-
-  assert {
-    condition     = aws_iam_role.replication[0].tags["Application"] == "core" && aws_iam_role.replication[0].tags["Environment"] == "prod" && aws_iam_role.replication[0].tags["Name"] == "core-prod-assets"
-    error_message = "Replication role must carry the governance tags."
-  }
-
-  assert {
-    condition     = jsondecode(aws_iam_role.replication[0].assume_role_policy).Statement[0].Principal.Service == "s3.amazonaws.com"
-    error_message = "Replication role must only be assumable by the S3 service."
-  }
-
-  assert {
-    condition     = length(aws_iam_policy.replication) == 1 && aws_iam_policy.replication[0].name == "core-prod-assets-replication-policy"
-    error_message = "A replication policy named <rendered_name>-replication-policy must be created."
-  }
-
-  assert {
-    condition = anytrue([
-      for s in jsondecode(aws_iam_policy.replication[0].policy).Statement :
-      contains(s.Action, "s3:ReplicateObject") && s.Resource == ["arn:aws:s3:::core-prod-assets-replica/*"]
-    ])
-    error_message = "Replication policy must scope replicate actions to the destination bucket objects."
-  }
-
-  assert {
-    condition = anytrue([
-      for s in jsondecode(aws_iam_policy.replication[0].policy).Statement :
-      contains(s.Action, "kms:Decrypt") && s.Resource == [var.kms_key_arn]
-    ])
-    error_message = "Replication policy must allow decrypting with the source bucket KMS key."
-  }
-
-  assert {
-    condition = anytrue([
-      for s in jsondecode(aws_iam_policy.replication[0].policy).Statement :
-      contains(s.Action, "kms:Encrypt") && s.Resource == ["arn:aws:kms:us-east-1:123456789012:key/87654321-4321-4321-4321-210987654321"]
-    ])
-    error_message = "Replication policy must allow encrypting with the replica KMS key."
-  }
-
-  assert {
-    condition     = length(aws_iam_role_policy_attachment.replication) == 1
-    error_message = "Replication policy must be attached to the replication role."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_replication_configuration.this[0].role == "arn:aws:iam::123456789012:role/core-prod-assets-replication-role"
-    error_message = "Replication configuration must use the module-created role."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_replication_configuration.this[0].rule[0].destination[0].bucket == "arn:aws:s3:::core-prod-assets-replica" && aws_s3_bucket_replication_configuration.this[0].rule[0].destination[0].storage_class == "STANDARD_IA"
-    error_message = "Replication destination bucket and storage class must flow through."
-  }
-
-  assert {
-    condition     = aws_s3_bucket_replication_configuration.this[0].rule[0].delete_marker_replication[0].status == "Enabled"
-    error_message = "Replication delete marker setting must flow through."
-  }
-}
-
-run "verify_replication_with_existing_role" {
+run "access_logs" {
   command = plan
 
   variables {
-    replication_configuration = {
-      role = "arn:aws:iam::123456789012:role/core-prod-existing-replication"
+    access_logs = { enabled = true, bucket = "core-prod-logs-123456789012-eu-west-1" }
+  }
+
+  assert {
+    condition     = aws_s3_bucket_logging.this[0].target_bucket == "core-prod-logs-123456789012-eu-west-1" && aws_s3_bucket_logging.this[0].target_prefix == "core-prod-assets-123456789012-eu-west-1/"
+    error_message = "Access logs go to the log bucket under <bucket>/ (S3.9)."
+  }
+}
+
+run "notifications" {
+  command = plan
+
+  variables {
+    notifications = {
+      eventbridge = true
+      queues      = { uploads = { arn = "arn:aws:sqs:eu-west-1:123456789012:core-prod-uploads", events = ["s3:ObjectCreated:*"], filter_prefix = "uploads/" } }
+      topics      = { deletes = { arn = "arn:aws:sns:eu-west-1:123456789012:core-prod-deletes", events = ["s3:ObjectRemoved:*"] } }
+      functions   = { thumbs = { arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-thumbs:live", events = ["s3:ObjectCreated:Put"], filter_suffix = ".jpg" } }
+    }
+  }
+
+  assert {
+    condition     = aws_s3_bucket_notification.this[0].eventbridge && aws_s3_bucket_notification.this[0].queue[0].id == "uploads" && aws_s3_bucket_notification.this[0].queue[0].filter_prefix == "uploads/"
+    error_message = "Notifications go to EventBridge and the queue (S3.11)."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_notification.this[0].topic[0].topic_arn == "arn:aws:sns:eu-west-1:123456789012:core-prod-deletes" && aws_s3_bucket_notification.this[0].lambda_function[0].filter_suffix == ".jpg"
+    error_message = "Topic and function targets must be wired."
+  }
+}
+
+run "eventbridge_only" {
+  command = plan
+
+  variables {
+    notifications = { eventbridge = true }
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket_notification.this) == 1 && length(aws_s3_bucket_notification.this[0].queue) == 0
+    error_message = "The EventBridge switch alone creates the notification configuration."
+  }
+}
+
+run "object_lock" {
+  command = plan
+
+  variables {
+    object_lock = { enabled = true, mode = "GOVERNANCE", days = 30 }
+  }
+
+  assert {
+    condition     = aws_s3_bucket.this.object_lock_enabled && aws_s3_bucket_object_lock_configuration.this[0].rule[0].default_retention[0].mode == "GOVERNANCE" && aws_s3_bucket_object_lock_configuration.this[0].rule[0].default_retention[0].days == 30
+    error_message = "Object Lock must be enabled with the default retention (S3.15)."
+  }
+}
+
+run "object_lock_without_retention" {
+  command = plan
+
+  variables {
+    object_lock = { enabled = true }
+  }
+
+  assert {
+    condition     = aws_s3_bucket.this.object_lock_enabled && length(aws_s3_bucket_object_lock_configuration.this) == 0
+    error_message = "Object Lock without a mode sets no default retention."
+  }
+}
+
+run "cors" {
+  command = plan
+
+  variables {
+    cors_rules = [{ allowed_methods = ["GET"], allowed_origins = ["https://app.example.com"], max_age_seconds = 300 }]
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket_cors_configuration.this) == 1 && length(aws_s3_bucket_cors_configuration.this[0].cors_rule) == 1
+    error_message = "cors_rules must create the CORS configuration."
+  }
+}
+
+run "replication_with_module_key" {
+  command   = apply
+  state_key = "replication"
+
+  variables {
+    kms = { create = true }
+    replication = {
+      enabled = true
       rules = [
-        {
-          status = "Enabled"
-          destination = {
-            bucket = "arn:aws:s3:::core-prod-assets-replica"
-          }
-        }
+        { id = "dr", destination_bucket_arn = "arn:aws:s3:::core-prod-assets-dr", replica_kms_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/99999999-2222-3333-4444-555555555555", replication_time = true },
+        { id = "audit", prefix = "audit/", destination_bucket_arn = "arn:aws:s3:::audit-archive", destination_account_id = "210987654321", replica_kms_key_arn = "arn:aws:kms:eu-west-1:210987654321:key/88888888-2222-3333-4444-555555555555", storage_class = "GLACIER_IR" }
       ]
     }
   }
 
   assert {
-    condition     = length(aws_iam_role.replication) == 0 && length(aws_iam_policy.replication) == 0 && length(aws_iam_role_policy_attachment.replication) == 0
-    error_message = "No replication IAM resources must be created when a role is supplied."
+    condition     = module.replication_role[0].name == "core-prod-assets-replication-eu-west-1" && output.replication_role_arn == "arn:aws:iam::123456789012:role/core-prod-assets-replication-eu-west-1" && aws_s3_bucket_replication_configuration.this[0].role == output.replication_role_arn
+    error_message = "The replication role is <...>-replication-<region> and used by the configuration."
   }
 
   assert {
-    condition     = aws_s3_bucket_replication_configuration.this[0].role == "arn:aws:iam::123456789012:role/core-prod-existing-replication"
-    error_message = "Replication configuration must use the caller-supplied role."
+    condition     = jsondecode(module.replication_role[0].trust_policy_json).Statement[0].Principal.Service == ["s3.amazonaws.com"] && jsondecode(module.replication_role[0].trust_policy_json).Statement[0].Condition.StringEquals["aws:SourceAccount"] == ["123456789012"] && jsondecode(module.replication_role[0].trust_policy_json).Statement[0].Condition.ArnLike["aws:SourceArn"] == ["arn:aws:s3:::core-prod-assets-123456789012-eu-west-1"]
+    error_message = "Only S3 for this bucket may assume the replication role."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.replication_role[0].policy_json).Statement : s.Sid] == ["ReadSourceBucket", "ReadSourceObjects", "ReplicateToDestinations", "DecryptSource", "EncryptReplicas"]
+    error_message = "The replication role must get exactly the replication permissions."
+  }
+
+  assert {
+    condition     = jsondecode(module.replication_role[0].policy_json).Statement[2].Resource == ["arn:aws:s3:::core-prod-assets-dr/*", "arn:aws:s3:::audit-archive/*"] && contains(jsondecode(module.replication_role[0].policy_json).Statement[2].Action, "s3:ObjectOwnerOverrideToBucketOwner")
+    error_message = "Replication writes only to the destination buckets."
+  }
+
+  assert {
+    condition     = jsondecode(module.replication_role[0].policy_json).Statement[3].Resource == ["arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"] && jsondecode(module.replication_role[0].policy_json).Statement[3].Condition.StringEquals["kms:ViaService"] == "s3.eu-west-1.amazonaws.com"
+    error_message = "Decrypt is limited to the module key through S3."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_replication_configuration.this[0].rule[0].priority == 0 && aws_s3_bucket_replication_configuration.this[0].rule[0].destination[0].replication_time[0].status == "Enabled" && aws_s3_bucket_replication_configuration.this[0].rule[0].source_selection_criteria[0].sse_kms_encrypted_objects[0].status == "Enabled"
+    error_message = "Rules get a priority, RTC when asked and SSE-KMS objects replicated."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_replication_configuration.this[0].rule[1].destination[0].access_control_translation[0].owner == "Destination" && aws_s3_bucket_replication_configuration.this[0].rule[1].destination[0].encryption_configuration[0].replica_kms_key_id == "arn:aws:kms:eu-west-1:210987654321:key/88888888-2222-3333-4444-555555555555"
+    error_message = "Cross-account rules hand ownership to the destination and use the replica key."
   }
 }
 
-run "verify_invalid_environment_fails" {
+run "replication_with_caller_role" {
+  command   = plan
+  state_key = "replication_byo"
+
+  variables {
+    replication = {
+      enabled  = true
+      rules    = [{ id = "dr", destination_bucket_arn = "arn:aws:s3:::core-prod-assets-dr" }]
+      iam_role = { create = false, arn = "arn:aws:iam::123456789012:role/s3-replication" }
+    }
+  }
+
+  assert {
+    condition     = length(module.replication_role) == 0 && aws_s3_bucket_replication_configuration.this[0].role == "arn:aws:iam::123456789012:role/s3-replication" && output.replication_role_arn == "arn:aws:iam::123456789012:role/s3-replication"
+    error_message = "A caller role must replace the module role."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_replication_configuration.this[0].rule[0].source_selection_criteria[0].sse_kms_encrypted_objects[0].status == "Disabled" && length(aws_s3_bucket_replication_configuration.this[0].rule[0].destination[0].encryption_configuration) == 0
+    error_message = "SSE-S3 buckets replicate without replica keys."
+  }
+}
+
+run "rejects_invalid_name" {
   command = plan
 
   variables {
-    environment = "INVALID_UPPERCASE"
+    name = "Assets_Bucket"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "rejects_invalid_application" {
+  command = plan
+
+  variables {
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
+
+run "rejects_invalid_environment" {
+  command = plan
+
+  variables {
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
+}
+
+run "rejects_invalid_bucket_name" {
+  command = plan
+
+  variables {
+    bucket_name = "Invalid_Bucket"
+  }
+
+  expect_failures = [var.bucket_name]
+}
+
+run "rejects_create_and_key_id" {
+  command = plan
+
+  variables {
+    kms = { create = true, key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "alias/assets" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_duplicate_lifecycle_ids" {
+  command = plan
+
+  variables {
+    lifecycle_rules = [{ id = "a", expiration_days = 1 }, { id = "a", expiration_days = 2 }]
+  }
+
+  expect_failures = [var.lifecycle_rules]
+}
+
+run "rejects_lifecycle_rule_without_action" {
+  command = plan
+
+  variables {
+    lifecycle_rules = [{ id = "empty", prefix = "x/" }]
+  }
+
+  expect_failures = [var.lifecycle_rules]
+}
+
+run "rejects_invalid_transition_class" {
+  command = plan
+
+  variables {
+    lifecycle_rules = [{ id = "old", transitions = [{ days = 30, storage_class = "COLD" }] }]
+  }
+
+  expect_failures = [var.lifecycle_rules]
+}
+
+run "rejects_invalid_abort_days" {
+  command = plan
+
+  variables {
+    abort_incomplete_multipart_upload_days = 0
+  }
+
+  expect_failures = [var.abort_incomplete_multipart_upload_days]
+}
+
+run "rejects_invalid_noncurrent_days" {
+  command = plan
+
+  variables {
+    noncurrent_version_expiration = { enabled = true, days = 0 }
+  }
+
+  expect_failures = [var.noncurrent_version_expiration]
+}
+
+run "rejects_access_logs_without_bucket" {
+  command = plan
+
+  variables {
+    access_logs = { enabled = true }
+  }
+
+  expect_failures = [var.access_logs]
+}
+
+run "rejects_invalid_notification_event" {
+  command = plan
+
+  variables {
+    notifications = { queues = { q = { arn = "arn:aws:sqs:eu-west-1:123456789012:q", events = ["ObjectCreated:*"] } } }
+  }
+
+  expect_failures = [var.notifications]
+}
+
+run "rejects_invalid_lock_mode" {
+  command = plan
+
+  variables {
+    object_lock = { enabled = true, mode = "LEGAL", days = 1 }
+  }
+
+  expect_failures = [var.object_lock]
+}
+
+run "rejects_lock_days_and_years" {
+  command = plan
+
+  variables {
+    object_lock = { enabled = true, mode = "COMPLIANCE", days = 1, years = 1 }
+  }
+
+  expect_failures = [var.object_lock]
+}
+
+run "rejects_lock_mode_without_lock" {
+  command = plan
+
+  variables {
+    object_lock = { mode = "COMPLIANCE", days = 1 }
+  }
+
+  expect_failures = [var.object_lock]
+}
+
+run "rejects_replication_without_rules" {
+  command = plan
+
+  variables {
+    replication = { enabled = true }
+  }
+
+  expect_failures = [var.replication]
+}
+
+run "rejects_replication_role_without_arn" {
+  command = plan
+
+  variables {
+    replication = { iam_role = { create = false } }
+  }
+
+  expect_failures = [var.replication]
+}
+
+run "rejects_replication_without_replica_key" {
+  command = plan
+
+  variables {
+    kms         = { create = true }
+    replication = { enabled = true, rules = [{ id = "dr", destination_bucket_arn = "arn:aws:s3:::dr" }] }
+  }
+
+  expect_failures = [var.replication]
+}
+
+run "rejects_invalid_replication_storage_class" {
+  command = plan
+
+  variables {
+    replication = { enabled = true, rules = [{ id = "dr", destination_bucket_arn = "arn:aws:s3:::dr", storage_class = "COLD" }] }
+  }
+
+  expect_failures = [var.replication]
 }

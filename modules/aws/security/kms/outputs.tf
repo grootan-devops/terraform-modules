@@ -1,14 +1,29 @@
-output "key_arn" {
-  description = "The ARN of the KMS key"
+output "arn" {
+  description = "Key ARN."
   value       = aws_kms_key.this.arn
 }
 
-output "key_id" {
-  description = "The globally unique identifier for the key"
+output "id" {
+  description = "Key ID."
   value       = aws_kms_key.this.key_id
 }
 
-output "replica_key_arn" {
-  description = "The ARN of the KMS replica key if created"
-  value       = var.replica_key.create && var.multi_region ? aws_kms_replica_key.this[0].arn : null
+output "alias_name" {
+  description = "Alias name."
+  value       = aws_kms_alias.this[local.alias].name
+}
+
+output "alias_arn" {
+  description = "Alias ARN."
+  value       = aws_kms_alias.this[local.alias].arn
+}
+
+output "replica_arns" {
+  description = "Replica ARNs by Region."
+  value       = { for region, key in aws_kms_replica_key.this : region => key.arn }
+}
+
+output "policy_json" {
+  description = "Key policy JSON."
+  value       = module.policy.json
 }

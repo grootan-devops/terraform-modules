@@ -1,110 +1,144 @@
 # AWS RDS Proxy Module
 
-The `rds/proxy` module manages Amazon RDS Proxy connection pooling pools for PostgreSQL workloads, mitigating connection exhaustion and reducing failover recovery times.
+Scope: `workload`
+
+An RDS Proxy in front of one RDS DB instance: TLS required, clients authenticate with IAM by default, the proxy reads
+the database credentials from Secrets Manager through its own role, connection pool settings on the default target
+group, a security group that admits only the listed clients and reaches only the database and AWS APIs, and optional
+extra read/write endpoints and a pre-created log group.
 
 ## Architecture & Managed Resources
 
-- `aws_db_proxy.this`: RDS Proxy endpoint.
-- `aws_db_proxy_default_target_group.this`: Manages connection pools and timeouts.
-- `aws_db_proxy_target.this`: Associates the proxy with primary DB instances.
-- `aws_iam_role.proxy`: IAM execution role authorized to decrypt Secrets Manager credentials.
+- `aws_db_proxy.this`: `<application>-<environment>-<name>`, cut to 63 characters with a hash.
+- `aws_db_proxy_default_target_group.this`, `aws_db_proxy_target.this`: the DB instance `target.db_instance_identifier`.
+- `module.role` ([`security/iam-role`](../../../security/iam-role)): `<...>-proxy-<region>`, trusted by
+  `rds.amazonaws.com`.
+- `module.security_group` ([`network/security-group`](../../../network/security-group)): ingress on the engine port
+  (5432, 3306 or 1433) from `security_group.ingress_*`; egress to `target.security_group_ids` on the database port and
+  HTTPS to `security_group.egress_cidr_blocks`.
+- `aws_db_proxy_endpoint.this`: `endpoints`, `<proxy>-<key>`, read/write.
+- `module.log_group` ([`observability/log-group`](../../../observability/log-group)): opt-in
+  `/aws/rds/proxy/<proxy>`, created before the proxy.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **TLS Enforced**: `require_tls = true` hardcoded.
-- **Mandatory KMS Decrypt Authorization**: IAM role policy strictly scoped to decrypt with `kms_key_arn`.
+- **TLS (RDS.43):** `require_tls = true`, not configurable.
+- **Client authentication:** `auth[*].iam_auth = "REQUIRED"` by default; `DISABLED` allows database passwords,
+  `ENABLED` is accepted for SQL Server only. `default_auth_scheme = "IAM_AUTH"` uses IAM end to end; add the
+  `rds-db:connect` statement to `iam_role.policy_statements`.
+- **Least privilege:** the role reads only the `auth` secrets and decrypts them only through Secrets Manager in this
+  Region (`kms:ViaService`).
+- **Network:** `/0` ingress rejected. Egress reaches the database security groups on the database port and AWS APIs
+  (Secrets Manager, KMS, STS) on 443; the default destination `0.0.0.0/0` covers NAT gateways, so set
+  `security_group.egress_cidr_blocks` to the VPC CIDR when interface endpoints serve those APIs.
+- **Logs:** RDS Proxy otherwise creates its own log group without retention or a key. The `/aws/rds/proxy/<proxy>`
+  name is observed service behaviour, not documented, so the group is opt-in (`cloudwatch_logs.enabled`); on an
+  existing proxy, import the group first.
 
----
+The proxy role trusts `rds.amazonaws.com` without `aws:SourceArn`/`aws:SourceAccount` conditions: the RDS Proxy
+setup guide documents none. The proxy has no data at rest, so it takes no `kms` input; `cloudwatch_logs.kms_key_arn`
+encrypts the log group.
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
 ### Minimal Working Example
 
 ```hcl
-module "rds_proxy" {
+module "proxy" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=<version>"
 
-  application   = "core"
-  environment   = "prod"
-  name          = "db-proxy"
-  engine_family = "POSTGRESQL"
-
-  vpc_id                 = "vpc-0a1b2c3d4e5f67890"
-  subnet_ids             = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  db_instance_identifier = module.postgres.id
-  kms_key_arn            = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  auth_secrets           = [module.db_secret.arn]
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+  vpc_id      = "vpc-0a1b2c3d4e5f67890"
+  subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+  target      = { db_instance_identifier = "core-prod-orders" }
+  auth        = [{ secret_arn = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:rds!db-1234-AbCdEf" }]
 }
 ```
 
 ### Complete Production Example
 
 ```hcl
-module "rds_proxy" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=<version>"
+module "db" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=<version>"
 
-  application   = "billing"
-  environment   = "prod"
-  name          = "pg-proxy"
-  engine_family = "POSTGRESQL"
-
-  vpc_id             = "vpc-0a1b2c3d4e5f67890"
-  subnet_ids         = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  security_group_ids = ["sg-0123456789abcdef0"]
-
-  db_instance_identifier = module.postgres.id
-  kms_key_arn            = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  auth_secrets           = [module.db_secret.arn]
-
-  connection_borrow_timeout = 120
-  max_connections_percent   = 90
-  max_idle_connections_percent = 50
-
-  tags = {
-    Tier = "ConnectionPooling"
+  application    = "core"
+  environment    = "prod"
+  name           = "orders"
+  engine_version = "18"
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  security_group = {
+    ingress_security_group_ids = [module.proxy.security_group_id]
   }
 }
-```
 
----
+module "proxy" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/proxy?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+  vpc_id      = module.vpc.vpc_id
+  subnet_ids  = module.vpc.private_subnet_ids
+
+  target = {
+    db_instance_identifier = module.db.id
+    port                   = module.db.port
+    security_group_ids     = [module.db.security_group_id]
+  }
+  auth = [{ secret_arn = module.db.master_user_secret_arn }]
+
+  security_group = {
+    ingress_security_group_ids = [module.api.security_group_id]
+    egress_cidr_blocks         = [module.vpc.cidr_block]
+  }
+  connection_pool = { max_connections_percent = 90 }
+  cloudwatch_logs = { enabled = true }
+  endpoints       = { reporting = {} }
+}
+```
 
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `application` | The name of the product | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
-| `name` | The name of the RDS proxy (optional). Will be used in combination with application and environment. | `string` | `null` | No |
-| `tags` | A mapping of tags to assign to the resource. | `map(string)` | `{}` | No |
-| `engine_family` | The kinds of databases that the proxy can connect to (MYSQL, POSTGRESQL, SQLSERVER). | `string` | **Required** | Yes |
-| `kms_key_arn` | The ARN of the KMS key used to encrypt the database secret in Secrets Manager. Strictly required. | `string` | **Required** | Yes |
-| `vpc_id` | The VPC ID where the RDS proxy security group will be created | `string` | **Required** | Yes |
-| `vpc_subnet_ids` | One or more VPC subnet IDs to associate with the new proxy. | `list(string)` | **Required** | Yes |
-| `allowed_cidr_blocks` | List of CIDR blocks allowed to access the database proxy | `list(string)` | `[]` | No |
-| `debug_logging` | Whether the proxy includes detailed information about SQL statements in its logs. | `bool` | `false` | No |
-| `default_auth_scheme` | Default authentication scheme that the proxy uses (NONE or IAM_AUTH). | `string` | `"NONE"` | No |
-| `endpoint_network_type` | Network type of the DB proxy endpoint (IPV4, IPV6, DUAL). | `string` | `"IPV4"` | No |
-| `idle_client_timeout` | The number of seconds that a connection to the proxy can be inactive before the proxy disconnects it. | `number` | `1800` | No |
-| `target_connection_network_type` | Network type that the proxy uses to connect to the target database (IPV4 or IPV6). | `string` | `"IPV4"` | No |
-| `auth_blocks` | Configuration block(s) with authorization mechanisms to connect to the associated instances or clusters. | `list(object({...}))` | `[]` | No |
-| `connection_pool_config` | The settings that determine the size and behavior of the connection pool for the target group. | `object({...})` | `{}` | No |
-| `db_instance_identifier` | DB instance identifier to register as a target. Either db_instance_identifier or db_cluster_identifier should be specified. | `string` | **Required** | Yes |
-| `endpoints` | Map of endpoints to create for the proxy. | `map(object({...}))` | `{}` | No |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | Proxy name. | `string` | **Required** | Yes |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `engine_family` | POSTGRESQL, MYSQL or SQLSERVER. | `string` | `"POSTGRESQL"` | No |
+| `target` | Target DB instance, its port (null: engine default) and security groups. | `object({...})` | **Required** | Yes |
+| `vpc_id` | VPC ID. | `string` | **Required** | Yes |
+| `subnet_ids` | Private subnet IDs in two or more AZs. | `list(string)` | **Required** | Yes |
+| `security_group` | Security group: ingress sources, HTTPS egress to AWS APIs and extra groups. | `object({...})` | `{}` | No |
+| `default_auth_scheme` | NONE (secrets to the database) or IAM_AUTH (end-to-end IAM). | `string` | `"NONE"` | No |
+| `auth` | Database secrets; clients must use IAM auth unless iam_auth = DISABLED. | `list(object({...}))` | `[]` | No |
+| `idle_client_timeout` | Idle client timeout in seconds (1-28800). | `number` | `1800` | No |
+| `debug_logging` | Log SQL statement details. | `bool` | `false` | No |
+| `connection_pool` | Connection pool of the default target group. | `object({...})` | `{}` | No |
+| `iam_role` | Proxy role: extend it or bring your own. | `object({...})` | `{}` | No |
+| `cloudwatch_logs` | Pre-created proxy log group. | `object({...})` | `{}` | No |
+| `endpoints` | Extra read/write endpoints by key; empty lists use the proxy subnets and groups. | `map(object({...}))` | `{}` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `endpoint` | Default RDS Proxy endpoint. | No |
-| `arn` | RDS Proxy ARN. | No |
+| --- | --- | --- |
+| `id` | Proxy ID. | No |
+| `arn` | Proxy ARN. | No |
+| `name` | Proxy name (ProxyName dimension). | No |
+| `endpoint` | Default endpoint. | No |
+| `endpoints` | Extra endpoint hostnames by key. | No |
+| `security_group_id` | Module security group ID; null when not created. | No |
+| `role_arn` | Proxy role ARN. | No |
+| `role_name` | Proxy role name; null for a role brought by the caller. | No |
+| `log_group_name` | Log group name; null when not created. | No |

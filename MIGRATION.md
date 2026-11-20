@@ -8,6 +8,38 @@ To upgrade, apply every section after your pinned version up to the target, olde
 Newer sections are split into **Required** (the upgrade breaks or misbehaves without it),
 **Recommended** (aligns an existing stack with the current standards) and **Verify**.
 
+## 3.0.0
+
+3.0.0 rebuilds every AWS module on one standard ([module contract](docs/module-contract.md)). No stack used the 2.x
+AWS modules, so there is no upgrade path: no `moved` blocks, no deprecated inputs. Start each caller from the module
+README.
+
+### Requirements
+
+- Terraform `>= 1.17.0` and `hashicorp/aws` `>= 6.73.0` for every AWS module; `hashicorp/archive >= 2.8.1` for
+  `compute/lambda`; no upper bounds, no provider aliases.
+- Modules compose each other with relative paths, so a caller pins the whole repository tag
+  (`git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/<category>/<name>?ref=3.0.0`).
+
+### What changed for a caller
+
+- **Names** include the Region on IAM roles and the account ID and Region on S3 buckets; `name` is required on
+  modules that are usually deployed more than once per environment.
+- **Encryption** is one `kms` input everywhere: nothing set uses the AWS managed key, `create = true` creates a key
+  for the module, `key_id` uses yours.
+- **Networking, IAM and logs** use the same `security_group`, `iam_role` and `cloudwatch_logs` inputs in every module.
+- **Account and organization modules** (`Scope: account`/`organization` in their README) are called once per account
+  or organization and take no `name`.
+- **Exclusive roles, security groups and permission sets:** module roles keep only the policies given through
+  `iam_role`, module security groups only their module rules, Identity Center permission sets only their listed
+  policies. Anything attached outside Terraform is removed on the next apply.
+
+### Existing AWS settings
+
+Some modules manage settings that may already exist in an account or organization: the AWS Organizations
+organization, trusted access, delegated administrators, the IAM password policy, account public access blocks and
+Region settings. Adopt them with `import` blocks before the first apply; each module README shows the import IDs.
+
 ## 2.4.0
 
 ### Required

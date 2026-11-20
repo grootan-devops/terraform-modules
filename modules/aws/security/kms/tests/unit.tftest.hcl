@@ -1,18 +1,26 @@
 mock_provider "aws" {
-  mock_resource "aws_kms_key" {
+  mock_data "aws_caller_identity" {
     defaults = {
-      arn    = "arn:aws:kms:us-west-2:123456789012:key/mrk-1234abcd12ab34cd56ef1234567890ab"
-      key_id = "mrk-1234abcd12ab34cd56ef1234567890ab"
+      account_id = "123456789012"
     }
   }
-}
 
-mock_provider "aws" {
-  alias = "replica"
-
-  mock_resource "aws_kms_replica_key" {
+  mock_data "aws_region" {
     defaults = {
-      arn    = "arn:aws:kms:us-east-1:123456789012:key/mrk-1234abcd12ab34cd56ef1234567890ab"
+      region = "eu-west-1"
+    }
+  }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn    = "arn:aws:kms:eu-west-1:123456789012:key/mrk-1234abcd12ab34cd56ef1234567890ab"
       key_id = "mrk-1234abcd12ab34cd56ef1234567890ab"
     }
   }
@@ -21,528 +29,249 @@ mock_provider "aws" {
 variables {
   application = "core"
   environment = "prod"
-  name        = "primary"
+  name        = "data"
+  tags        = { Team = "platform", Name = "ignored" }
 }
 
-# ------------------------------------------------------------------------------
-# Naming
-# ------------------------------------------------------------------------------
+run "creates_a_rotating_key_with_alias_and_tags" {
+  command = apply
 
-run "naming_renders_application_environment_name" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
+  assert {
+    condition     = aws_kms_key.this.enable_key_rotation && aws_kms_key.this.rotation_period_in_days == 365 && aws_kms_key.this.deletion_window_in_days == 30
+    error_message = "A symmetric key must rotate every 365 days with a 30-day deletion window."
   }
 
   assert {
-    condition     = aws_kms_alias.this.name == "alias/core-prod-primary-key"
-    error_message = "KMS alias must be alias/<application>-<environment>-<name>-key."
+    condition     = output.alias_name == "alias/core-prod-data" && aws_kms_key.this.description == "core-prod-data key"
+    error_message = "The alias and description must come from the base name."
   }
 
   assert {
-    condition     = aws_kms_key.this.tags["Name"] == "core-prod-primary"
-    error_message = "KMS key Name tag must be the rendered name <application>-<environment>-<name>."
+    condition     = aws_kms_key.this.tags["Name"] == "core-prod-data" && aws_kms_key.this.tags["Team"] == "platform" && aws_kms_key.this.tags["ManagedBy"] == "Terraform"
+    error_message = "Governance tags must win over caller tags."
   }
 
   assert {
-    condition     = aws_kms_key.this.description == "KMS Key for core primary in prod"
-    error_message = "KMS key default description must be computed from application, name and environment."
+    condition     = output.arn == "arn:aws:kms:eu-west-1:123456789012:key/mrk-1234abcd12ab34cd56ef1234567890ab" && output.id == "mrk-1234abcd12ab34cd56ef1234567890ab"
+    error_message = "arn and id must expose the key."
+  }
+
+  assert {
+    condition     = length(aws_kms_replica_key.this) == 0 && output.replica_arns == {}
+    error_message = "No replica is created by default."
   }
 }
 
-run "naming_falls_back_when_name_is_null" {
+run "key_policy_keeps_iam_delegation_and_adds_statements" {
   command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
 
   variables {
-    name = null
+    policy_statements = [{
+      sid        = "AllowCloudWatchLogs"
+      actions    = ["kms:Encrypt*", "kms:Decrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+      principals = { Service = ["logs.eu-west-1.amazonaws.com"] }
+      conditions = [{ test = "ArnLike", variable = "kms:EncryptionContext:aws:logs:arn", values = ["arn:aws:logs:eu-west-1:123456789012:log-group:/aws/lambda/core-prod-orders"] }]
+    }]
   }
 
   assert {
-    condition     = aws_kms_alias.this.name == "alias/core-prod-key"
-    error_message = "With a null name the alias must fall back to alias/<application>-<environment>-key."
+    condition     = jsondecode(aws_kms_key.this.policy).Statement[0].Sid == "EnableIAMPolicies" && jsondecode(aws_kms_key.this.policy).Statement[0].Principal.AWS == ["arn:aws:iam::123456789012:root"]
+    error_message = "The first statement must let the account's IAM policies grant access."
   }
 
   assert {
-    condition     = aws_kms_key.this.tags["Name"] == "core-prod"
-    error_message = "With a null name the Name tag must fall back to <application>-<environment>."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.description == "KMS Key for core in prod"
-    error_message = "With a null name the default description must omit the name segment."
-  }
-}
-
-run "naming_falls_back_when_name_is_empty" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    name = ""
-  }
-
-  assert {
-    condition     = aws_kms_alias.this.name == "alias/core-prod-key"
-    error_message = "With an empty name the alias must fall back to alias/<application>-<environment>-key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.tags["Name"] == "core-prod"
-    error_message = "With an empty name the Name tag must fall back to <application>-<environment>."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Tags
-# ------------------------------------------------------------------------------
-
-run "tags_include_governance_and_caller_tags" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    tags = {
-      CostCenter = "1234"
-      Team       = "platform"
-    }
-  }
-
-  assert {
-    condition     = aws_kms_key.this.tags["Application"] == "core"
-    error_message = "KMS key must carry the Application governance tag."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.tags["Environment"] == "prod"
-    error_message = "KMS key must carry the Environment governance tag."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.tags["Name"] == "core-prod-primary"
-    error_message = "KMS key must carry the Name governance tag."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.tags["CostCenter"] == "1234" && aws_kms_key.this.tags["Team"] == "platform"
-    error_message = "Caller tags from var.tags must be preserved on the KMS key."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Security defaults and shipped parameter defaults
-# ------------------------------------------------------------------------------
-
-run "security_defaults_enforced" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  assert {
-    condition     = aws_kms_key.this.enable_key_rotation == true
-    error_message = "Automatic key rotation must be enabled by default."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.rotation_period_in_days == 365
-    error_message = "Default rotation period must be 365 days."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.deletion_window_in_days == 30
-    error_message = "Default deletion window must be 30 days."
+    condition     = jsondecode(aws_kms_key.this.policy).Statement[1].Sid == "AllowCloudWatchLogs" && jsondecode(aws_kms_key.this.policy).Statement[1].Resource == ["*"]
+    error_message = "Extra statements must follow, with Resource * meaning this key."
   }
 
   assert {
     condition     = aws_kms_key.this.bypass_policy_lockout_safety_check == false
-    error_message = "The policy lockout safety check must never be bypassed on the key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.is_enabled == true
-    error_message = "The key must be enabled by default."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.key_usage == "ENCRYPT_DECRYPT"
-    error_message = "Default key usage must be ENCRYPT_DECRYPT."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.customer_master_key_spec == "SYMMETRIC_DEFAULT"
-    error_message = "Default key spec must be SYMMETRIC_DEFAULT."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.multi_region == false
-    error_message = "Keys must be single-region by default."
-  }
-
-  assert {
-    condition     = length(aws_kms_key_policy.this) == 0
-    error_message = "No separate key policy resource must be created when policy_json is null."
-  }
-
-  assert {
-    condition     = length(aws_kms_replica_key.this) == 0 && length(aws_kms_alias.replica) == 0
-    error_message = "No replica key or replica alias must be created by default."
-  }
-
-  assert {
-    condition     = output.replica_key_arn == null
-    error_message = "replica_key_arn output must be null when no replica is created."
+    error_message = "The lockout safety check must stay on."
   }
 }
 
-run "key_policy_attached_when_provided" {
-  command = apply
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    policy_json = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"EnableRootAccess\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:root\"},\"Action\":\"kms:*\",\"Resource\":\"*\"}]}"
-  }
-
-  assert {
-    condition     = length(aws_kms_key_policy.this) == 1
-    error_message = "A key policy resource must be created when policy_json is set."
-  }
-
-  assert {
-    condition     = aws_kms_key_policy.this[0].policy == var.policy_json
-    error_message = "The key policy must be the policy_json passed in."
-  }
-
-  assert {
-    condition     = aws_kms_key_policy.this[0].key_id == aws_kms_key.this.id
-    error_message = "The key policy must be attached to the module's KMS key."
-  }
-
-  assert {
-    condition     = aws_kms_key_policy.this[0].bypass_policy_lockout_safety_check == false
-    error_message = "The policy lockout safety check must never be bypassed on the key policy."
-  }
-
-  assert {
-    condition     = aws_kms_alias.this.target_key_id == aws_kms_key.this.key_id
-    error_message = "The alias must target the module's KMS key."
-  }
-
-  assert {
-    condition     = output.key_arn == aws_kms_key.this.arn && output.key_id == aws_kms_key.this.key_id
-    error_message = "key_arn and key_id outputs must expose the KMS key's ARN and key id."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Parameter overrides
-# ------------------------------------------------------------------------------
-
-run "parameter_overrides_flow_through" {
+run "asymmetric_signing_key_does_not_rotate" {
   command = plan
 
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
   variables {
-    description              = "Signing key for release artifacts"
-    is_enabled               = false
-    key_usage                = "SIGN_VERIFY"
-    customer_master_key_spec = "RSA_2048"
-    deletion_window_in_days  = 7
-    enable_key_rotation      = false
-    rotation_period_in_days  = 90
+    key_usage = "SIGN_VERIFY"
+    key_spec  = "ECC_NIST_P256"
+    region    = "us-east-1"
   }
 
   assert {
-    condition     = aws_kms_key.this.description == "Signing key for release artifacts"
-    error_message = "A custom description must override the computed one."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.is_enabled == false
-    error_message = "is_enabled must flow through to the key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.key_usage == "SIGN_VERIFY"
-    error_message = "key_usage must flow through to the key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.customer_master_key_spec == "RSA_2048"
-    error_message = "customer_master_key_spec must flow through to the key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.deletion_window_in_days == 7
-    error_message = "deletion_window_in_days must flow through to the key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.enable_key_rotation == false
-    error_message = "enable_key_rotation must flow through to the key."
-  }
-
-  assert {
-    condition     = aws_kms_key.this.rotation_period_in_days == 90
-    error_message = "rotation_period_in_days must flow through to the key."
+    condition     = aws_kms_key.this.enable_key_rotation == false && aws_kms_key.this.customer_master_key_spec == "ECC_NIST_P256" && aws_kms_key.this.region == "us-east-1"
+    error_message = "An asymmetric key must not rotate and must be created in the requested Region."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Multi-region and replica toggles
-# ------------------------------------------------------------------------------
-
-run "multi_region_without_replica_creates_no_replica" {
+run "replicas_and_additional_aliases" {
   command = plan
 
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
   variables {
-    multi_region = true
+    multi_region       = true
+    replica_regions    = ["us-east-1", "ap-south-1"]
+    additional_aliases = ["core/data"]
   }
 
   assert {
-    condition     = aws_kms_key.this.multi_region == true
-    error_message = "multi_region must flow through to the key."
+    condition     = aws_kms_replica_key.this["us-east-1"].region == "us-east-1" && aws_kms_replica_key.this["ap-south-1"].region == "ap-south-1"
+    error_message = "Each replica must be created in its own Region through the region argument."
   }
 
   assert {
-    condition     = length(aws_kms_replica_key.this) == 0 && length(aws_kms_alias.replica) == 0
-    error_message = "No replica must be created unless replica_key.create is true."
+    condition     = aws_kms_alias.replica["us-east-1"].name == "alias/core-prod-data" && contains(keys(aws_kms_alias.this), "alias/core/data")
+    error_message = "Replicas must carry the primary alias and extra aliases must be created."
   }
 }
 
-run "replica_not_created_for_single_region_key" {
+run "purpose_is_part_of_the_alias" {
   command = plan
 
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
   variables {
-    replica_key = {
-      create = true
-    }
+    purpose = "rds"
   }
 
   assert {
-    condition     = length(aws_kms_replica_key.this) == 0 && length(aws_kms_alias.replica) == 0
-    error_message = "A replica requires multi_region = true and must not be created for a single-region key."
+    condition     = output.alias_name == "alias/core-prod-data-rds" && aws_kms_key.this.description == "core-prod-data-rds key"
+    error_message = "purpose must be appended to the alias so keys of different services never collide."
   }
 }
 
-run "replica_created_on_replica_provider_when_enabled" {
-  command = apply
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    multi_region = true
-    policy_json  = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PrimaryPolicy\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:root\"},\"Action\":\"kms:*\",\"Resource\":\"*\"}]}"
-    replica_key = {
-      create                  = true
-      policy_json             = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"ReplicaPolicy\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:root\"},\"Action\":\"kms:*\",\"Resource\":\"*\"}]}"
-      deletion_window_in_days = 7
-    }
-    tags = {
-      CostCenter = "1234"
-    }
-  }
-
-  assert {
-    condition     = length(aws_kms_replica_key.this) == 1 && length(aws_kms_alias.replica) == 1
-    error_message = "A replica key and replica alias must be created when multi_region and replica_key.create are true."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].arn == "arn:aws:kms:us-east-1:123456789012:key/mrk-1234abcd12ab34cd56ef1234567890ab"
-    error_message = "The replica key must be created through the aws.replica provider."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].primary_key_arn == aws_kms_key.this.arn
-    error_message = "The replica must replicate the module's primary key."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].deletion_window_in_days == 7
-    error_message = "replica_key.deletion_window_in_days must flow through to the replica."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].policy == var.replica_key.policy_json
-    error_message = "replica_key.policy_json must take precedence over policy_json on the replica."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].bypass_policy_lockout_safety_check == false
-    error_message = "The policy lockout safety check must never be bypassed on the replica."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].description == "KMS Replica Key for core primary in prod"
-    error_message = "Replica description must be computed from application, name and environment."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].tags["Application"] == "core" && aws_kms_replica_key.this[0].tags["Environment"] == "prod" && aws_kms_replica_key.this[0].tags["Name"] == "core-prod-primary"
-    error_message = "Replica key must carry the Application, Environment and Name governance tags."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].tags["CostCenter"] == "1234"
-    error_message = "Caller tags must be preserved on the replica key."
-  }
-
-  assert {
-    condition     = aws_kms_alias.replica[0].name == "alias/core-prod-primary-replica-key"
-    error_message = "Replica alias must be alias/<application>-<environment>-<name>-replica-key."
-  }
-
-  assert {
-    condition     = aws_kms_alias.replica[0].target_key_id == aws_kms_replica_key.this[0].key_id
-    error_message = "Replica alias must target the replica key."
-  }
-
-  assert {
-    condition     = output.replica_key_arn == aws_kms_replica_key.this[0].arn
-    error_message = "replica_key_arn output must expose the replica key ARN."
-  }
-}
-
-run "replica_inherits_primary_policy_and_default_window" {
+run "rejects_invalid_purpose" {
   command = plan
 
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
+  variables {
+    purpose = "RDS"
   }
+
+  expect_failures = [var.purpose]
+}
+
+run "rejects_public_key_policy_statement" {
+  command = plan
 
   variables {
-    multi_region = true
-    policy_json  = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PrimaryPolicy\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:root\"},\"Action\":\"kms:*\",\"Resource\":\"*\"}]}"
-    replica_key = {
-      create = true
-    }
+    policy_statements = [{ actions = ["kms:Decrypt"], principals = { AWS = ["*"] } }]
+  }
+
+  expect_failures = [var.policy_statements]
+}
+
+run "rejects_replicas_without_multi_region" {
+  command = plan
+
+  variables {
+    replica_regions = ["us-east-1"]
+  }
+
+  expect_failures = [var.replica_regions]
+}
+
+run "key_agreement_key" {
+  command = plan
+
+  variables {
+    key_usage = "KEY_AGREEMENT"
+    key_spec  = "ECC_NIST_P384"
   }
 
   assert {
-    condition     = aws_kms_replica_key.this[0].policy == var.policy_json
-    error_message = "Without replica_key.policy_json the replica must fall back to policy_json."
-  }
-
-  assert {
-    condition     = aws_kms_replica_key.this[0].deletion_window_in_days == 30
-    error_message = "Replica deletion window must default to 30 days."
+    condition     = aws_kms_key.this.key_usage == "KEY_AGREEMENT" && aws_kms_key.this.customer_master_key_spec == "ECC_NIST_P384" && !aws_kms_key.this.enable_key_rotation
+    error_message = "Key agreement keys use ECC specs without rotation."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Validation
-# ------------------------------------------------------------------------------
+run "edwards_signing_key" {
+  command = plan
+
+  variables {
+    key_usage = "SIGN_VERIFY"
+    key_spec  = "ECC_NIST_EDWARDS25519"
+  }
+
+  assert {
+    condition     = aws_kms_key.this.customer_master_key_spec == "ECC_NIST_EDWARDS25519"
+    error_message = "Ed25519 signing keys are allowed."
+  }
+}
+
+run "rejects_invalid_key_usage" {
+  command = plan
+
+  variables {
+    key_usage = "ENCRYPT"
+  }
+
+  expect_failures = [var.key_usage]
+}
+
+run "rejects_invalid_key_spec" {
+  command = plan
+
+  variables {
+    key_spec = "AES_256"
+  }
+
+  expect_failures = [var.key_spec]
+}
+
+run "rejects_short_deletion_window" {
+  command = plan
+
+  variables {
+    deletion_window_in_days = 3
+  }
+
+  expect_failures = [var.deletion_window_in_days]
+}
+
+run "rejects_invalid_rotation_period" {
+  command = plan
+
+  variables {
+    rotation_period_in_days = 30
+  }
+
+  expect_failures = [var.rotation_period_in_days]
+}
+
+run "rejects_aws_reserved_alias" {
+  command = plan
+
+  variables {
+    additional_aliases = ["aws/s3"]
+  }
+
+  expect_failures = [var.additional_aliases]
+}
+
+run "rejects_invalid_application" {
+  command = plan
+
+  variables {
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
 
 run "rejects_invalid_environment" {
   command = plan
 
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
   variables {
-    environment = "Prod_Env"
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
 }
 
-run "rejects_deletion_window_below_7_days" {
+run "rejects_invalid_name" {
   command = plan
 
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
   variables {
-    deletion_window_in_days = 6
+    name = "Data_Key"
   }
 
-  expect_failures = [var.deletion_window_in_days]
-}
-
-run "rejects_deletion_window_above_30_days" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    deletion_window_in_days = 31
-  }
-
-  expect_failures = [var.deletion_window_in_days]
-}
-
-run "rejects_rotation_period_below_90_days" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    rotation_period_in_days = 89
-  }
-
-  expect_failures = [var.rotation_period_in_days]
-}
-
-run "rejects_rotation_period_above_2560_days" {
-  command = plan
-
-  providers = {
-    aws         = aws
-    aws.replica = aws.replica
-  }
-
-  variables {
-    rotation_period_in_days = 2561
-  }
-
-  expect_failures = [var.rotation_period_in_days]
+  expect_failures = [var.name]
 }

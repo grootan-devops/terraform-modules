@@ -4,35 +4,42 @@ Modules are grouped by provider and domain under `modules/`:
 
 ```text
 terraform-modules/
-├── .gitignore                          # Artifact exclusions
+├── .github/workflows/                  # CI through github-ci-library
 ├── README.md                           # Documentation index
+├── Makefile                            # contracts, validate, test, verify (MODULES= filter)
 ├── docs/
-│   ├── AWS.md                          # AWS architecture, CIS baselines & module catalog
+│   ├── AWS.md                          # AWS module catalog, wiring, examples and roadmap
+│   ├── compliance/                     # Compliance assessment, controls matrix, inventory, governance runbook
+│   │   └── data/                       # Security Hub CSPM control catalog (generated)
 │   ├── ONEUPTIME.md                    # OneUptime architecture, monitoring baselines & catalog
 │   ├── consumption.md                  # Calling modules and the rules for composing environments
-│   ├── module-contract.md              # Variables, outputs, providers and version constraints
+│   ├── module-contract.md              # The AWS module standard
 │   ├── module-readme.md                # The README every module ships
-│   ├── naming-and-tagging.md           # Deterministic names, length limits and governance tags
+│   ├── naming-and-tagging.md           # Collision-free names, length limits and governance tags
 │   ├── other-providers.md              # Naming bounds and capability tables beyond AWS
 │   ├── provider-schema.md              # Deriving inputs and outputs from the schema
 │   ├── repository-layout.md            # This layout
-│   ├── security-baselines.md           # Capability-aware controls, keys, transport and credentials
-│   ├── state-migration.md              # Moved blocks and the release plan gate
+│   ├── security-baselines.md           # Capability-aware controls, keys, network, IAM and credentials
 │   ├── terragrunt.md                   # The Terragrunt live-repository layout
 │   ├── testing.md                      # make verify, the gate, test levels and test shapes
-│   ├── versioning.md                   # SemVer levels, deprecations and releases
-│   └── assets/                         # Architecture diagram template
-└── modules/
-    ├── aws/                            # AWS infrastructure modules
-    │   ├── compute/                    # batch, ecs, eks, lambda
-    │   ├── database/                   # dynamodb, elasticache/valkey, rds/postgres, rds/proxy
-    │   ├── integration/                # api-gateway, eventbridge, sqs, step-functions
-    │   ├── network/                    # alb, cloudfront, vpc, waf
-    │   ├── security/                   # cognito, kms, secrets-manager
-    │   └── storage/                    # amplify, efs, s3
-    └── oneuptime/                      # OneUptime monitors, on-call, status pages, workflows
-        ├── <area>/                     # internal areas: alerts, incidents, monitors, oncall, status-pages, workflows
-        └── workflows-templates/        # the teams-notification template
+│   └── versioning.md                   # SemVer levels and releases
+├── examples/
+│   └── aws/                            # serverless, web-service, eks-platform, multi-region, security-baseline
+├── modules/
+│   ├── aws/
+│   │   ├── core/                       # naming, encryption, policy-document (helpers)
+│   │   ├── compute/                    # batch, ecr, ecs, eks, lambda
+│   │   ├── database/                   # dynamodb, elasticache/valkey, rds/postgres, rds/proxy
+│   │   ├── governance/                 # account-baseline, cost-guardrails, organizations, systems-manager
+│   │   ├── integration/                # api-gateway, eventbridge (with Scheduler), http-api, sqs, step-functions
+│   │   ├── network/                    # alb, cloudfront, nlb, route53, security-group, vpc, waf
+│   │   ├── observability/              # alarm-routing, cloudwatch-alarms, log-group
+│   │   ├── security/                   # acm, cloudtrail, cognito, config, detective, guardduty, iam-access-analyzer,
+│   │   │                               # iam-role, identity-center, inspector, kms, secrets-manager, security-hub
+│   │   └── storage/                    # amplify, backup, efs, log-bucket, s3
+│   └── oneuptime/                      # OneUptime monitors, on-call, status pages, workflows
+├── scripts/compliance/                 # Control catalog fetcher, Config rule generator, compliance renderer
+└── tests/                              # Contract gate, compliance inventory, suppression and alarm checks
 ```
 
 [Documentation index](../README.md#documentation)

@@ -16,7 +16,7 @@ module "s3" {
   application = "core"
   environment = "prod"
   name        = "assets"
-  kms_key_arn = module.kms.key_arn
+  kms         = { key_id = module.kms.arn }
 }
 
 ```

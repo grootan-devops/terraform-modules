@@ -1,295 +1,440 @@
-variable "name" {
-  description = "Name of the Lambda function"
-  type        = string
-  default     = null
-}
-
 variable "application" {
-  description = "Name of the product"
+  description = "Application name."
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,23}$", var.application))
+    error_message = "application: 2-24 chars, a-z 0-9 -, starts with a letter."
+  }
 }
 
 variable "environment" {
-  description = "Deployment environment name (e.g. dev, staging, prod)."
+  description = "Environment name."
   type        = string
+
   validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.environment))
-    error_message = "The environment name must contain only lowercase alphanumeric characters and hyphens."
+    condition     = can(regex("^[a-z][a-z0-9-]{1,11}$", var.environment))
+    error_message = "environment: 2-12 chars, a-z 0-9 -, starts with a letter."
   }
 }
 
-variable "durable_config" {
-  description = "Configuration for durable execution (if applicable in this provider)."
+variable "name" {
+  description = "Function name."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,31}$", var.name))
+    error_message = "name: 1-32 chars, a-z 0-9 -."
+  }
+}
+
+variable "tags" {
+  description = "Extra tags; governance tags win."
+  type        = map(string)
+  default     = {}
+  nullable    = false
+}
+
+variable "description" {
+  description = "Function description."
+  type        = string
+  default     = null
+}
+
+variable "package" {
+  description = "Code: Zip (runtime, handler, s3_bucket/s3_key or filename; none deploys a placeholder) or Image (image_uri)."
   type = object({
-    execution_timeout = number
-    retention_period  = number
+    type               = optional(string, "Zip")
+    runtime            = optional(string, "python3.14")
+    handler            = optional(string)
+    filename           = optional(string)
+    s3_bucket          = optional(string)
+    s3_key             = optional(string)
+    image_uri          = optional(string)
+    source_kms_key_arn = optional(string)
   })
-  default = null
-}
-
-
-variable "architectures" {
-  description = "Instruction set architecture for your Lambda function. Valid values are [\"x86_64\"] and [\"arm64\"]."
-  type        = list(string)
-  default     = ["x86_64"]
+  default  = {}
+  nullable = false
 
   validation {
-    condition = (
-      length(var.architectures) == 1 &&
-      contains(["x86_64", "arm64"], var.architectures[0])
-    )
-    error_message = "architectures must contain exactly one value: x86_64 or arm64."
+    condition     = contains(["Zip", "Image"], var.package.type)
+    error_message = "package.type: Zip or Image."
+  }
+
+  validation {
+    condition     = var.package.type == "Image" || contains(["dotnet10", "java25", "java21", "java17.al2023", "java11.al2023", "java8.al2023", "nodejs24.x", "nodejs22.x", "python3.14", "python3.13", "python3.12", "ruby4.0", "ruby3.4", "provided.al2023"], var.package.runtime)
+    error_message = "package.runtime: a supported Lambda runtime (Lambda.2)."
+  }
+
+  validation {
+    condition     = var.package.type == "Zip" || var.package.image_uri != null
+    error_message = "package.image_uri is required for Image."
+  }
+
+  validation {
+    condition     = (var.package.s3_bucket == null) == (var.package.s3_key == null) && !(var.package.filename != null && var.package.s3_bucket != null)
+    error_message = "package: set filename, or s3_bucket with s3_key."
   }
 }
 
-variable "package_type" {
-  description = "Lambda deployment package type. Valid values are Zip and Image."
+variable "architecture" {
+  description = "x86_64 or arm64."
   type        = string
-  default     = "Zip"
+  default     = "x86_64"
+  nullable    = false
+
   validation {
-    condition     = contains(["Zip", "Image"], var.package_type)
-    error_message = "package_type must be Zip or Image."
+    condition     = contains(["x86_64", "arm64"], var.architecture)
+    error_message = "architecture: x86_64 or arm64."
   }
-}
-
-variable "image_uri" {
-  description = "URI of a container image in the ECR registry when package_type is Image."
-  type        = string
-  default     = null
-}
-
-variable "runtime" {
-  description = "Identifier of the function runtime (Node.js 22.x or Python 3.12 LTS)."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.package_type == "Image" || try(contains(["nodejs22.x", "python3.12"], var.runtime), false)
-    error_message = "Runtime must be nodejs22.x or python3.12 when package_type is Zip."
-  }
-}
-
-variable "handler" {
-  description = "Function entrypoint in your code. Defaults to the generated bootstrap handler for the selected runtime."
-  type        = string
-  default     = null
-}
-
-variable "bootstrap_message" {
-  description = "Message returned by the generated bootstrap package when filename and S3 package inputs are omitted."
-  type        = string
-  default     = "Code not deployed"
 }
 
 variable "memory_size" {
-  description = "Amount of memory in MB your Lambda Function can use at runtime."
+  description = "Memory in MB (128-10240)."
   type        = number
   default     = 128
+  nullable    = false
+
+  validation {
+    condition     = var.memory_size >= 128 && var.memory_size <= 10240
+    error_message = "memory_size: 128-10240."
+  }
 }
 
 variable "timeout" {
-  description = "Amount of time your Lambda Function has to run in seconds."
+  description = "Timeout in seconds (1-900)."
   type        = number
-  default     = 60
-}
-
-variable "reserved_concurrent_executions" {
-  description = "Amount of reserved concurrent executions for this lambda function. A value of 0 disables lambda from being triggered and -1 removes any concurrency limitations."
-  type        = number
-  default     = -1
-}
-
-variable "provisioned_concurrency" {
-  description = "Provisioned concurrency allocated to the stable Lambda alias. Null disables provisioned concurrency."
-  type        = number
-  default     = null
+  default     = 30
+  nullable    = false
 
   validation {
-    condition     = try(var.provisioned_concurrency == null || var.provisioned_concurrency >= 1, true)
-    error_message = "provisioned_concurrency must be null or at least 1."
+    condition     = var.timeout >= 1 && var.timeout <= 900
+    error_message = "timeout: 1-900."
+  }
+}
+
+variable "ephemeral_storage_size" {
+  description = "/tmp size in MB (512-10240)."
+  type        = number
+  default     = 512
+  nullable    = false
+
+  validation {
+    condition     = var.ephemeral_storage_size >= 512 && var.ephemeral_storage_size <= 10240
+    error_message = "ephemeral_storage_size: 512-10240."
+  }
+}
+
+variable "concurrency" {
+  description = "Reserved concurrency (null: unreserved) and provisioned concurrency on the alias (0: none)."
+  type = object({
+    reserved    = optional(number)
+    provisioned = optional(number, 0)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = (var.concurrency.reserved == null || var.concurrency.reserved >= 0) && var.concurrency.provisioned >= 0
+    error_message = "concurrency: values must be 0 or more."
   }
 }
 
 variable "alias_name" {
-  description = "Stable alias used by API Gateway and other synchronous consumers."
+  description = "Alias that triggers, URLs and provisioned concurrency use."
   type        = string
   default     = "live"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9-_]{1,128}$", var.alias_name)) && !can(regex("^[0-9]+$", var.alias_name))
+    error_message = "alias_name: 1-128 chars of a-z A-Z 0-9 - _, not only digits."
+  }
 }
 
 variable "environment_variables" {
-  description = "A map that defines environment variables for the Lambda function."
+  description = "Environment variables. No credentials: use secret_arns."
   type        = map(string)
   default     = {}
-}
+  nullable    = false
+  sensitive   = true
 
-variable "tags" {
-  description = "A map of tags to assign to resources."
-  type        = map(string)
-  default     = {}
-}
-
-variable "vpc_config" {
-  description = "VPC configuration for the Lambda function"
-  type = object({
-    subnet_ids         = list(string)
-    security_group_ids = list(string)
-  })
-  default = null
-}
-
-variable "tracing_config_mode" {
-  description = "Tracing mode for X-Ray. Valid values are Active and PassThrough."
-  type        = string
-  default     = "PassThrough"
-}
-
-variable "kms_key_arn" {
-  description = "KMS Key ARN used to encrypt environment variables at rest and CloudWatch logs. Strictly required."
-  type        = string
+  validation {
+    condition     = alltrue([for k in keys(var.environment_variables) : !can(regex("(?i)(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIAL)", k))])
+    error_message = "environment_variables: no credential names; use secret_arns."
+  }
 }
 
 variable "secret_arns" {
-  description = "Secrets Manager secret ARNs the function execution role is allowed to read"
+  description = "Secrets Manager secrets the function may read."
   type        = list(string)
   default     = []
+  nullable    = false
 }
 
-variable "source_kms_key_arn" {
-  description = "KMS key ARN used for Lambda snap start, filtering, etc."
-  type        = string
-  default     = null
-}
-
-variable "s3_bucket" {
-  description = "S3 bucket location containing the function's deployment package."
-  type        = string
-  default     = null
-}
-
-variable "s3_key" {
-  description = "S3 key of an object containing the function's deployment package."
-  type        = string
-  default     = null
-}
-
-variable "filename" {
-  description = "Path to the function's deployment package within the local filesystem. Overridden by s3_bucket/s3_key if provided."
-  type        = string
-  default     = null
-}
-
-variable "dead_letter_config_target_arn" {
-  description = "ARN of an SNS topic or SQS queue to notify when an invocation fails."
-  type        = string
-  default     = null
-}
-
-variable "sqs_event_sources" {
-  description = "Map of SQS ARNs to their respective mapping configurations (e.g., batch_size, filter_criteria_pattern)"
-  type = map(object({
-    arn                     = string
-    batch_size              = optional(number, 10)
-    maximum_concurrency     = optional(number, 2)
-    filter_criteria_pattern = optional(string, null)
-    kms_key_arn             = optional(string, null)
-  }))
-  default = {}
-}
-
-variable "async_invoke_config" {
-  description = "Configuration for async invocation behavior and destinations."
+variable "kms" {
+  description = "Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID)."
   type = object({
-    maximum_event_age_in_seconds = optional(number, 21600)
-    maximum_retry_attempts       = optional(number, 2)
-    on_success_destination_arn   = optional(string, null)
-    on_failure_destination_arn   = optional(string, null)
+    key_id                  = optional(string)
+    create                  = optional(bool, false)
+    deletion_window_in_days = optional(number, 30)
+    policy_statements = optional(list(object({
+      sid        = optional(string)
+      effect     = optional(string, "Allow")
+      actions    = list(string)
+      resources  = optional(list(string))
+      principals = optional(map(list(string)), {})
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
+    })), [])
   })
-  default = null
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !(var.kms.create && var.kms.key_id != null)
+    error_message = "kms: set create or key_id, not both."
+  }
+
+  validation {
+    condition     = var.kms.key_id == null || can(regex("^(arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/)?(mrk-[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$", var.kms.key_id))
+    error_message = "kms.key_id: a KMS key ARN or key ID."
+  }
+}
+
+variable "iam_role" {
+  description = "Execution role: extend it or bring your own."
+  type = object({
+    create                   = optional(bool, true)
+    arn                      = optional(string)
+    name                     = optional(string)
+    path                     = optional(string, "/")
+    permissions_boundary_arn = optional(string)
+    managed_policy_arns      = optional(list(string), [])
+    policy_statements = optional(list(object({
+      sid        = optional(string)
+      effect     = optional(string, "Allow")
+      actions    = list(string)
+      resources  = optional(list(string))
+      principals = optional(map(list(string)), {})
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
+    })), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.iam_role.create || var.iam_role.arn != null
+    error_message = "iam_role: set arn when create = false."
+  }
 }
 
 variable "cloudwatch_logs" {
-  description = "CloudWatch Logs configuration for the Lambda log group."
-
+  description = "CloudWatch log group and log levels."
   type = object({
-    retention_in_days           = optional(number, 14)
-    kms_key_id                  = optional(string, null)
+    retention_in_days           = optional(number, 365)
+    log_group_class             = optional(string, "STANDARD")
     deletion_protection_enabled = optional(bool, true)
+    kms_key_arn                 = optional(string)
+    application_log_level       = optional(string, "INFO")
+    system_log_level            = optional(string, "INFO")
   })
-
-  default = {}
-}
-
-variable "additional_layers" {
-  description = "Lambda layer version ARNs to attach to the function."
-  type        = list(string)
-  default     = []
+  default  = {}
+  nullable = false
 
   validation {
-    condition     = length(var.additional_layers) <= 5
-    error_message = "A Lambda function can use at most five layers."
+    condition     = contains(["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"], var.cloudwatch_logs.application_log_level) && contains(["DEBUG", "INFO", "WARN"], var.cloudwatch_logs.system_log_level)
+    error_message = "cloudwatch_logs: invalid log level."
   }
 }
 
-variable "custom_iam_policies" {
-  description = "List of IAM policy ARNs to attach to the Lambda Execution Role."
+variable "tracing" {
+  description = "X-Ray tracing mode: Active or PassThrough."
+  type        = string
+  default     = "Active"
+  nullable    = false
+
+  validation {
+    condition     = contains(["Active", "PassThrough"], var.tracing)
+    error_message = "tracing: Active or PassThrough."
+  }
+}
+
+variable "lambda_insights" {
+  description = "Lambda Insights extension: layer ARN for this Region and architecture."
+  type = object({
+    enabled   = optional(bool, false)
+    layer_arn = optional(string)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !var.lambda_insights.enabled || can(regex("^arn:aws[a-z-]*:lambda:[a-z0-9-]+:[0-9]{12}:layer:LambdaInsightsExtension(-Arm64)?:[0-9]+$", var.lambda_insights.layer_arn))
+    error_message = "lambda_insights.layer_arn: a LambdaInsightsExtension layer version ARN."
+  }
+}
+
+variable "layers" {
+  description = "Layer ARNs."
   type        = list(string)
   default     = []
+  nullable    = false
 }
 
-variable "create_deployer_role" {
-  description = "Whether to create a least-privilege role for external Lambda code deployments."
-  type        = bool
-  default     = false
-}
-
-variable "deployer_role_name" {
-  description = "Optional name for the Lambda deployer role and policy."
+variable "vpc_id" {
+  description = "VPC ID; with subnet_ids the function runs in the VPC."
   type        = string
   default     = null
 }
 
-variable "deployer_principal_arn_patterns" {
-  description = "IAM principal ARN patterns allowed to assume the Lambda deployer role."
+variable "subnet_ids" {
+  description = "Private subnet IDs. Empty: no VPC."
   type        = list(string)
   default     = []
+  nullable    = false
+
+  validation {
+    condition     = length(var.subnet_ids) == 0 || length(distinct(var.subnet_ids)) >= 2
+    error_message = "subnet_ids: at least two subnets (Lambda.5)."
+  }
+
+  validation {
+    condition     = length(var.subnet_ids) == 0 || var.vpc_id != null
+    error_message = "subnet_ids needs vpc_id."
+  }
 }
 
-variable "artifact_bucket_arn" {
-  description = "ARN of the S3 bucket used by external Lambda deployments."
+variable "security_group" {
+  description = "Security group in the VPC: egress and extra groups."
+  type = object({
+    create                        = optional(bool, true)
+    egress_cidr_blocks            = optional(list(string), ["0.0.0.0/0"])
+    egress_prefix_list_ids        = optional(list(string), [])
+    egress_security_group_ids     = optional(list(string), [])
+    additional_security_group_ids = optional(list(string), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.security_group.create || length(var.security_group.additional_security_group_ids) > 0
+    error_message = "security_group: set additional_security_group_ids when create = false."
+  }
+}
+
+variable "event_sources" {
+  description = "Event source mappings by key: SQS, Kinesis or DynamoDB stream ARNs."
+  type = map(object({
+    arn                                = string
+    type                               = string
+    batch_size                         = optional(number)
+    maximum_batching_window_in_seconds = optional(number, 0)
+    maximum_concurrency                = optional(number)
+    starting_position                  = optional(string, "LATEST")
+    filter_patterns                    = optional(list(string), [])
+    on_failure_destination_arn         = optional(string)
+    maximum_retry_attempts             = optional(number)
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for s in values(var.event_sources) : contains(["sqs", "kinesis", "dynamodb"], s.type)])
+    error_message = "event_sources[*].type: sqs, kinesis or dynamodb."
+  }
+}
+
+variable "allowed_triggers" {
+  description = "Services allowed to invoke the alias, by key: principal and source ARN or account."
+  type = map(object({
+    principal      = string
+    source_arn     = optional(string)
+    source_account = optional(string)
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for t in values(var.allowed_triggers) : t.source_arn != null || t.source_account != null])
+    error_message = "allowed_triggers: set source_arn or source_account (Lambda.1)."
+  }
+}
+
+variable "function_url" {
+  description = "Function URL on the alias; IAM auth only."
+  type = object({
+    enabled     = optional(bool, false)
+    invoke_mode = optional(string, "BUFFERED")
+    cors = optional(object({
+      allow_origins     = list(string)
+      allow_methods     = optional(list(string), ["GET"])
+      allow_headers     = optional(list(string), [])
+      expose_headers    = optional(list(string), [])
+      allow_credentials = optional(bool, false)
+      max_age           = optional(number, 0)
+    }))
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = contains(["BUFFERED", "RESPONSE_STREAM"], var.function_url.invoke_mode)
+    error_message = "function_url.invoke_mode: BUFFERED or RESPONSE_STREAM."
+  }
+}
+
+variable "async_invoke" {
+  description = "Asynchronous invocation: retries, max event age and destinations."
+  type = object({
+    enabled                      = optional(bool, false)
+    maximum_retry_attempts       = optional(number, 2)
+    maximum_event_age_in_seconds = optional(number, 21600)
+    on_success_destination_arn   = optional(string)
+    on_failure_destination_arn   = optional(string)
+  })
+  default  = {}
+  nullable = false
+}
+
+variable "dead_letter_target_arn" {
+  description = "SQS queue or SNS topic for failed async events."
   type        = string
   default     = null
 }
 
-variable "artifact_prefix" {
-  description = "S3 object prefix used by external Lambda deployments. Defaults to the Lambda service name."
+variable "code_signing_config_arn" {
+  description = "Code signing config ARN (Lambda.6)."
   type        = string
   default     = null
 }
 
-variable "runtime_management_config" {
-  description = "Runtime management configuration for the Lambda function. Valid values are Auto and FunctionUpdate."
+variable "runtime_update_mode" {
+  description = "Runtime updates: Auto, FunctionUpdate or Manual."
   type        = string
   default     = "Auto"
+  nullable    = false
 
   validation {
-    condition     = contains(["Auto", "FunctionUpdate"], var.runtime_management_config)
-    error_message = "runtime_management_config must be either Auto or FunctionUpdate."
+    condition     = contains(["Auto", "FunctionUpdate", "Manual"], var.runtime_update_mode)
+    error_message = "runtime_update_mode: Auto, FunctionUpdate or Manual."
   }
 }
 
-variable "enable_application_signals" {
-  description = "Enable CloudWatch Application Signals."
-  type        = bool
-  default     = false
-}
-
-variable "enable_lambda_insights" {
-  description = "Enable CloudWatch Lambda Insights."
-  type        = bool
-  default     = false
-}
-
-variable "bootstrap_status_code" {
-  description = "HTTP status code returned by the bootstrap placeholder handler before actual application code is deployed."
-  type        = number
-  default     = 200
+variable "durable_execution" {
+  description = "Durable execution: execution timeout and retention in seconds."
+  type = object({
+    enabled           = optional(bool, false)
+    execution_timeout = optional(number, 900)
+    retention_period  = optional(number)
+  })
+  default  = {}
+  nullable = false
 }

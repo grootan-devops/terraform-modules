@@ -1,136 +1,222 @@
 variable "application" {
+  description = "Application name."
   type        = string
-  description = "Logical application or product name used for resource naming and tagging."
+
   validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.application))
-    error_message = "Application name must contain only lowercase alphanumeric characters and hyphens."
+    condition     = can(regex("^[a-z][a-z0-9-]{1,23}$", var.application))
+    error_message = "application: 2-24 chars, a-z 0-9 -, starts with a letter."
   }
 }
 
 variable "environment" {
+  description = "Environment name."
   type        = string
-  description = "Deployment environment name (e.g. dev, staging, prod) used for isolation and tagging."
+
   validation {
-    condition     = contains(["dev", "development", "staging", "uat", "pre-prod", "prod", "production"], lower(var.environment))
-    error_message = "Environment must be one of: dev, development, staging, uat, pre-prod, prod, production."
+    condition     = can(regex("^[a-z][a-z0-9-]{1,11}$", var.environment))
+    error_message = "environment: 2-12 chars, a-z 0-9 -, starts with a letter."
   }
 }
 
 variable "name" {
+  description = "File system name."
   type        = string
-  description = "Optional additional identifier appended to the resource name."
-  default     = null
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,31}$", var.name))
+    error_message = "name: 1-32 chars, a-z 0-9 -."
+  }
 }
 
 variable "tags" {
+  description = "Extra tags; governance tags win."
   type        = map(string)
-  description = "A map of additional tags to apply to all resources created by this module."
   default     = {}
+  nullable    = false
 }
 
 variable "vpc_id" {
+  description = "VPC ID."
   type        = string
-  description = "VPC ID where the EFS mount targets and security groups are provisioned."
 }
 
 variable "subnet_ids" {
+  description = "Private subnet IDs, one mount target each."
   type        = list(string)
-  description = "List of private subnet IDs to create mount targets in."
+  nullable    = false
+
+  validation {
+    condition     = length(var.subnet_ids) > 0
+    error_message = "subnet_ids: at least one subnet."
+  }
 }
 
-variable "kms_key_arn" {
-  type        = string
-  description = "ARN of the customer-managed KMS key used to encrypt the EFS file system at rest."
+variable "security_group" {
+  description = "Mount target security group: NFS sources and extra groups."
+  type = object({
+    create                        = optional(bool, true)
+    ingress_security_group_ids    = optional(list(string), [])
+    ingress_cidr_blocks           = optional(list(string), [])
+    ingress_prefix_list_ids       = optional(list(string), [])
+    additional_security_group_ids = optional(list(string), [])
+  })
+  default  = {}
+  nullable = false
+
   validation {
-    condition     = can(regex("^arn:aws[a-z0-9-]*:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+)$", var.kms_key_arn))
-    error_message = "kms_key_arn must be a valid AWS KMS key or alias ARN."
+    condition     = var.security_group.create || length(var.security_group.additional_security_group_ids) > 0
+    error_message = "security_group: set additional_security_group_ids when create = false."
+  }
+
+  validation {
+    condition     = !anytrue([for c in var.security_group.ingress_cidr_blocks : contains(["0.0.0.0/0", "::/0"], c)])
+    error_message = "security_group.ingress_cidr_blocks: no 0.0.0.0/0 or ::/0."
+  }
+}
+
+variable "kms" {
+  description = "Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID)."
+  type = object({
+    key_id                  = optional(string)
+    create                  = optional(bool, false)
+    deletion_window_in_days = optional(number, 30)
+    policy_statements = optional(list(object({
+      sid        = optional(string)
+      effect     = optional(string, "Allow")
+      actions    = list(string)
+      resources  = optional(list(string))
+      principals = optional(map(list(string)), {})
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
+    })), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !(var.kms.create && var.kms.key_id != null)
+    error_message = "kms: set create or key_id, not both."
+  }
+
+  validation {
+    condition     = var.kms.key_id == null || can(regex("^(arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/)?(mrk-[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$", var.kms.key_id))
+    error_message = "kms.key_id: a KMS key ARN or key ID."
   }
 }
 
 variable "performance_mode" {
+  description = "generalPurpose or maxIO."
   type        = string
   default     = "generalPurpose"
-  description = "EFS performance mode: generalPurpose or maxIO."
+  nullable    = false
+
   validation {
     condition     = contains(["generalPurpose", "maxIO"], var.performance_mode)
-    error_message = "performance_mode must be either generalPurpose or maxIO."
+    error_message = "performance_mode: generalPurpose or maxIO."
   }
 }
 
-variable "throughput_mode" {
-  type        = string
-  default     = "elastic"
-  description = "EFS throughput mode: elastic, bursting, or provisioned."
+variable "throughput" {
+  description = "Throughput mode and provisioned MiB/s."
+  type = object({
+    mode              = optional(string, "elastic")
+    provisioned_mibps = optional(number)
+  })
+  default  = {}
+  nullable = false
+
   validation {
-    condition     = contains(["elastic", "bursting", "provisioned"], var.throughput_mode)
-    error_message = "throughput_mode must be one of: elastic, bursting, provisioned."
+    condition     = contains(["elastic", "bursting", "provisioned"], var.throughput.mode)
+    error_message = "throughput.mode: elastic, bursting or provisioned."
+  }
+
+  validation {
+    condition     = (var.throughput.mode == "provisioned") == (var.throughput.provisioned_mibps != null)
+    error_message = "throughput.provisioned_mibps: set only with provisioned."
   }
 }
 
-variable "provisioned_throughput_in_mibps" {
-  type        = number
-  default     = null
-  description = "Provisioned throughput in MiB/s; only used when throughput_mode is provisioned."
+variable "lifecycle_policy" {
+  description = "Storage class transitions; NONE turns one off."
+  type = object({
+    transition_to_ia                    = optional(string, "AFTER_7_DAYS")
+    transition_to_archive               = optional(string, "AFTER_30_DAYS")
+    transition_to_primary_storage_class = optional(string, "AFTER_1_ACCESS")
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for v in [var.lifecycle_policy.transition_to_ia, var.lifecycle_policy.transition_to_archive] : can(regex("^(NONE|AFTER_1_DAY|AFTER_(7|14|30|60|90|180|270|365)_DAYS)$", v))])
+    error_message = "lifecycle_policy: AFTER_<n>_DAYS or NONE."
+  }
+
+  validation {
+    condition     = contains(["AFTER_1_ACCESS", "NONE"], var.lifecycle_policy.transition_to_primary_storage_class)
+    error_message = "lifecycle_policy.transition_to_primary_storage_class: AFTER_1_ACCESS or NONE."
+  }
 }
 
-variable "transition_to_ia" {
-  type        = string
-  default     = "AFTER_7_DAYS"
-  description = "Number of days before transitioning files to Infrequent Access storage."
+variable "backup" {
+  description = "EFS automatic backups; storage/backup owns backups."
+  type = object({
+    enabled = optional(bool, false)
+  })
+  default  = {}
+  nullable = false
 }
 
-variable "transition_to_archive" {
-  type        = string
-  default     = "AFTER_30_DAYS"
-  description = "Number of days before transitioning files to Archive storage class (null to disable)."
+variable "client_access" {
+  description = "Mount target clients: principals, read only, root access."
+  type = object({
+    principal_arns = optional(list(string), [])
+    read_only      = optional(bool, false)
+    root_access    = optional(bool, false)
+  })
+  default  = {}
+  nullable = false
 }
 
-variable "enable_backup" {
-  type        = bool
-  default     = true
-  description = "Whether to enable AWS Backup automatic policy for EFS."
-}
-
-variable "security_group_ids" {
-  type        = list(string)
-  default     = []
-  description = "Optional list of existing security group IDs to associate with mount targets. If empty, a default SG is created."
-}
-
-variable "allowed_security_group_ids" {
-  type        = list(string)
-  default     = []
-  description = "List of security group IDs permitted to connect to EFS on port 2049."
-}
-
-variable "allowed_cidr_blocks" {
-  type        = list(string)
-  default     = []
-  description = "List of CIDR blocks permitted to connect to EFS on port 2049."
-}
-
-variable "allowed_client_role_arns" {
-  type        = list(string)
-  default     = []
-  description = "List of IAM role ARNs allowed to mount and write to the file system."
+variable "policy_statements" {
+  description = "Extra file system policy statements; resources default to the file system."
+  type = list(object({
+    sid        = optional(string)
+    effect     = optional(string, "Allow")
+    actions    = list(string)
+    resources  = optional(list(string))
+    principals = optional(map(list(string)), {})
+    conditions = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
+  }))
+  default  = []
+  nullable = false
 }
 
 variable "access_points" {
+  description = "Access points by key with an enforced POSIX user and root directory (EFS.3, EFS.4)."
   type = map(object({
-    posix_user = optional(object({
-      gid            = number
-      uid            = number
-      secondary_gids = optional(list(number))
-    }))
-    root_directory = optional(object({
-      path = optional(string)
-      creation_info = optional(object({
-        owner_gid   = number
-        owner_uid   = number
-        permissions = string
-      }))
-    }))
+    uid            = number
+    gid            = number
+    secondary_gids = optional(list(number), [])
+    path           = string
+    permissions    = optional(string, "0750")
   }))
-  default     = {}
-  description = "Map of access point configurations to create for this file system."
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for ap in values(var.access_points) : can(regex("^/[^/].*$", ap.path))])
+    error_message = "access_points: path starts with / and is not /."
+  }
+
+  validation {
+    condition     = alltrue([for ap in values(var.access_points) : can(regex("^[0-7]{3,4}$", ap.permissions))])
+    error_message = "access_points: permissions in octal."
+  }
 }

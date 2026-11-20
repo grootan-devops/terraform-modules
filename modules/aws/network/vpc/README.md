@@ -1,32 +1,59 @@
 # AWS VPC Module
 
-The `vpc` module provisions production-grade AWS Virtual Private Clouds (VPCs) with multi-tier subnet architectures (Public, Private, Intra), NAT Gateway topologies, Network ACLs, and automated VPC Flow Logs.
+Scope: `workload`
+
+A VPC from one CIDR: public, private and intra subnets in up to six Availability Zones, NAT gateways, per-tier route
+tables and network ACLs, flow logs, VPC endpoints and stripped default resources. Give it `cidr_block` and it computes
+the subnets; give it CIDR lists to lay them out yourself.
 
 ## Architecture & Managed Resources
 
-- `aws_vpc.main`: Core VPC with DNS hostnames and resolution enabled.
-- `aws_subnet.public`: Public ingress subnets with Internet Gateway route tables.
-- `aws_subnet.private`: Private application subnets routed through NAT Gateways.
-- `aws_subnet.intra`: Isolated database/storage subnets without external Internet access.
-- `aws_flow_log.this`: Captures `ALL` traffic to a dedicated KMS-encrypted CloudWatch log group.
-- `aws_vpc_endpoint`: Gateway and Interface private endpoints to keep AWS API traffic off the public internet.
+- `aws_vpc.this`: `<application>-<environment>[-<name>]`, DNS support and hostnames on.
+- `aws_subnet.this`: one subnet per tier and AZ (`az_count`, default 3, or `azs`). Computed layout: the VPC CIDR is
+  cut into 16 blocks; private subnet *i* is block *i*, intra subnets are cut from block 14 and public subnets from
+  block 15 (a `/16` gives private `/20`s and public and intra `/24`s). Adding an AZ adds subnets without moving the
+  others. Computed subnets need a `/16`-`/20` VPC; smaller VPCs set `cidrs`.
+- `aws_route_table.this`: one public, one intra and one private table per AZ, created only for tiers with subnets.
+  `aws_internet_gateway.this` and the public default route exist only with public subnets.
+- `aws_nat_gateway.this`, `aws_eip.nat`: `nat.mode = "single"` (default, one gateway for every private table),
+  `"per_az"` (one per AZ, each private table uses its own AZ) or `"none"`.
+- `aws_network_acl.this`, `aws_network_acl_rule.this`, `aws_network_acl_association.this`: one ACL per tier with
+  subnets. Defaults: public allows the VPC, 80, 443 and the ephemeral ports; private allows the VPC and the ephemeral
+  ports; intra allows only the VPC. `nacl_rules` adds rules or replaces a default with the same tier, direction and
+  number.
+- `aws_flow_log.this`: `ALL` traffic to `module.log_group` ([`observability/log-group`](../../observability/log-group),
+  `/aws/vpc/<base>/flow-logs`) with `module.role` ([`security/iam-role`](../../security/iam-role)), or to an S3 bucket
+  (`flow_logs = { destination = "s3", s3_bucket_arn = ... }`).
+- `aws_vpc_endpoint.this`: gateway endpoints on the private and intra route tables; interface endpoints in one tier
+  with `module.endpoint_security_group` ([`network/security-group`](../../network/security-group)): HTTPS from the
+  VPC CIDR, no egress.
+- `aws_default_security_group.this`, `aws_default_network_acl.this`, `aws_default_route_table.this`: no rules, no
+  routes.
+- `aws_route.this` (`routes`), `aws_vpc_dhcp_options.this` (`dhcp_options`), `module.encryption`
+  ([`core/encryption`](../../core/encryption)).
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **Mandatory Flow Logs Encryption**: CloudWatch log group encrypted with mandatory `kms_key_arn` and 90-day retention.
-- **CIDR Block Validation**: Strictly validated with `cidrnetmask` to prevent invalid IPv4 prefix allocations.
-- **Subnet Tier Isolation**: Dedicated route tables and Network ACLs per tier prevent unexpected cross-tier exposure.
+- **Default resources stripped (EC2.2):** the default security group, network ACL and route table carry nothing.
+- **No public IPs on launch (EC2.15):** every subnet sets `map_public_ip_on_launch = false`.
+- **No SSH or RDP from the internet (EC2.21):** no default rule opens 22 or 3389 to `0.0.0.0/0` (the ephemeral range
+  is split at 3389), and `nacl_rules` rejects such a rule.
+- **No unused network ACLs (EC2.16):** ACLs and route tables exist only for tiers with subnets.
+- **Flow logs on (EC2.6):** `ALL` traffic, 365-day log group with deletion protection, encrypted with the module key
+  when `kms` is set. The role trusts `vpc-flow-logs.amazonaws.com` with `aws:SourceAccount` and `aws:SourceArn`.
+- **Tier isolation:** intra subnets have no internet route; private subnets reach the internet only through NAT.
+- **Endpoint policies:** `policy_statements` render the endpoint policy (principal `*` unless set); without them the
+  service default (full access, still bound by IAM) applies.
 
----
+A key passed in `kms.key_id` must allow `logs.<region>.amazonaws.com` (encryption context
+`aws:logs:arn = <flow log group ARN>`). An S3 destination bucket needs a policy for `delivery.logs.amazonaws.com`.
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
@@ -38,14 +65,7 @@ module "vpc" {
 
   application = "core"
   environment = "prod"
-  name        = "network"
-
-  cidr_block                  = "10.0.0.0/16"
-  aws_availability_zone_names = ["us-west-2a", "us-west-2b", "us-west-2c"]
-  public_subnet_cidrs         = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  private_subnet_cidrs        = ["10.0.10.0/24", "10.0.20.0/24", "10.0.30.0/24"]
-
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  cidr_block  = "10.0.0.0/16"
 }
 ```
 
@@ -55,73 +75,83 @@ module "vpc" {
 module "vpc" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=<version>"
 
-  application = "enterprise"
+  application = "core"
   environment = "prod"
-  name        = "primary-vpc"
+  cidr_block  = "10.0.0.0/16"
+  az_count    = 3
+  nat         = { mode = "per_az" }
+  kms         = { create = true }
 
-  cidr_block                  = "10.200.0.0/16"
-  aws_availability_zone_names = ["us-west-2a", "us-west-2b", "us-west-2c"]
-  public_subnet_cidrs         = ["10.200.1.0/24", "10.200.2.0/24", "10.200.3.0/24"]
-  private_subnet_cidrs        = ["10.200.10.0/24", "10.200.20.0/24", "10.200.30.0/24"]
-  intra_subnet_cidrs          = ["10.200.100.0/24", "10.200.200.0/24", "10.200.300.0/24"]
-
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-
-  cloudwatch_logs = {
-    enabled           = true
-    exports           = ["vpc_flow"]
-    retention_in_days = { vpc_flow = 90 }
-    kms_key_arn       = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  }
+  flow_logs = { destination = "s3", s3_bucket_arn = module.log_bucket.arn }
 
   vpc_endpoints = {
-    enabled                   = true
-    services                  = ["s3", "dynamodb", "secretsmanager", "ecr.api", "ecr.dkr", "logs"]
-    gateway_route_table_tiers = ["private", "intra"]
-    interface_subnet_tier     = "private"
-    private_dns_enabled       = true
+    s3        = { type = "Gateway" }
+    "ecr.api" = {}
+    "ecr.dkr" = {}
+    ssm       = {}
   }
-
-  tags = {
-    NetworkZone = "CoreTransit"
+  routes = {
+    shared = { destination_cidr_block = "10.100.0.0/16", transit_gateway_id = module.tgw.id }
   }
 }
-```
 
----
+module "lambda" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+  vpc_id      = module.vpc.vpc_id
+  subnet_ids  = module.vpc.private_subnet_ids
+}
+```
 
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `name` | Name for the VPC. If not provided, will be derived from application and environment. | `string` | `null` | No |
-| `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
-| `application` | Logical application or product name used for resource naming and tagging | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
-| `cidr_block` | CIDR block for the VPC (e.g. 172.31.0.0/16) | `string` | **Required** | Yes |
-| `aws_availability_zone_names` | List of AWS availability zone names to distribute subnets across | `list(string)` | **Required** | Yes |
-| `public_subnet_cidrs` | CIDR blocks for public subnets, one per availability zone | `list(string)` | **Required** | Yes |
-| `private_subnet_cidrs` | CIDR blocks for private subnets with outbound internet access via NAT Gateway | `list(string)` | **Required** | Yes |
-| `intra_subnet_cidrs` | CIDR blocks for intra subnets with no outbound internet access | `list(string)` | **Required** | Yes |
-| `private_subnet_internet_gateway` | If true, routes 0.0.0.0/0 in private subnets to the Internet Gateway instead of a NAT Gateway (requires instances to have public IPs). | `bool` | `false` | No |
-| `intra_subnet_internet_gateway` | If true, routes 0.0.0.0/0 in intra subnets to the Internet Gateway. | `bool` | `false` | No |
-| `dns` | | `object({...})` | `{}` | No |
-| `nat` | | `object({...})` | `{}` | No |
-| `dhcp_options` | | `object({...})` | `{}` | No |
-| `cloudwatch_logs` | | `object({...})` | `{...}` | No |
-| `vpc_endpoints` | | `object({...})` | `{}` | No |
-| `nacl` | | `object({...})` | `{}` | No |
-| `additional_routes` | | `object({...})` | `{}` | No |
-| `kms_key_arn` | KMS Key ARN used for encrypting VPC Flow Logs in CloudWatch. Strictly required. | `string` | **Required** | Yes |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | VPC name. | `string` | `null` | No |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `cidr_block` | VPC IPv4 CIDR. | `string` | **Required** | Yes |
+| `az_count` | Availability Zones to use (1-6). | `number` | `3` | No |
+| `azs` | Availability Zone names. Empty: the first az_count zones. | `list(string)` | `[]` | No |
+| `public_subnets` | Public tier: enabled, CIDRs (one per AZ; empty: computed). | `object({...})` | `{}` | No |
+| `private_subnets` | Private tier: enabled, CIDRs (one per AZ; empty: computed). | `object({...})` | `{}` | No |
+| `intra_subnets` | Intra tier (no internet route): enabled, CIDRs (one per AZ; empty: computed). | `object({...})` | `{}` | No |
+| `nat` | NAT gateways: single, per_az or none. | `object({...})` | `{}` | No |
+| `nacl_rules` | Extra network ACL rules by key; same tier, direction and number replaces a default. | `map(object({...}))` | `{}` | No |
+| `routes` | Extra routes by key: tiers, one destination, one target. | `map(object({...}))` | `{}` | No |
+| `flow_logs` | VPC flow logs: destination cloudwatch or s3, traffic type, aggregation interval. | `object({...})` | `{}` | No |
+| `cloudwatch_logs` | Flow log group (destination cloudwatch). | `object({...})` | `{}` | No |
+| `kms` | Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `iam_role` | Flow log role: extend it or bring your own. | `object({...})` | `{}` | No |
+| `vpc_endpoints` | VPC endpoints by service (s3, ecr.api, ssm...): type, subnet tier, private DNS, policy. | `map(object({...}))` | `{}` | No |
+| `dhcp_options` | Custom DHCP option set. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `vpc_id` | The ID of the VPC | No |
-| `cidr_block` | The CIDR block of the VPC | No |
-| `public_subnets` | List of IDs of public subnets | No |
-| `private_subnets` | List of IDs of private subnets | No |
-| `intra_subnets` | List of IDs of intra subnets | No |
+| --- | --- | --- |
+| `vpc_id` | VPC ID. | No |
+| `vpc_arn` | VPC ARN. | No |
+| `cidr_block` | VPC CIDR. | No |
+| `azs` | Availability Zones in subnet order. | No |
+| `public_subnet_ids` | Public subnet IDs, one per AZ. | No |
+| `private_subnet_ids` | Private subnet IDs, one per AZ. | No |
+| `intra_subnet_ids` | Intra subnet IDs, one per AZ. | No |
+| `public_subnet_cidrs` | Public subnet CIDRs. | No |
+| `private_subnet_cidrs` | Private subnet CIDRs. | No |
+| `intra_subnet_cidrs` | Intra subnet CIDRs. | No |
+| `public_route_table_ids` | Public route table IDs. | No |
+| `private_route_table_ids` | Private route table IDs, one per AZ. | No |
+| `intra_route_table_ids` | Intra route table IDs. | No |
+| `nat_gateway_ids` | NAT gateway IDs. | No |
+| `nat_public_ips` | NAT gateway public IPs. | No |
+| `vpc_endpoint_ids` | VPC endpoint IDs by service key. | No |
+| `vpc_endpoint_security_group_id` | Interface endpoint security group ID; null without one. | No |
+| `flow_log_id` | Flow log ID; null when disabled. | No |
+| `log_group_name` | Flow log group name; null unless cloudwatch. | No |
+| `log_group_arn` | Flow log group ARN; null unless cloudwatch. | No |
+| `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |

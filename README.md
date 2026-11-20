@@ -9,20 +9,22 @@ and the OneUptime monitoring that watches it.
 
 | Task | Read |
 | --- | --- |
-| Find a module and see how the repository is laid out | [Repository layout](docs/repository-layout.md) |
+| Find a module and see how the repository is laid out | [AWS catalog](docs/AWS.md), [Repository layout](docs/repository-layout.md) |
+| Wire modules together | [How the modules connect](docs/AWS.md#how-the-modules-connect), [Examples](examples/aws/) |
 | Consume modules in a Terraform or Terragrunt stack | [Consuming modules](docs/consumption.md), [Terragrunt architecture](docs/terragrunt.md) |
 | Design a module's public API | [Module contract](docs/module-contract.md), [Provider schema](docs/provider-schema.md) |
 | Name resources and emit tags | [Naming and tagging](docs/naming-and-tagging.md), [Other providers](docs/other-providers.md) |
 | Choose security controls | [Security baselines](docs/security-baselines.md), [AWS catalog](docs/AWS.md), [OneUptime catalog](docs/ONEUPTIME.md), [Other providers](docs/other-providers.md) |
+| Govern an AWS organization and assess compliance | [Compliance documentation](docs/compliance/README.md), [AWS Organizations governance](docs/compliance/aws-organizations-governance.md), [Security baseline and roadmap](docs/compliance/aws-security-baseline.md) |
 | Write a module README | [Module README standard](docs/module-readme.md) |
-| Classify a change and release it | [Versioning and releases](docs/versioning.md), [State migration](docs/state-migration.md), [MIGRATION.md](MIGRATION.md) |
-| Test and verify a module | [Development and testing](docs/testing.md) |
+| Classify a change and release it | [Versioning and releases](docs/versioning.md), [MIGRATION.md](MIGRATION.md) |
+| Test, scan and verify a module | [Development and testing](docs/testing.md), [Scanner suppressions](docs/compliance/scanner-suppressions.md) |
 | Monitor a stack with OneUptime | [OneUptime catalog](docs/ONEUPTIME.md), [OneUptime module](modules/oneuptime/README.md), [Other providers](docs/other-providers.md#oneuptime) |
 
 ## Requirements
 
-Terraform `>= 1.9.0`; a module that uses newer features declares a higher minimum in its
-`versions.tf`. Each module's README lists its provider bounds under Requirements & Providers.
+AWS modules: Terraform `>= 1.17.0` and `hashicorp/aws` `>= 6.73.0`. OneUptime modules: Terraform `>= 1.9.0` and
+`oneuptime/oneuptime` `>= 13.0.6, < 14.0.0`. Each module's README lists its bounds under Requirements & Providers.
 
 ## Reading with an AI assistant
 

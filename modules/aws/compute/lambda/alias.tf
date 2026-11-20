@@ -1,15 +1,19 @@
 resource "aws_lambda_alias" "this" {
-  name = var.alias_name
-
+  name             = var.alias_name
   function_name    = aws_lambda_function.this.function_name
   function_version = aws_lambda_function.this.version
 
   lifecycle {
-    ignore_changes = [
-      function_version,
-      description
-    ]
+    ignore_changes = [function_version, description, routing_config]
   }
+}
+
+resource "aws_lambda_provisioned_concurrency_config" "this" {
+  count = var.concurrency.provisioned > 0 ? 1 : 0
+
+  function_name                     = aws_lambda_function.this.function_name
+  qualifier                         = aws_lambda_alias.this.name
+  provisioned_concurrent_executions = var.concurrency.provisioned
 }
 
 resource "aws_lambda_function_recursion_config" "this" {
@@ -17,19 +21,10 @@ resource "aws_lambda_function_recursion_config" "this" {
   recursive_loop = "Terminate"
 }
 
-resource "aws_lambda_provisioned_concurrency_config" "this" {
-  count = var.provisioned_concurrency != null ? 1 : 0
-
-  function_name                     = aws_lambda_function.this.function_name
-  provisioned_concurrent_executions = var.provisioned_concurrency
-  qualifier                         = aws_lambda_alias.this.name
-}
-
 resource "aws_lambda_runtime_management_config" "this" {
-  count = var.package_type == "Zip" ? 1 : 0
+  count = local.zip && var.runtime_update_mode != "Auto" ? 1 : 0
 
-  function_name = aws_lambda_function.this.function_name
-
-  update_runtime_on = var.runtime_management_config
+  function_name     = aws_lambda_function.this.function_name
   qualifier         = "$LATEST"
+  update_runtime_on = var.runtime_update_mode
 }

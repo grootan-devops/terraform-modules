@@ -1,111 +1,106 @@
 # AWS Secrets Manager Module
 
-The `secrets-manager` module manages AWS Secrets Manager secrets, automatic versioning payloads, resource policies, and automated Lambda rotation schedules.
+Scope: `workload`
+
+A Secrets Manager secret with an optional write-only value, Lambda rotation, a resource policy and replicas in other
+Regions. Rotation functions and the roles that read the secret are other modules; pass their ARNs in.
 
 ## Architecture & Managed Resources
 
-- `aws_secretsmanager_secret.this`: Primary encrypted secret container.
-- `aws_secretsmanager_secret_version.this`: Initial secret string / binary payload.
-- `aws_secretsmanager_secret_policy.this`: Granular IAM resource access policy.
-- `aws_secretsmanager_secret_rotation.this`: Configures Lambda rotation schedules.
+- `aws_secretsmanager_secret.this`: `<application>-<environment>-<name>`, 30-day recovery window, replicas from
+  `replica_regions`.
+- `aws_secretsmanager_secret_version.this`: when `secret_string_wo_version` is set.
+- `aws_secretsmanager_secret_rotation.this`: when `rotation.enabled`.
+- `aws_secretsmanager_secret_policy.this` via `module.policy` ([`core/policy-document`](../../core/policy-document)):
+  when `policy_statements` is set.
+- `module.encryption` ([`core/encryption`](../../core/encryption)): `aws/secretsmanager`, module key or your key.
+- `module.key` ([`security/kms`](../kms)): with `kms.create` and replicas, a multi-Region module key replicated to every
+  replica Region.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **Mandatory KMS CMK**: Encryption at rest strictly requires `kms_key_arn`.
-- **Soft Delete Window**: Defaults to 30-day recovery window (`recovery_window_in_days = 30`).
-- **Public Policy Prevention**: `block_public_policy` validation prevents accidental external sharing.
+- **Value out of state:** only `secret_string_wo` (ephemeral, write-only) with `secret_string_wo_version`; increment
+  the version to write a new value. No plain `secret_string` or `secret_binary` input.
+- **Encryption:** `aws/secretsmanager` by default; replicas use the module key's replica, a `kms_key_arn` per Region,
+  or `aws/secretsmanager` there. With `kms.key_id` every replica needs its own `kms_key_arn`.
+- **Rotation (SecretsManager.1, SecretsManager.4):** every 30 days by default, at most 90, or a
+  `schedule_expression`. The function needs an invoke permission for `secretsmanager.amazonaws.com`
+  ([`compute/lambda`](../../compute/lambda) `allowed_triggers`) and access to the secret and its key.
+- **Resource policy:** `block_public_policy` is always on; statements without `resources` apply to the secret, and an
+  `Allow` for principal `*` needs a condition.
+- **Recovery:** deletion waits 30 days by default (7-30); `0` deletes at once and is meant for disposable secrets.
+- **Tags (SecretsManager.5):** caller tags first, governance tags last.
 
----
+SecretsManager.2 and SecretsManager.3 (rotation succeeds, unused secrets removed) are runtime checks.
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.11.0` |
-| `aws` | `>= 6.64.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
 ### Minimal Working Example
 
 ```hcl
-module "secret" {
+module "db_secret" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=<version>"
 
   application = "core"
   environment = "prod"
-  name        = "db-credentials"
-
-  kms_key_arn   = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  secret_string = jsonencode({ username = var.db_username, password = var.db_password })
+  name        = "db"
 }
 ```
 
 ### Complete Production Example
 
 ```hcl
-module "secret" {
+module "db_secret" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/secrets-manager?ref=<version>"
 
-  application = "payment"
+  application = "core"
   environment = "prod"
-  name        = "stripe-keys"
+  name        = "db"
+  kms         = { create = true }
 
-  kms_key_arn             = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  description             = "Production Stripe integration API keys"
-  recovery_window_in_days = 30
-  secret_string           = jsonencode({ live_key = "sk_live_12345", webhook_secret = "whsec_67890" })
+  secret_string_wo         = ephemeral.random_password.db.result
+  secret_string_wo_version = 1
 
-  rotation_config = {
-    rotation_lambda_arn = "arn:aws:lambda:us-west-2:123456789012:function:secrets-rotator"
-    rotate_immediately  = false
-    rotation_rules = {
-      automatically_after_days = 30
-    }
-  }
+  rotation        = { enabled = true, lambda_arn = module.rotation_fn.alias_arn }
+  replica_regions = { eu-central-1 = {} }
 
-  tags = {
-    SecurityAudit = "Quarterly"
-  }
+  policy_statements = [{
+    sid        = "ReadFromApi"
+    actions    = ["secretsmanager:GetSecretValue"]
+    principals = { AWS = [module.api.role_arn] }
+  }]
 }
 ```
-
----
 
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `application` | Application name for resource naming and tagging. | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
-| `name` | Friendly name of the secret. Conflicts with name_prefix. | `string` | `null` | No |
-| `name_prefix` | Creates a unique name beginning with the specified prefix. Conflicts with name. | `string` | `null` | No |
-| `description` | Description of the secret. | `string` | `null` | No |
-| `kms_key_arn` | ARN of the AWS KMS key to encrypt the secret values. Strictly required. | `string` | **Required** | Yes |
-| `recovery_window_in_days` | Number of days that AWS Secrets Manager waits before it can delete the secret. (0 or 7 to 30). | `number` | `30` | No |
-| `force_overwrite_replica_secret` | Accepts boolean value to specify whether to overwrite a secret with the same name in the destination Region. | `bool` | `false` | No |
-| `type` | Type of secret for managed external secrets (SalesforceClientSecret, BigIDClientSecret, SnowflakeKeyPairAuthentication). | `string` | `null` | No |
-| `region` | Region where this resource will be managed. | `string` | `null` | No |
-| `tags` | Key-value map of user-defined tags that are attached to the secret. | `map(string)` | `{}` | No |
-| `policy` | Valid JSON document representing a resource policy to attach to the secret. | `string` | `null` | No |
-| `block_public_policy` | Makes an API call to validate the resource policy to prevent public access. | `bool` | `true` | No |
-| `rotation_config` | Configuration block for secret rotation. | `object({...})` | `null` | No |
-| `secret_string` | Text data to encrypt and store in this version of the secret. | `string` | `null` | No |
-| `secret_binary` | Binary data to encrypt and store in this version of the secret (base64-encoded). | `string` | `null` | No |
-| `secret_string_wo` | Write-only text data to encrypt and store in this version of the secret. | `string` | `null` | No |
-| `secret_string_wo_version` | Version identifier for secret_string_wo to trigger updates. | `number` | `null` | No |
-| `version_stages` | List of staging labels attached to this version of the secret. | `list(string)` | `null` | No |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | Secret name. | `string` | **Required** | Yes |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `description` | Secret description. | `string` | `null` | No |
+| `kms` | Encryption: {} aws/secretsmanager, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `recovery_window_in_days` | Recovery window: 0 or 7-30 days. | `number` | `30` | No |
+| `secret_string_wo` | Secret value, write-only. | `string` | `null` | No |
+| `secret_string_wo_version` | Value version; increment to write a new value. | `number` | `null` | No |
+| `rotation` | Rotation by a Lambda function on a schedule (SecretsManager.1, SecretsManager.4). | `object({...})` | `{}` | No |
+| `replica_regions` | Replica Regions and optional key ARNs. | `map(object({...}))` | `{}` | No |
+| `policy_statements` | Resource policy statements; resources default to the secret. | `list(object({...}))` | `[]` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `arn` | ARN of the secret. | No |
-| `id` | ID of the secret. | No |
-| `name` | Name of the secret. | No |
-| `version_id` | Unique identifier of the version of the secret. | No |
-| `policy_id` | ID of the secret policy. | No |
+| --- | --- | --- |
+| `arn` | Secret ARN. | No |
+| `name` | Secret name. | No |
+| `version_id` | Version ID of the written value; null without one. | No |
+| `kms_key_arn` | Key ARN in use; null for aws/secretsmanager. | No |

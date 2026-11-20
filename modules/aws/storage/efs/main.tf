@@ -1,44 +1,87 @@
-resource "aws_efs_file_system" "this" {
-  creation_token = local.name_prefix
+module "naming" {
+  source = "../../core/naming"
 
-  encrypted                       = true
-  kms_key_id                      = var.kms_key_arn
-  performance_mode                = var.performance_mode
-  throughput_mode                 = var.throughput_mode
-  provisioned_throughput_in_mibps = var.throughput_mode == "provisioned" ? var.provisioned_throughput_in_mibps : null
-
-  lifecycle_policy {
-    transition_to_ia = var.transition_to_ia
+  application = var.application
+  environment = var.environment
+  name        = var.name
+  tags        = var.tags
+  names = {
+    file_system = { max_length = 64 }
   }
+}
+
+module "encryption" {
+  source = "../../core/encryption"
+
+  application = var.application
+  environment = var.environment
+  name        = var.name
+  purpose     = "efs"
+  tags        = var.tags
+  kms         = var.kms
+}
+
+module "security_group" {
+  source = "../../network/security-group"
+  count  = var.security_group.create ? 1 : 0
+
+  application   = var.application
+  environment   = var.environment
+  name          = var.name
+  purpose       = "efs"
+  tags          = var.tags
+  vpc_id        = var.vpc_id
+  ingress_rules = local.ingress_rules
+}
+
+module "policy" {
+  source = "../../core/policy-document"
+
+  default_resources = [aws_efs_file_system.this.arn]
+  statements        = concat(local.guard_statements, var.policy_statements)
+}
+
+resource "aws_efs_file_system" "this" {
+  creation_token                  = local.name
+  encrypted                       = true
+  kms_key_id                      = local.kms_key_arn
+  performance_mode                = var.performance_mode
+  throughput_mode                 = var.throughput.mode
+  provisioned_throughput_in_mibps = var.throughput.provisioned_mibps
 
   dynamic "lifecycle_policy" {
-    for_each = var.transition_to_archive != null ? [1] : []
+    for_each = local.transitions
+
     content {
-      transition_to_archive = var.transition_to_archive
+      transition_to_ia                    = lifecycle_policy.key == "transition_to_ia" ? lifecycle_policy.value : null
+      transition_to_archive               = lifecycle_policy.key == "transition_to_archive" ? lifecycle_policy.value : null
+      transition_to_primary_storage_class = lifecycle_policy.key == "transition_to_primary_storage_class" ? lifecycle_policy.value : null
     }
   }
 
-  lifecycle_policy {
-    transition_to_primary_storage_class = "AFTER_1_ACCESS"
-  }
-
-  tags = local.tags
+  tags = merge(module.naming.tags, { Name = local.name })
 }
 
 resource "aws_efs_backup_policy" "this" {
   file_system_id = aws_efs_file_system.this.id
 
   backup_policy {
-    status = var.enable_backup ? "ENABLED" : "DISABLED"
+    status = var.backup.enabled ? "ENABLED" : "DISABLED"
   }
 }
 
+resource "aws_efs_file_system_policy" "this" {
+  file_system_id                     = aws_efs_file_system.this.id
+  policy                             = module.policy.json
+  bypass_policy_lockout_safety_check = false
+}
+
 resource "aws_efs_mount_target" "this" {
-  for_each = toset(var.subnet_ids)
+  count = length(var.subnet_ids)
 
   file_system_id  = aws_efs_file_system.this.id
-  subnet_id       = each.key
-  security_groups = length(var.security_group_ids) > 0 ? var.security_group_ids : [aws_security_group.this[0].id]
+  subnet_id       = var.subnet_ids[count.index]
+  security_groups = local.security_group_ids
 }
 
 resource "aws_efs_access_point" "this" {
@@ -46,29 +89,21 @@ resource "aws_efs_access_point" "this" {
 
   file_system_id = aws_efs_file_system.this.id
 
-  dynamic "posix_user" {
-    for_each = each.value.posix_user != null ? [each.value.posix_user] : []
-    content {
-      gid            = posix_user.value.gid
-      uid            = posix_user.value.uid
-      secondary_gids = try(posix_user.value.secondary_gids, null)
+  posix_user {
+    uid            = each.value.uid
+    gid            = each.value.gid
+    secondary_gids = each.value.secondary_gids
+  }
+
+  root_directory {
+    path = each.value.path
+
+    creation_info {
+      owner_uid   = each.value.uid
+      owner_gid   = each.value.gid
+      permissions = each.value.permissions
     }
   }
 
-  dynamic "root_directory" {
-    for_each = each.value.root_directory != null ? [each.value.root_directory] : []
-    content {
-      path = try(root_directory.value.path, "/${each.key}")
-      dynamic "creation_info" {
-        for_each = try(root_directory.value.creation_info, null) != null ? [root_directory.value.creation_info] : []
-        content {
-          owner_gid   = creation_info.value.owner_gid
-          owner_uid   = creation_info.value.owner_uid
-          permissions = creation_info.value.permissions
-        }
-      }
-    }
-  }
-
-  tags = merge(local.tags, { Name = "${local.name_prefix}-${each.key}" })
+  tags = merge(module.naming.tags, { Name = "${local.name}-${each.key}" })
 }

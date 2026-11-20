@@ -1,23 +1,20 @@
 resource "aws_kms_replica_key" "this" {
-  count = var.replica_key.create && var.multi_region ? 1 : 0
+  for_each = toset(var.replica_regions)
 
-  provider = aws.replica
-
-  description             = "KMS Replica Key for ${local.rendered_description_name} in ${var.environment}"
-  primary_key_arn         = aws_kms_key.this.arn
-  deletion_window_in_days = var.replica_key.deletion_window_in_days
-
-  policy = var.replica_key.policy_json != null ? var.replica_key.policy_json : var.policy_json
-
+  region                             = each.key
+  description                        = local.description
+  primary_key_arn                    = aws_kms_key.this.arn
+  deletion_window_in_days            = var.deletion_window_in_days
+  policy                             = module.policy.json
   bypass_policy_lockout_safety_check = false
 
-  tags = local.tags
+  tags = module.naming.tags
 }
 
 resource "aws_kms_alias" "replica" {
-  count    = var.replica_key.create && var.multi_region ? 1 : 0
-  provider = aws.replica
+  for_each = toset(var.replica_regions)
 
-  name          = "alias/${local.rendered_name}-replica-key"
-  target_key_id = aws_kms_replica_key.this[0].key_id
+  region        = each.key
+  name          = local.alias
+  target_key_id = aws_kms_replica_key.this[each.key].key_id
 }

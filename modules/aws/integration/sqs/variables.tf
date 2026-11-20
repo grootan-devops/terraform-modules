@@ -1,113 +1,211 @@
 variable "application" {
-  description = "The name of the application."
+  description = "Application name."
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,23}$", var.application))
+    error_message = "application: 2-24 chars, a-z 0-9 -, starts with a letter."
+  }
 }
 
 variable "environment" {
-  description = "Deployment environment name (e.g. dev, staging, prod)."
+  description = "Environment name."
   type        = string
+
   validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.environment))
-    error_message = "The environment name must contain only lowercase alphanumeric characters and hyphens."
+    condition     = can(regex("^[a-z][a-z0-9-]{1,11}$", var.environment))
+    error_message = "environment: 2-12 chars, a-z 0-9 -, starts with a letter."
   }
 }
 
 variable "name" {
-  description = "The name suffix for SQS resources."
+  description = "Queue name."
   type        = string
-}
 
-variable "visibility_timeout_seconds" {
-  description = "The visibility timeout for the queue in seconds."
-  type        = number
-  default     = 30
-}
-
-variable "message_retention_seconds" {
-  description = "The number of seconds Amazon SQS retains a message."
-  type        = number
-  default     = 345600 # 4 days
-}
-
-variable "max_message_size" {
-  description = "The limit of how many bytes a message can contain before Amazon SQS rejects it."
-  type        = number
-  default     = 262144 # 256 KiB
-}
-
-variable "delay_seconds" {
-  description = "The time in seconds that the delivery of all messages in the queue will be delayed."
-  type        = number
-  default     = 0
-}
-
-variable "receive_wait_time_seconds" {
-  description = "The time for which a ReceiveMessage call will wait for a message to arrive before returning."
-  type        = number
-  default     = 0
-}
-
-variable "policy" {
-  description = "The JSON policy document to apply to the queue."
-  type        = string
-  default     = null
-}
-
-variable "allow_eventbridge" {
-  description = "Whether to allow EventBridge to send messages to this SQS queue."
-  type        = bool
-  default     = false
-}
-
-variable "redrive_policy" {
-  description = "The JSON policy to set up the Dead Letter Queue redrive."
-  type        = string
-  default     = null
-}
-
-variable "redrive_allow_policy" {
-  description = "The JSON policy to set up the Dead Letter Queue redrive allow."
-  type        = string
-  default     = null
-}
-
-variable "fifo_queue" {
-  description = "Boolean designating a FIFO queue."
-  type        = bool
-  default     = false
-}
-
-variable "content_based_deduplication" {
-  description = "Enables content-based deduplication for FIFO queues."
-  type        = bool
-  default     = false
-}
-
-variable "kms_key_arn" {
-  description = "The ARN of a KMS customer managed key (CMK) for Amazon SQS encryption at rest."
-  type        = string
-}
-
-variable "kms_data_key_reuse_period_seconds" {
-  description = "The length of time, in seconds, for which Amazon SQS can reuse a data key to encrypt or decrypt messages before calling AWS KMS again."
-  type        = number
-  default     = 300
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,31}$", var.name))
+    error_message = "name: 1-32 chars, a-z 0-9 -."
+  }
 }
 
 variable "tags" {
-  description = "A map of tags to assign to the SQS queue."
+  description = "Extra tags; governance tags win."
   type        = map(string)
   default     = {}
+  nullable    = false
 }
 
-variable "create_dlq" {
-  description = "Controls whether to create a Dead Letter Queue (DLQ) for this SQS queue."
-  type        = bool
-  default     = true
+variable "fifo" {
+  description = "FIFO queues: deduplication and high throughput."
+  type = object({
+    enabled                     = optional(bool, false)
+    content_based_deduplication = optional(bool, false)
+    high_throughput             = optional(bool, false)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.fifo.enabled || !(var.fifo.content_based_deduplication || var.fifo.high_throughput)
+    error_message = "fifo: options need enabled = true."
+  }
 }
 
-variable "max_receive_count" {
-  description = "The number of times a message is delivered to the source queue before being moved to the dead-letter queue."
+variable "visibility_timeout_seconds" {
+  description = "Visibility timeout in seconds (0-43200)."
   type        = number
-  default     = 3
+  default     = 30
+  nullable    = false
+
+  validation {
+    condition     = var.visibility_timeout_seconds >= 0 && var.visibility_timeout_seconds <= 43200
+    error_message = "visibility_timeout_seconds: 0-43200."
+  }
+}
+
+variable "message_retention_seconds" {
+  description = "Message retention in seconds (60-1209600)."
+  type        = number
+  default     = 345600
+  nullable    = false
+
+  validation {
+    condition     = var.message_retention_seconds >= 60 && var.message_retention_seconds <= 1209600
+    error_message = "message_retention_seconds: 60-1209600."
+  }
+}
+
+variable "max_message_size" {
+  description = "Maximum message size in bytes (1024-1048576)."
+  type        = number
+  default     = 262144
+  nullable    = false
+
+  validation {
+    condition     = var.max_message_size >= 1024 && var.max_message_size <= 1048576
+    error_message = "max_message_size: 1024-1048576."
+  }
+}
+
+variable "delay_seconds" {
+  description = "Delivery delay in seconds (0-900)."
+  type        = number
+  default     = 0
+  nullable    = false
+
+  validation {
+    condition     = var.delay_seconds >= 0 && var.delay_seconds <= 900
+    error_message = "delay_seconds: 0-900."
+  }
+}
+
+variable "receive_wait_time_seconds" {
+  description = "Long polling wait in seconds (0-20)."
+  type        = number
+  default     = 0
+  nullable    = false
+
+  validation {
+    condition     = var.receive_wait_time_seconds >= 0 && var.receive_wait_time_seconds <= 20
+    error_message = "receive_wait_time_seconds: 0-20."
+  }
+}
+
+variable "kms" {
+  description = "Encryption: {} SSE-SQS, create = true module key, key_id your key (ARN or ID)."
+  type = object({
+    key_id                  = optional(string)
+    create                  = optional(bool, false)
+    deletion_window_in_days = optional(number, 30)
+    policy_statements = optional(list(object({
+      sid        = optional(string)
+      effect     = optional(string, "Allow")
+      actions    = list(string)
+      resources  = optional(list(string))
+      principals = optional(map(list(string)), {})
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
+    })), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !(var.kms.create && var.kms.key_id != null)
+    error_message = "kms: set create or key_id, not both."
+  }
+
+  validation {
+    condition     = var.kms.key_id == null || can(regex("^(arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/)?(mrk-[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$", var.kms.key_id))
+    error_message = "kms.key_id: a KMS key ARN or key ID."
+  }
+}
+
+variable "kms_data_key_reuse_period_seconds" {
+  description = "KMS data key reuse in seconds (60-86400)."
+  type        = number
+  default     = 300
+  nullable    = false
+
+  validation {
+    condition     = var.kms_data_key_reuse_period_seconds >= 60 && var.kms_data_key_reuse_period_seconds <= 86400
+    error_message = "kms_data_key_reuse_period_seconds: 60-86400."
+  }
+}
+
+variable "dead_letter_queue" {
+  description = "Dead-letter queue and redrive."
+  type = object({
+    enabled                   = optional(bool, true)
+    max_receive_count         = optional(number, 3)
+    message_retention_seconds = optional(number, 1209600)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.dead_letter_queue.max_receive_count >= 1 && var.dead_letter_queue.max_receive_count <= 1000
+    error_message = "dead_letter_queue.max_receive_count: 1-1000."
+  }
+
+  validation {
+    condition     = var.dead_letter_queue.message_retention_seconds >= 60 && var.dead_letter_queue.message_retention_seconds <= 1209600
+    error_message = "dead_letter_queue.message_retention_seconds: 60-1209600."
+  }
+}
+
+variable "allowed_publishers" {
+  description = "Services allowed to send, by key: principal and source ARN."
+  type = map(object({
+    principal  = string
+    source_arn = string
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for p in values(var.allowed_publishers) : contains(["events.amazonaws.com", "sns.amazonaws.com", "s3.amazonaws.com"], p.principal)])
+    error_message = "allowed_publishers[*].principal: events, sns or s3.amazonaws.com."
+  }
+}
+
+variable "policy_statements" {
+  description = "Extra queue policy statements; resources default to the queue."
+  type = list(object({
+    sid        = optional(string)
+    effect     = optional(string, "Allow")
+    actions    = list(string)
+    resources  = optional(list(string))
+    principals = optional(map(list(string)), {})
+    conditions = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
+  }))
+  default  = []
+  nullable = false
 }
