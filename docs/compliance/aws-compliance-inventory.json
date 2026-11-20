@@ -3450,7 +3450,7 @@
       "resource_address": "aws_db_instance.this",
       "aws_service": "Amazon RDS",
       "security_area": "governance",
-      "implemented": "auto_minor_version_upgrade = true, not configurable",
+      "implemented": "auto_minor_version_upgrade = true, not configurable; engine_version takes a major version only, so automatic minor upgrades never drift",
       "missing": "",
       "expected": "Automatic minor version upgrades",
       "capability": "required",
@@ -3466,6 +3466,10 @@
         {
           "file": "modules/aws/database/rds/postgres/main.tf",
           "pattern": "auto_minor_version_upgrade\\s*=\\s*true"
+        },
+        {
+          "file": "modules/aws/database/rds/postgres/variables.tf",
+          "pattern": "can\\(regex\\(\"\\^\\[1-9\\]\\[0-9\\]\\+\\$\", var\\.engine_version\\)\\)"
         }
       ],
       "remediation": ""

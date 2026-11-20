@@ -250,6 +250,24 @@ run "additional_publishers" {
   }
 }
 
+run "rds_event_publisher" {
+  command = plan
+
+  variables {
+    additional_publisher_service_principals = ["events.rds.amazonaws.com"]
+  }
+
+  assert {
+    condition     = jsondecode(aws_sns_topic_policy.this["eu-west-1/critical"].policy).Statement[1].Principal.Service == ["events.rds.amazonaws.com"] && jsondecode(aws_sns_topic_policy.this["eu-west-1/critical"].policy).Statement[1].Action == "sns:Publish"
+    error_message = "RDS event subscriptions may publish to the topics."
+  }
+
+  assert {
+    condition     = local.kms_service_statements[1].principals == { Service = ["events.rds.amazonaws.com"] } && local.kms_service_statements[1].conditions == local.source_account
+    error_message = "RDS events may use the topic key, from this account only."
+  }
+}
+
 run "cost_alert_publishers" {
   command = plan
 

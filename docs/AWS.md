@@ -128,7 +128,7 @@ from another module's outputs:
 | `database/rds/postgres` | `id`, `security_group_id`, `master_user_secret_arn` | rds/proxy `target`, ecs service `secrets` |
 | `security/iam-role` | `arn` | eks `pod_identities[*].role_arn`, any `iam_role = { create = false, arn = ... }` |
 | `security/kms` | `arn` | any `kms = { key_id = ... }` |
-| `observability/alarm-routing` | `topic_arns` | cloudwatch-alarms `notifications.topic_arns`, cost-guardrails `notifications.sns.topic_arn` (with `budgets.amazonaws.com` and `costalerts.amazonaws.com` in `additional_publisher_service_principals`) |
+| `observability/alarm-routing` | `topic_arns` | cloudwatch-alarms `notifications.topic_arns`, cost-guardrails `notifications.sns.topic_arn` (with `budgets.amazonaws.com` and `costalerts.amazonaws.com` in `additional_publisher_service_principals`), rds/postgres `event_subscription.sns_topic_arn` (with `events.rds.amazonaws.com`) |
 | any module | `name`, `id`, `arn_suffix` | cloudwatch-alarms presets |
 
 ## Examples

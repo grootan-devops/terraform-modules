@@ -133,8 +133,8 @@ resource "aws_db_instance" "this" {
   skip_final_snapshot                   = false
   final_snapshot_identifier             = "${local.identifier}-final-${formatdate("YYYYMMDDhhmmss", timestamp())}"
   auto_minor_version_upgrade            = true
-  allow_major_version_upgrade           = false
-  apply_immediately                     = false
+  allow_major_version_upgrade           = var.allow_major_version_upgrade
+  apply_immediately                     = var.apply_immediately
   monitoring_interval                   = var.monitoring_interval
   monitoring_role_arn                   = local.monitoring_role_arn
   database_insights_mode                = "standard"

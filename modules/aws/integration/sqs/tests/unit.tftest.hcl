@@ -230,6 +230,34 @@ run "fifo_queues" {
   }
 }
 
+run "fifo_high_throughput_on" {
+  command   = apply
+  state_key = "fifo-toggle"
+
+  variables {
+    fifo = { enabled = true, high_throughput = true }
+  }
+
+  assert {
+    condition     = aws_sqs_queue.this.deduplication_scope == "messageGroup" && aws_sqs_queue.this.fifo_throughput_limit == "perMessageGroupId"
+    error_message = "High throughput scopes deduplication and throughput to the message group."
+  }
+}
+
+run "fifo_high_throughput_off_again" {
+  command   = plan
+  state_key = "fifo-toggle"
+
+  variables {
+    fifo = { enabled = true, high_throughput = false }
+  }
+
+  assert {
+    condition     = aws_sqs_queue.this.deduplication_scope == "queue" && aws_sqs_queue.this.fifo_throughput_limit == "perQueue"
+    error_message = "Turning high throughput off sets the queue-wide scopes back."
+  }
+}
+
 run "long_names_fit" {
   command   = plan
   state_key = "long"

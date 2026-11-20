@@ -37,12 +37,14 @@ A caller only needs `name`, `engine_version`, `vpc_id` and `subnet_ids`.
 - **Monitoring (RDS.6, RDS.9, RDS.36, CloudWatch.16):** Enhanced Monitoring (1-60 s, never off), Performance
   Insights, `postgresql` export required, log groups kept 365 days with deletion protection.
 - **Patching (RDS.13):** automatic minor version upgrades; major upgrades are never applied implicitly.
+  `engine_version` takes a major version only, so automatic minor upgrades never show as drift.
 - **Supported versions:** PostgreSQL 15 or later (13 and 14 leave standard support); RDS Extended Support is off
   (`extended_support = false`), so an instance is upgraded when its major version leaves standard support instead of
   being billed for Extended Support.
 - **Events (RDS.20, RDS.21):** `event_subscription` sends instance events (including maintenance, configuration change
-  and failure) and parameter group changes to an SNS topic. The topic's key policy must allow
-  `events.rds.amazonaws.com`.
+  and failure) and parameter group changes to an SNS topic. The topic policy and its key policy must allow
+  `events.rds.amazonaws.com`; with [`alarm-routing`](../../../observability/alarm-routing), add it to
+  `additional_publisher_service_principals`, or no event arrives.
 - **Network:** `/0` ingress rejected; no egress unless `egress_cidr_blocks` is set.
 - **Backups (RDS.26):** add the instance to an AWS Backup plan with [`storage/backup`](../../../storage/backup).
 
@@ -85,7 +87,7 @@ module "db" {
   application    = "core"
   environment    = "prod"
   name           = "orders"
-  engine_version = "18.6"
+  engine_version = "18"
   instance_class = "db.r8g.large"
   storage        = { allocated_storage = 100, max_allocated_storage = 500 }
   parameters     = { log_min_duration_statement = { value = "500" } }
@@ -100,7 +102,32 @@ module "db" {
   backup_replication = { enabled = true, region = "eu-central-1", kms_key_arn = module.backup_key_frankfurt.arn }
   event_subscription = { enabled = true, sns_topic_arn = module.alarm_routing.topic_arns["eu-west-1"]["critical"] }
 }
+
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment                             = "prod"
+  regions                                 = ["eu-west-1"]
+  email_subscriptions                     = { critical = ["dba@example.com"] }
+  additional_publisher_service_principals = ["events.rds.amazonaws.com"]
+}
 ```
+
+### Major Version Upgrade
+
+Set the next major version together with `allow_major_version_upgrade = true` and `apply_immediately = true`. The
+module creates the new `postgres<major>` parameter group first, moves the instance to it and then deletes the old
+group, which RDS only allows once the instance has left it, so the change cannot wait for the maintenance window:
+
+```hcl
+  engine_version              = "19"
+  allow_major_version_upgrade = true
+  apply_immediately           = true
+```
+
+With `extended_support = false`, RDS upgrades an instance whose major version leaves standard support. Set
+`engine_version` to the version RDS moved it to; the next plan creates the matching `postgres<major>` parameter group
+and moves the instance to it.
 
 ## Inputs Specification
 
@@ -110,7 +137,7 @@ module "db" {
 | `environment` | Environment name. | `string` | **Required** | Yes |
 | `name` | Instance name. | `string` | **Required** | Yes |
 | `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
-| `engine_version` | PostgreSQL version: major or major.minor. | `string` | **Required** | Yes |
+| `engine_version` | PostgreSQL major version; minor versions follow automatic upgrades. | `string` | **Required** | Yes |
 | `instance_class` | Instance class. | `string` | `"db.t4g.medium"` | No |
 | `multi_az` | Multi-AZ standby. | `bool` | `true` | No |
 | `storage` | Storage: size, autoscaling limit (0: off), type, IOPS, throughput. | `object({...})` | `{}` | No |
@@ -123,6 +150,8 @@ module "db" {
 | `port` | Database port. | `number` | `5432` | No |
 | `security_group` | Security group: ingress sources, egress and extra groups. | `object({...})` | `{}` | No |
 | `kms` | Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `allow_major_version_upgrade` | Allow an engine_version change to the next major version. | `bool` | `false` | No |
+| `apply_immediately` | Apply changes now instead of in the maintenance window. | `bool` | `false` | No |
 | `extended_support` | Enrol in paid RDS Extended Support after standard support ends. | `bool` | `false` | No |
 | `deletion_protection` | Block deletion of the instance. | `bool` | `true` | No |
 | `backup_retention_period` | Automated backup retention in days. | `number` | `14` | No |

@@ -36,12 +36,12 @@ variable "tags" {
 }
 
 variable "engine_version" {
-  description = "PostgreSQL version: major or major.minor."
+  description = "PostgreSQL major version; minor versions follow automatic upgrades."
   type        = string
 
   validation {
-    condition     = can(regex("^[1-9][0-9]+(\\.[0-9]+)?$", var.engine_version)) && try(tonumber(split(".", var.engine_version)[0]) >= 15, false)
-    error_message = "engine_version: 15 or later, major or major.minor."
+    condition     = can(regex("^[1-9][0-9]+$", var.engine_version)) && try(tonumber(var.engine_version) >= 15, false)
+    error_message = "engine_version: a major version, 15 or later."
   }
 }
 
@@ -235,6 +235,25 @@ variable "kms" {
     condition     = var.kms.key_id == null || can(regex("^(arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/)?(mrk-[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$", var.kms.key_id))
     error_message = "kms.key_id: a KMS key ARN or key ID."
   }
+}
+
+variable "allow_major_version_upgrade" {
+  description = "Allow an engine_version change to the next major version."
+  type        = bool
+  default     = false
+  nullable    = false
+
+  validation {
+    condition     = !var.allow_major_version_upgrade || var.apply_immediately
+    error_message = "allow_major_version_upgrade: needs apply_immediately = true."
+  }
+}
+
+variable "apply_immediately" {
+  description = "Apply changes now instead of in the maintenance window."
+  type        = bool
+  default     = false
+  nullable    = false
 }
 
 variable "extended_support" {

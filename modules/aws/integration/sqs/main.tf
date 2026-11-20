@@ -32,8 +32,8 @@ resource "aws_sqs_queue" "this" {
   receive_wait_time_seconds         = var.receive_wait_time_seconds
   fifo_queue                        = var.fifo.enabled
   content_based_deduplication       = var.fifo.enabled ? var.fifo.content_based_deduplication : null
-  deduplication_scope               = var.fifo.high_throughput ? "messageGroup" : null
-  fifo_throughput_limit             = var.fifo.high_throughput ? "perMessageGroupId" : null
+  deduplication_scope               = var.fifo.enabled ? (var.fifo.high_throughput ? "messageGroup" : "queue") : null
+  fifo_throughput_limit             = var.fifo.enabled ? (var.fifo.high_throughput ? "perMessageGroupId" : "perQueue") : null
   sqs_managed_sse_enabled           = local.sse_sqs ? true : null
   kms_master_key_id                 = local.kms_key_arn
   kms_data_key_reuse_period_seconds = local.sse_sqs ? null : var.kms_data_key_reuse_period_seconds

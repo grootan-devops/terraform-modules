@@ -100,8 +100,8 @@ run "secure_defaults" {
   }
 
   assert {
-    condition     = aws_db_instance.this.iam_database_authentication_enabled && aws_db_instance.this.auto_minor_version_upgrade && !aws_db_instance.this.allow_major_version_upgrade
-    error_message = "IAM authentication (RDS.10) and minor upgrades (RDS.13)."
+    condition     = aws_db_instance.this.iam_database_authentication_enabled && aws_db_instance.this.auto_minor_version_upgrade && !aws_db_instance.this.allow_major_version_upgrade && !aws_db_instance.this.apply_immediately
+    error_message = "IAM authentication (RDS.10), minor upgrades (RDS.13), changes in the maintenance window."
   }
 
   assert {
@@ -382,7 +382,7 @@ run "custom_sizing" {
   command = plan
 
   variables {
-    engine_version      = "16.4"
+    engine_version      = "16"
     instance_class      = "db.r8g.large"
     multi_az            = false
     deletion_protection = false
@@ -464,6 +464,41 @@ run "extended_support_opt_in" {
     condition     = aws_db_instance.this.engine_lifecycle_support == "open-source-rds-extended-support"
     error_message = "Extended Support only when asked."
   }
+}
+
+run "major_version_upgrade" {
+  command = plan
+
+  variables {
+    engine_version              = "18"
+    allow_major_version_upgrade = true
+    apply_immediately           = true
+  }
+
+  assert {
+    condition     = aws_db_instance.this.allow_major_version_upgrade && aws_db_instance.this.apply_immediately && aws_db_parameter_group.this.family == "postgres18" && aws_db_instance.this.parameter_group_name == aws_db_parameter_group.this.name
+    error_message = "A major upgrade moves the instance to a new parameter group of the new family, applied now."
+  }
+}
+
+run "rejects_minor_engine_version" {
+  command = plan
+
+  variables {
+    engine_version = "18.6"
+  }
+
+  expect_failures = [var.engine_version]
+}
+
+run "rejects_major_upgrade_in_maintenance_window" {
+  command = plan
+
+  variables {
+    allow_major_version_upgrade = true
+  }
+
+  expect_failures = [var.allow_major_version_upgrade]
 }
 
 run "rejects_old_engine_version" {

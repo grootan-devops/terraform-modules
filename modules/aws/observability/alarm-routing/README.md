@@ -26,6 +26,8 @@ CloudFront or CLOUDFRONT-scope WAF alarms route here.
   encrypted with `aws/sns`, so the AWS managed key is rejected.
 - **Key policy:** grants `cloudwatch.amazonaws.com` (and extra publishers) `kms:Decrypt` and `kms:GenerateDataKey*`
   with `aws:SourceAccount`; EventBridge gets the statement without conditions because SNS does not support them for it.
+- **RDS events:** `events.rds.amazonaws.com` in `additional_publisher_service_principals` lets a database module's
+  `event_subscription` publish to the topics, limited to this account.
 - **Cost alerts:** `budgets.amazonaws.com` and `costalerts.amazonaws.com` in `additional_publisher_service_principals`
   get topic and key statements with `aws:SourceAccount` and `aws:SourceArn` (`arn:<partition>:budgets::<account>:*`,
   `arn:<partition>:ce::<account>:*`), so [`cost-guardrails`](../../governance/cost-guardrails) can publish budget and
