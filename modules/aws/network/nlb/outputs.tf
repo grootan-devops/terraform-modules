@@ -39,8 +39,10 @@ output "listener_arns" {
 }
 
 output "target_group_arns" {
-  description = "Target group ARNs by key."
+  description = "Target group ARNs by key, once a listener uses them."
   value       = { for k, t in aws_lb_target_group.this : k => t.arn }
+
+  depends_on = [aws_lb_listener.this]
 }
 
 output "target_group_arn_suffixes" {

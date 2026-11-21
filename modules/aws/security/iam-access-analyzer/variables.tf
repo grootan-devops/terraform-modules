@@ -40,7 +40,16 @@ variable "regions" {
 }
 
 variable "analyzers" {
-  description = "Delegated administrator call: organization analyzers and archive rules."
+  description = "Analyzers and archive rules; off for the management account call."
+  type = object({
+    enabled = optional(bool, true)
+  })
+  default  = {}
+  nullable = false
+}
+
+variable "organization_configuration" {
+  description = "Organization analyzers; off for account-only analyzers."
   type = object({
     enabled = optional(bool, true)
   })
@@ -70,7 +79,7 @@ variable "organization_admin" {
 }
 
 variable "unused_access" {
-  description = "Organization unused access analyzer in one Region (null: provider Region)."
+  description = "Unused access analyzer in one Region (null: provider Region)."
   type = object({
     enabled                 = optional(bool, true)
     region                  = optional(string)
@@ -85,10 +94,15 @@ variable "unused_access" {
     condition     = var.unused_access.unused_access_age >= 1 && var.unused_access.unused_access_age <= 365 && floor(var.unused_access.unused_access_age) == var.unused_access.unused_access_age
     error_message = "unused_access.unused_access_age: whole days, 1-365."
   }
+
+  validation {
+    condition     = var.organization_configuration.enabled || length(var.unused_access.exclusion_account_ids) == 0
+    error_message = "unused_access.exclusion_account_ids: needs organization_configuration.enabled."
+  }
 }
 
 variable "internal_access" {
-  description = "Organization internal access analyzer in one Region (null: provider Region)."
+  description = "Internal access analyzer in one Region (null: provider Region)."
   type = object({
     enabled = optional(bool, false)
     region  = optional(string)
@@ -100,6 +114,11 @@ variable "internal_access" {
   })
   default  = {}
   nullable = false
+
+  validation {
+    condition     = var.organization_configuration.enabled || alltrue([for inclusion in var.internal_access.inclusions : length(coalesce(inclusion.account_ids, [])) == 0])
+    error_message = "internal_access.inclusions[*].account_ids: needs organization_configuration.enabled."
+  }
 }
 
 variable "archive_rules" {

@@ -4,8 +4,10 @@ output "id" {
 }
 
 output "arn" {
-  description = "Load balancer ARN."
+  description = "Load balancer ARN, once its listeners exist."
   value       = aws_lb.this.arn
+
+  depends_on = [aws_lb_listener.https, aws_lb_listener.http]
 }
 
 output "arn_suffix" {
@@ -44,8 +46,10 @@ output "http_listener_arn" {
 }
 
 output "target_group_arns" {
-  description = "Target group ARNs by key."
+  description = "Target group ARNs by key, once a listener uses them."
   value       = { for k, t in aws_lb_target_group.this : k => t.arn }
+
+  depends_on = [aws_lb_listener.https, aws_lb_listener.http, aws_lb_listener_rule.this]
 }
 
 output "target_group_arn_suffixes" {

@@ -4,7 +4,9 @@ Scope: `account`
 
 Amazon Detective for an organization: the management account call designates the Detective administrator in every
 Region of `regions`; the administrator account call manages the organization behavior graph, auto-enable for new
-accounts and existing member accounts in the same Regions.
+accounts and existing member accounts in the same Regions. With `organization_configuration.enabled = false` the
+module runs in account-only mode for a standalone account, or a management account that is also the workload
+account: the behavior graph without the organization configuration.
 
 Detective depends on GuardDuty: enable [GuardDuty](../guardduty) in the account and Region first, and for at least
 48 hours, before enabling Detective; Detective ingests GuardDuty findings as a core data source.
@@ -16,14 +18,19 @@ Detective depends on GuardDuty: enable [GuardDuty](../guardduty) in the account 
   access and creates the organization behavior graph.
 - `aws_detective_graph.this` (`behavior_graph.enabled`): one graph per Region, tagged `<application>-<environment>`.
   The administrator call adopts the graph the designation created (or import it by its ARN first).
-- `aws_detective_organization_configuration.this`: `auto_enable` for accounts that join later.
+- `aws_detective_organization_configuration.this` (`organization_configuration.enabled`, default):
+  `organization_configuration.auto_enable` for accounts that join later. It needs the Detective administrator, so
+  account-only mode skips it.
 - `aws_detective_member.this`: existing organization accounts (`member_accounts`: account ID => root email) in every
-  Region; Detective sends them no invitation.
+  Region; Detective sends them no invitation. In account-only mode Detective invites them instead, and each member
+  accepts with `aws_detective_invitation_accepter`.
 
 Run the management account call first, then the administrator call.
 
 ## Security & Compliance Guardrails
 
+- **Modes:** `organization_configuration.enabled = true` (default) configures the organization from the Detective
+  administrator; `false` (account-only mode) runs only this account's graph, with no organization configuration.
 - **Encryption is provider managed:** Detective encrypts graph data with AWS owned keys at rest and in transit (TLS
   1.2); it offers no customer managed key.
 - **Least privilege:** the management account cannot be the administrator, and the administrator is never its own
@@ -80,6 +87,23 @@ module "detective" {
 }
 ```
 
+### Account-only Mode Example
+
+A standalone account, or a management account with no Detective administrator:
+
+```hcl
+module "detective" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/detective?ref=<version>"
+
+  environment                = "prod"
+  regions                    = ["eu-west-1", "us-east-1"]
+  behavior_graph             = { enabled = true }
+  organization_configuration = { enabled = false }
+
+  depends_on = [module.guardduty]
+}
+```
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -88,7 +112,8 @@ module "detective" {
 | `environment` | Environment name. | `string` | **Required** | Yes |
 | `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
 | `regions` | Regions to manage. Empty: provider Region. | `list(string)` | `[]` | No |
-| `behavior_graph` | Administrator call: behavior graph, auto-enable, members (account ID => root email). | `object({...})` | `{}` | No |
+| `behavior_graph` | Behavior graph and members (account ID => root email). | `object({...})` | `{}` | No |
+| `organization_configuration` | Organization auto-enable for new accounts; off for account-only mode. | `object({...})` | `{}` | No |
 | `organization_admin` | Management account call: Detective administrator. | `object({...})` | `{}` | No |
 
 ## Outputs Specification

@@ -20,7 +20,7 @@ mock_provider "aws" {
 
   mock_resource "aws_iam_role" {
     defaults = {
-      arn = "arn:aws:iam::123456789012:role/core-prod-orders-exec-eu-west-1"
+      arn = "arn:aws:iam::123456789012:role/core-prod-orders-sfn-eu-west-1"
     }
   }
 
@@ -84,8 +84,8 @@ run "execution_role" {
   command = plan
 
   assert {
-    condition     = module.role[0].name == "core-prod-orders-exec-eu-west-1"
-    error_message = "The role must be <application>-<environment>-<name>-exec-<region>."
+    condition     = module.role[0].name == "core-prod-orders-sfn-eu-west-1"
+    error_message = "The role must be <application>-<environment>-<name>-sfn-<region>."
   }
 
   assert {
@@ -138,7 +138,7 @@ run "log_destination" {
   }
 
   assert {
-    condition     = output.arn == "arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders" && output.role_arn == "arn:aws:iam::123456789012:role/core-prod-orders-exec-eu-west-1"
+    condition     = output.arn == "arn:aws:states:eu-west-1:123456789012:stateMachine:core-prod-orders" && output.role_arn == "arn:aws:iam::123456789012:role/core-prod-orders-sfn-eu-west-1"
     error_message = "Outputs must expose the state machine and role ARNs."
   }
 }

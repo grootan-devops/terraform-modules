@@ -10,8 +10,12 @@ Every AWS module derives its names through [`core/naming`](../modules/aws/core/n
 | Namespace | Resources | Rule | Example |
 | --- | --- | --- | --- |
 | Account and Region (`uniqueness = "region"`, default) | Most resources: functions, queues, tables, clusters, log groups, security groups | `<base>[-<suffix>]` | `core-prod-orders` |
-| Account, created by a regional module (`uniqueness = "account"`) | IAM roles, policies and instance profiles | `<base>[-<suffix>]-<region>` | `core-prod-orders-exec-eu-west-1` |
+| Account, created by a regional module (`uniqueness = "account"`) | IAM roles, policies and instance profiles | `<base>[-<suffix>]-<region>` | `core-prod-orders-lambda-eu-west-1` |
 | Global (`uniqueness = "global"`) | S3 buckets, Cognito prefix domains | `<base>[-<suffix>]-<account-id>-<region>` | `core-prod-assets-123456789012-eu-west-1` |
+
+IAM role suffixes name the service (`lambda`, `sfn`, `ecs-exec`, `batch-exec`, `proxy`, ...), so a function and a
+state machine with the same `name` never share a role. `tests/verify_modules.py` rejects a role purpose that two
+modules use.
 
 So the same application and environment can be deployed in a second Region or account without a name clash, and two
 instances of a module in one environment differ by `name`, which is required on every module that is normally
@@ -31,7 +35,7 @@ differ:
 
 ```hcl
 locals {
-  full      = "core-prod-orders-reconciliation-exec-ap-southeast-2"
+  full      = "core-prod-orders-reconciliation-sfn-ap-southeast-2"
   max       = 32
   truncated = length(local.full) <= local.max ? local.full : "${trimsuffix(substr(local.full, 0, local.max - 7), "-")}-${substr(md5(local.full), 0, 6)}"
 }

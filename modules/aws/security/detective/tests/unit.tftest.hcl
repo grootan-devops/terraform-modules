@@ -100,9 +100,9 @@ run "members_in_every_region" {
     regions = ["us-east-1", "eu-west-1", "eu-west-1"]
     behavior_graph = {
       enabled         = true
-      auto_enable     = false
       member_accounts = { "210987654321" = "security@example.com", "111122223333" = "logs@example.com" }
     }
+    organization_configuration = { auto_enable = false }
   }
 
   assert {
@@ -123,6 +123,47 @@ run "members_in_every_region" {
   assert {
     condition     = output.member_statuses["210987654321/us-east-1"] == "ENABLED" && length(output.member_ids) == 4
     error_message = "Member IDs and statuses are output by account and Region."
+  }
+}
+
+run "account_only_mode" {
+  command   = plan
+  state_key = "account_only"
+
+  variables {
+    regions                    = ["us-east-1", "eu-west-1"]
+    behavior_graph             = { enabled = true, member_accounts = { "210987654321" = "security@example.com" } }
+    organization_configuration = { enabled = false }
+  }
+
+  assert {
+    condition     = toset(keys(aws_detective_graph.this)) == toset(["us-east-1", "eu-west-1"]) && aws_detective_graph.this["eu-west-1"].region == "eu-west-1"
+    error_message = "Account-only mode keeps a graph in each Region."
+  }
+
+  assert {
+    condition     = length(aws_detective_organization_configuration.this) + length(aws_detective_organization_admin_account.this) == 0
+    error_message = "Account-only mode creates no organization configuration."
+  }
+
+  assert {
+    condition     = keys(aws_detective_member.this) == ["210987654321/eu-west-1", "210987654321/us-east-1"]
+    error_message = "Members plan while the graph ARN is unknown."
+  }
+}
+
+run "account_only_mode_graph_arns" {
+  command   = apply
+  state_key = "account_only"
+
+  variables {
+    behavior_graph             = { enabled = true }
+    organization_configuration = { enabled = false }
+  }
+
+  assert {
+    condition     = output.graph_arns == { "us-east-1" = "arn:aws:detective:us-east-1:123456789012:graph:027c7c4610ea4aacaf0b883093cab899" } && length(aws_detective_organization_configuration.this) == 0
+    error_message = "The account's own graph ARN is output."
   }
 }
 

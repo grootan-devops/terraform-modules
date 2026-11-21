@@ -11,8 +11,8 @@ make verify MODULES="modules/aws/compute/lambda modules/aws/security/kms"   # a 
 
 `tests/verify_modules.py` is the gate. For every module it asserts:
 
-- `required_version >= 1.9.0`, and the provider of its family (`hashicorp/aws`,
-  `oneuptime/oneuptime`) wherever it declares a resource or data source.
+- `required_version`: exactly `>= 1.17.0` on AWS, at least `>= 1.9.0` on OneUptime; and the provider of its family
+  (`hashicorp/aws`, `oneuptime/oneuptime`) wherever it declares a resource or data source.
 - The family's governance variables are declared: `application` and `environment` on AWS,
   `application` on OneUptime.
 - A `locals` block carrying naming and tag governance (AWS) or label governance (OneUptime)

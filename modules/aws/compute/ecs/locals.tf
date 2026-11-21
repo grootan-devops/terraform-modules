@@ -13,6 +13,7 @@ locals {
   log_group_arns      = { for k, n in local.log_group_names : k => "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:${n}" }
   exec_log_group_name = "/aws/ecs/exec/${local.cluster_name}"
   exec_log_group_arn  = "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:${local.exec_log_group_name}"
+  efs_arn_prefix      = "${local.arn_prefix}:elasticfilesystem:${local.region}:${local.account_id}"
   discovery_services  = { for k, s in var.services : k => s if s.service_discovery }
   connect_services    = { for k, s in var.services : k => s if s.service_connect.enabled }
   autoscaled_services = { for k, s in var.services : k => s if s.autoscaling.enabled }
@@ -153,7 +154,7 @@ locals {
   execution_statements = [for c in local.execution_statement_candidates : c.statement if c.when]
 
   task_statements = {
-    for k, s in var.services : k => [for c in [
+    for k, s in var.services : k => [for c in concat([
       {
         when = s.execute_command
         statement = {
@@ -199,7 +200,20 @@ locals {
           Resource = ["*"]
         }
       }
-    ] : c.statement if c.when]
+      ], [
+      for i, n in keys(s.efs_volumes) : {
+        when = true
+        statement = merge(
+          {
+            Sid      = "MountEfs${i}"
+            Effect   = "Allow"
+            Action   = s.efs_volumes[n].read_only ? ["elasticfilesystem:ClientMount"] : ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"]
+            Resource = ["${local.efs_arn_prefix}:file-system/${s.efs_volumes[n].file_system_id}"]
+          },
+          s.efs_volumes[n].access_point_id == null ? {} : { Condition = { StringEquals = { "elasticfilesystem:AccessPointArn" = "${local.efs_arn_prefix}:access-point/${s.efs_volumes[n].access_point_id}" } } }
+        )
+      }
+    ]) : c.statement if c.when]
   }
 
   task_trust_conditions = [
@@ -228,7 +242,12 @@ locals {
       length(s.environment) > 0 ? { environment = [for n, v in s.environment : { name = n, value = v }] } : {},
       length(s.secrets) > 0 ? { secrets = [for n, v in s.secrets : { name = n, valueFrom = v }] } : {},
       s.user == null ? {} : { user = s.user },
-      length(s.writable_paths) > 0 ? { mountPoints = [for i, p in s.writable_paths : { sourceVolume = "scratch-${i}", containerPath = p, readOnly = false }] } : {}
+      length(s.writable_paths) + length(s.efs_volumes) > 0 ? {
+        mountPoints = concat(
+          [for i, p in s.writable_paths : { sourceVolume = "scratch-${i}", containerPath = p, readOnly = false }],
+          [for n, v in s.efs_volumes : { sourceVolume = n, containerPath = v.container_path, readOnly = v.read_only }]
+        )
+      } : {}
     )])
   }
 }

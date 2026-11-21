@@ -58,8 +58,8 @@
       "resource_address": "aws_batch_compute_environment.this",
       "aws_service": "AWS Batch",
       "security_area": "network",
-      "implemented": "At least two private subnet_ids; module security group with no ingress; egress defaults to 0.0.0.0/0 for image pulls and AWS APIs",
-      "missing": "Egress defaults to 0.0.0.0/0",
+      "implemented": "At least two private subnet_ids; module security group with no ingress; egress is TCP 443 to security_group.egress_cidr_blocks (default 0.0.0.0/0) for image pulls and AWS APIs, every port only to listed security groups and prefix lists, and TCP 2049 to the VPC CIDR only when jobs mount EFS",
+      "missing": "HTTPS egress defaults to 0.0.0.0/0 so jobs reach ECR and AWS APIs without VPC endpoints (Trivy AVD-AWS-0104 suppression registered)",
       "expected": "Compute environments in private subnets with restricted egress",
       "capability": "recommended",
       "status_before": "REQUIRES_RUNTIME_VALIDATION",
@@ -76,9 +76,13 @@
         {
           "file": "modules/aws/compute/batch/variables.tf",
           "pattern": "egress_cidr_blocks\\s*=\\s*optional\\(list\\(string\\), \\[\"0\\.0\\.0\\.0/0\"\\]\\)"
+        },
+        {
+          "file": "modules/aws/compute/batch/locals.tf",
+          "pattern": "\"https-\\$\\{i\\}\" => \\{ description = \"HTTPS to \\$\\{cidr\\}\", ip_protocol = \"tcp\", from_port = 443, to_port = 443"
         }
       ],
-      "remediation": "Set security_group.egress_cidr_blocks to VPC endpoint and proxy ranges"
+      "remediation": "Set security_group.egress_cidr_blocks to the VPC CIDR where interface endpoints serve ECR, CloudWatch Logs and Secrets Manager"
     },
     {
       "module": "modules/aws/compute/batch",
@@ -102,6 +106,34 @@
         {
           "file": "modules/aws/compute/batch/main.tf",
           "pattern": "resource \"aws_batch_compute_environment\" \"this\" \\{[\\s\\S]*?tags = merge\\(module\\.naming\\.tags"
+        }
+      ],
+      "remediation": ""
+    },
+    {
+      "module": "modules/aws/compute/batch",
+      "resource_type": "aws_batch_job_definition",
+      "resource_address": "aws_batch_job_definition.this",
+      "aws_service": "AWS Batch",
+      "security_area": "encryption_in_transit",
+      "implemented": "efs_volumes always set efsVolumeConfiguration.transitEncryption = ENABLED, with no input to turn it off; authorizationConfig.iam = ENABLED with an access point",
+      "missing": "",
+      "expected": "EFS volumes use transit encryption",
+      "capability": "required",
+      "status_before": "NOT_APPLICABLE",
+      "status": "PASS",
+      "enforcement": "preventive",
+      "enforcement_layer": "terraform",
+      "controls": [],
+      "framework_refs": {},
+      "evidence": [
+        {
+          "file": "modules/aws/compute/batch/locals.tf",
+          "pattern": "transitEncryption\\s*=\\s*\"ENABLED\""
+        },
+        {
+          "file": "modules/aws/compute/batch/locals.tf",
+          "pattern": "iam = v\\.access_point_id != null \\? \"ENABLED\" : \"DISABLED\""
         }
       ],
       "remediation": ""
@@ -459,7 +491,7 @@
       "resource_address": "module.job_role[0].aws_iam_role.this",
       "aws_service": "AWS IAM",
       "security_area": "iam",
-      "implemented": "Created only with job definitions; no permissions until iam_role adds them; trusts ECS tasks with aws:SourceAccount and aws:SourceArn",
+      "implemented": "Created only with job definitions; EFS volumes add elasticfilesystem:ClientMount, plus ClientWrite unless read_only, on the file system ARN, conditioned on elasticfilesystem:AccessPointArn with an access point; nothing else until iam_role adds it; trusts ECS tasks with aws:SourceAccount and aws:SourceArn",
       "missing": "",
       "expected": "Least-privilege job role",
       "capability": "required",
@@ -479,6 +511,14 @@
         {
           "file": "modules/aws/compute/batch/main.tf",
           "pattern": "purpose\\s*=\\s*\"job\""
+        },
+        {
+          "file": "modules/aws/compute/batch/locals.tf",
+          "pattern": "Action\\s*=\\s*v\\.read_only \\? \\[\"elasticfilesystem:ClientMount\"\\] : \\[\"elasticfilesystem:ClientMount\", \"elasticfilesystem:ClientWrite\"\\]"
+        },
+        {
+          "file": "modules/aws/compute/batch/locals.tf",
+          "pattern": "\"elasticfilesystem:AccessPointArn\" = \"\\$\\{local\\.efs_arn_prefix\\}:access-point/"
         }
       ],
       "remediation": ""
@@ -563,8 +603,8 @@
       "resource_address": "module.security_group[0].aws_vpc_security_group_egress_rule.this",
       "aws_service": "Amazon EC2",
       "security_area": "network",
-      "implemented": "Egress only; no ingress rules; egress follows security_group.egress_cidr_blocks (default 0.0.0.0/0)",
-      "missing": "Egress defaults to 0.0.0.0/0",
+      "implemented": "Egress only; no ingress rules; TCP 443 to security_group.egress_cidr_blocks (default 0.0.0.0/0), all ports to egress_security_group_ids and egress_prefix_list_ids, TCP 2049 to the VPC CIDR with EFS volumes",
+      "missing": "HTTPS egress defaults to 0.0.0.0/0 (Trivy AVD-AWS-0104 suppression registered)",
       "expected": "Restricted security group",
       "capability": "recommended",
       "status_before": "NOT_APPLICABLE",
@@ -580,9 +620,17 @@
         {
           "file": "modules/aws/compute/batch/main.tf",
           "pattern": "egress_rules = local\\.egress_rules"
+        },
+        {
+          "file": "modules/aws/compute/batch/locals.tf",
+          "pattern": "nfs = \\{ description = \"NFS to EFS mount targets in the VPC\", ip_protocol = \"tcp\", from_port = 2049, to_port = 2049, cidr_ipv4 = one\\(data\\.aws_vpc\\.this\\[\\*\\]\\.cidr_block\\) \\}"
+        },
+        {
+          "file": "modules/aws/compute/batch/main.tf",
+          "pattern": "#trivy:ignore:AVD-AWS-0104\\nmodule \"security_group\" \\{"
         }
       ],
-      "remediation": "Set security_group.egress_cidr_blocks to VPC endpoint and proxy ranges"
+      "remediation": "Set security_group.egress_cidr_blocks to the VPC CIDR where interface endpoints serve ECR, CloudWatch Logs and Secrets Manager"
     },
     {
       "module": "modules/aws/compute/ecr",
@@ -984,12 +1032,12 @@
       "resource_address": "aws_ecs_task_definition.this",
       "aws_service": "Amazon ECS",
       "security_area": "encryption_in_transit",
-      "implemented": "The module defines no EFS volumes",
+      "implemented": "efs_volumes always set efs_volume_configuration.transit_encryption = ENABLED, with no input to turn it off; authorization_config.iam = ENABLED with an access point",
       "missing": "",
       "expected": "EFS volumes use transit encryption",
-      "capability": "not_applicable",
+      "capability": "required",
       "status_before": "NOT_APPLICABLE",
-      "status": "NOT_APPLICABLE",
+      "status": "PASS",
       "enforcement": "preventive",
       "enforcement_layer": "terraform",
       "controls": [
@@ -999,7 +1047,11 @@
       "evidence": [
         {
           "file": "modules/aws/compute/ecs/main.tf",
-          "pattern": "dynamic \"volume\" \\{"
+          "pattern": "transit_encryption\\s*=\\s*\"ENABLED\""
+        },
+        {
+          "file": "modules/aws/compute/ecs/main.tf",
+          "pattern": "iam\\s*=\\s*volume\\.value\\.access_point_id != null \\? \"ENABLED\" : \"DISABLED\""
         }
       ],
       "remediation": ""
@@ -1468,7 +1520,7 @@
       "resource_address": "module.task_role.aws_iam_role.this",
       "aws_service": "AWS IAM",
       "security_area": "iam",
-      "implemented": "One role per service, no permissions by default; ECS Exec adds ssmmessages, its log group and the session key; tracing.enabled adds X-Ray; no log permissions; trusts ECS tasks with aws:SourceAccount and aws:SourceArn",
+      "implemented": "One role per service, no permissions by default; ECS Exec adds ssmmessages, its log group and the session key; EFS volumes add elasticfilesystem:ClientMount, plus ClientWrite unless read_only, on the file system ARN, conditioned on elasticfilesystem:AccessPointArn with an access point; tracing.enabled adds X-Ray; no log permissions; trusts ECS tasks with aws:SourceAccount and aws:SourceArn",
       "missing": "",
       "expected": "Least-privilege task roles",
       "capability": "required",
@@ -1490,6 +1542,14 @@
         {
           "file": "modules/aws/compute/ecs/locals.tf",
           "pattern": "variable = \"aws:SourceArn\""
+        },
+        {
+          "file": "modules/aws/compute/ecs/locals.tf",
+          "pattern": "Action\\s*=\\s*s\\.efs_volumes\\[n\\]\\.read_only \\? \\[\"elasticfilesystem:ClientMount\"\\] : \\[\"elasticfilesystem:ClientMount\", \"elasticfilesystem:ClientWrite\"\\]"
+        },
+        {
+          "file": "modules/aws/compute/ecs/locals.tf",
+          "pattern": "\"elasticfilesystem:AccessPointArn\" = \"\\$\\{local\\.efs_arn_prefix\\}:access-point/"
         }
       ],
       "remediation": ""
@@ -4275,8 +4335,8 @@
       "resource_address": "module.security_group[0].aws_security_group.this",
       "aws_service": "Amazon EC2",
       "security_area": "network",
-      "implemented": "Egress only to the target database security groups on the database port and HTTPS (443) to security_group.egress_cidr_blocks for AWS APIs",
-      "missing": "HTTPS egress defaults to 0.0.0.0/0 so the proxy reaches Secrets Manager, KMS and STS without VPC endpoints",
+      "implemented": "Egress only to target.security_group_ids on the target port (at least one required while the module creates its group) and TCP 443 to security_group.egress_cidr_blocks for Secrets Manager, KMS and STS",
+      "missing": "HTTPS egress defaults to 0.0.0.0/0 so the proxy reaches Secrets Manager, KMS and STS without VPC endpoints (Trivy AVD-AWS-0104 suppression registered)",
       "expected": "Least-privilege security group",
       "capability": "recommended",
       "status_before": "PARTIAL",
@@ -4293,6 +4353,18 @@
         {
           "file": "modules/aws/database/rds/proxy/variables.tf",
           "pattern": "egress_cidr_blocks\\s*=\\s*optional\\(list\\(string\\), \\[\"0\\.0\\.0\\.0/0\"\\]\\)"
+        },
+        {
+          "file": "modules/aws/database/rds/proxy/variables.tf",
+          "pattern": "target\\.security_group_ids: at least one with security_group\\.create\\."
+        },
+        {
+          "file": "modules/aws/database/rds/proxy/locals.tf",
+          "pattern": "\"https-\\$\\{i\\}\" => \\{ description = \"AWS APIs over HTTPS to \\$\\{cidr\\}\", ip_protocol = \"tcp\", from_port = 443, to_port = 443"
+        },
+        {
+          "file": "modules/aws/database/rds/proxy/main.tf",
+          "pattern": "#trivy:ignore:AVD-AWS-0104\\nmodule \"security_group\" \\{"
         }
       ],
       "remediation": "Set security_group.egress_cidr_blocks to the VPC CIDR where interface endpoints serve those APIs."
@@ -8843,7 +8915,7 @@
       "evidence": [
         {
           "file": "modules/aws/integration/step-functions/main.tf",
-          "pattern": "purpose                  = \"exec\"\\n  tags                     = var\\.tags"
+          "pattern": "purpose                  = \"sfn\"\\n  tags                     = var\\.tags"
         }
       ],
       "remediation": ""
@@ -9616,7 +9688,7 @@
       "resource_address": "aws_cloudwatch_log_delivery.this",
       "aws_service": "Amazon CloudFront",
       "security_area": "logging",
-      "implemented": "Standard logging (v2) always delivers access logs to a log group in us-east-1",
+      "implemented": "Standard logging (v2) always delivers access logs: to a log group in us-east-1 by default, or to an S3 bucket with logging.destination = s3",
       "missing": "CloudFront.5 checks only legacy S3 logging (logging_config), which the module does not use",
       "expected": "Legacy S3 access logging",
       "capability": "recommended",
@@ -9632,6 +9704,10 @@
         {
           "file": "modules/aws/network/cloudfront/logs.tf",
           "pattern": "log_type     = \"ACCESS_LOGS\""
+        },
+        {
+          "file": "modules/aws/network/cloudfront/variables.tf",
+          "pattern": "destination += optional\\(string, \"cloudwatch\"\\)"
         }
       ],
       "remediation": "Accept the finding with the v2 logging as evidence, or suppress CloudFront.5 in the Security Hub configuration policy"
@@ -9642,7 +9718,7 @@
       "resource_address": "aws_cloudwatch_log_delivery.this",
       "aws_service": "Amazon CloudFront",
       "security_area": "logging",
-      "implemented": "Delivery source, destination and delivery always created in us-east-1 for the distribution's access logs",
+      "implemented": "Delivery source, destination and delivery always created in us-east-1 for the distribution's access logs, for either destination",
       "missing": "",
       "expected": "Access logs captured",
       "capability": "required",
@@ -9666,11 +9742,47 @@
     },
     {
       "module": "modules/aws/network/cloudfront",
+      "resource_type": "aws_cloudwatch_log_delivery",
+      "resource_address": "aws_cloudwatch_log_delivery.this",
+      "aws_service": "Amazon CloudFront",
+      "security_area": "logging",
+      "implemented": "logging.destination = s3 delivers JSON access logs from us-east-1 to the caller's bucket (any Region) under <prefix>/<account>/CloudFront/<distribution>/<yyyy>/<MM>/<dd>/<HH>; s3_bucket_arn is required and validated (no dots, no path); no log group is created",
+      "missing": "",
+      "expected": "Access logs in a central S3 log bucket",
+      "capability": "optional",
+      "status_before": "NOT_APPLICABLE",
+      "status": "PASS",
+      "enforcement": "preventive",
+      "enforcement_layer": "terraform",
+      "controls": [],
+      "framework_refs": {},
+      "evidence": [
+        {
+          "file": "modules/aws/network/cloudfront/logs.tf",
+          "pattern": "destination_resource_arn = local\\.logs_to_s3 \\? \"\\$\\{var\\.logging\\.s3_bucket_arn\\}/\\$\\{var\\.logging\\.prefix\\}\""
+        },
+        {
+          "file": "modules/aws/network/cloudfront/logs.tf",
+          "pattern": "suffix_path                 = local\\.s3_suffix_path"
+        },
+        {
+          "file": "modules/aws/network/cloudfront/locals.tf",
+          "pattern": "s3_suffix_path      = \"\\$\\{module\\.naming\\.account_id\\}/CloudFront/\\{DistributionId\\}/\\{yyyy\\}/\\{MM\\}/\\{dd\\}/\\{HH\\}\""
+        },
+        {
+          "file": "modules/aws/network/cloudfront/variables.tf",
+          "pattern": "var\\.logging\\.destination != \"s3\" \\|\\| can\\(regex\\(\"\\^arn:aws\\[a-z-\\]\\*:s3:::\\[A-Za-z0-9_-\\]\\+\\$\", var\\.logging\\.s3_bucket_arn\\)\\)"
+        }
+      ],
+      "remediation": ""
+    },
+    {
+      "module": "modules/aws/network/cloudfront",
       "resource_type": "aws_cloudwatch_log_group",
       "resource_address": "module.log_group.aws_cloudwatch_log_group.this",
       "aws_service": "Amazon CloudWatch Logs",
       "security_area": "deletion_protection",
-      "implemented": "deletion_protection_enabled defaults to true",
+      "implemented": "deletion_protection_enabled defaults to true (destination cloudwatch; no log group with s3)",
       "missing": "",
       "expected": "Protected against accidental deletion",
       "capability": "recommended",
@@ -9694,7 +9806,7 @@
       "resource_address": "module.log_group.aws_cloudwatch_log_group.this",
       "aws_service": "Amazon CloudWatch Logs",
       "security_area": "encryption_at_rest",
-      "implemented": "CloudWatch Logs service encryption by default; us-east-1 module key or caller key (validated to us-east-1)",
+      "implemented": "CloudWatch Logs service encryption by default; us-east-1 module key or caller key (validated to us-east-1) (destination cloudwatch; no log group with s3)",
       "missing": "",
       "expected": "Logs encrypted at rest",
       "capability": "required",
@@ -9718,7 +9830,7 @@
       "resource_address": "module.log_group.aws_cloudwatch_log_group.this",
       "aws_service": "Amazon CloudWatch Logs",
       "security_area": "log_retention",
-      "implemented": "365 days by default",
+      "implemented": "365 days by default on the log group (destination cloudwatch); with destination s3 the bucket lifecycle sets retention",
       "missing": "",
       "expected": "At least one year of retention",
       "capability": "recommended",
@@ -11014,7 +11126,7 @@
       "resource_address": "aws_wafv2_web_acl_logging_configuration.this",
       "aws_service": "AWS WAF",
       "security_area": "logging",
-      "implemented": "Logging configuration always created to the aws-waf-logs- log group",
+      "implemented": "Logging configuration always created: to the aws-waf-logs- log group by default, or with logging.destination = s3 to a bucket validated to start with aws-waf-logs-",
       "missing": "",
       "expected": "Web ACL logging enabled",
       "capability": "required",
@@ -11029,11 +11141,15 @@
       "evidence": [
         {
           "file": "modules/aws/network/waf/logs.tf",
-          "pattern": "log_destination_configs = \\[module\\.log_group\\.arn\\]"
+          "pattern": "log_destination_configs = \\[local\\.logs_to_s3 \\? var\\.logging\\.s3_bucket_arn : one\\(module\\.log_group\\[\\*\\]\\.arn\\)\\]"
         },
         {
           "file": "modules/aws/network/waf/locals.tf",
           "pattern": "log_group_name = \"aws-waf-logs-\\$\\{local\\.base\\}\""
+        },
+        {
+          "file": "modules/aws/network/waf/variables.tf",
+          "pattern": "can\\(regex\\(\"\\^arn:aws\\[a-z-\\]\\*:s3:::aws-waf-logs-\", var\\.logging\\.s3_bucket_arn\\)\\)"
         }
       ],
       "remediation": ""
@@ -11044,7 +11160,7 @@
       "resource_address": "aws_wafv2_web_acl_logging_configuration.this",
       "aws_service": "AWS WAF",
       "security_area": "secrets",
-      "implemented": "redacted_fields.headers defaults to authorization and cookie",
+      "implemented": "redacted_fields.headers defaults to authorization and cookie, on the log group and the s3 destination",
       "missing": "Callers can set headers = []",
       "expected": "Credentials kept out of logs",
       "capability": "recommended",
@@ -11068,7 +11184,7 @@
       "resource_address": "module.log_group.aws_cloudwatch_log_group.this",
       "aws_service": "Amazon CloudWatch Logs",
       "security_area": "deletion_protection",
-      "implemented": "deletion_protection_enabled defaults to true",
+      "implemented": "deletion_protection_enabled defaults to true (destination cloudwatch; no log group with s3)",
       "missing": "",
       "expected": "Protected against accidental deletion",
       "capability": "recommended",
@@ -11092,7 +11208,7 @@
       "resource_address": "module.log_group.aws_cloudwatch_log_group.this",
       "aws_service": "Amazon CloudWatch Logs",
       "security_area": "encryption_at_rest",
-      "implemented": "CloudWatch Logs service encryption by default; module key (in the web ACL's Region) or caller key",
+      "implemented": "CloudWatch Logs service encryption by default; module key (in the web ACL's Region) or caller key (destination cloudwatch; no log group with s3)",
       "missing": "",
       "expected": "Logs encrypted at rest",
       "capability": "required",
@@ -11116,7 +11232,7 @@
       "resource_address": "module.log_group.aws_cloudwatch_log_group.this",
       "aws_service": "Amazon CloudWatch Logs",
       "security_area": "log_retention",
-      "implemented": "365 days by default",
+      "implemented": "365 days by default on the log group (destination cloudwatch); with destination s3 the bucket lifecycle sets retention",
       "missing": "",
       "expected": "At least one year of retention",
       "capability": "recommended",
@@ -15084,7 +15200,7 @@
       "resource_address": "aws_detective_graph.this",
       "aws_service": "Amazon Detective",
       "security_area": "tagging",
-      "implemented": "Every behavior graph gets module.naming.tags: caller tags merged first, governance tags (Application, Environment, Name, ManagedBy) merged last",
+      "implemented": "Every behavior graph, in the administrator call and in account-only mode, gets module.naming.tags: caller tags merged first, governance tags (Application, Environment, Name, ManagedBy) merged last",
       "missing": "",
       "expected": "Every Detective behavior graph carries the governance tag keys",
       "capability": "required",
@@ -15118,8 +15234,8 @@
       "resource_address": "aws_detective_member.this",
       "aws_service": "Amazon Detective",
       "security_area": "detection",
-      "implemented": "Enables each existing organization account in behavior_graph.member_accounts as a member of the behavior graph of every Region (one member per account and Region); a precondition keeps the administrator out of the list",
-      "missing": "Opt-in: existing accounts that are not listed are not enabled; the provider requires each account's root user email address",
+      "implemented": "Enables each existing organization account in behavior_graph.member_accounts as a member of the behavior graph of every Region (one member per account and Region); in account-only mode Detective invites the listed accounts instead and they accept with aws_detective_invitation_accepter; a precondition keeps the administrator out of the list",
+      "missing": "Opt-in: existing accounts that are not listed are not enabled; the provider requires each account's root user email address; invited accounts must accept",
       "expected": "Every existing organization account is a member of the behavior graph in every Region in use",
       "capability": "recommended",
       "status_before": "PARTIAL",
@@ -15186,8 +15302,8 @@
       "resource_address": "aws_detective_organization_configuration.this",
       "aws_service": "Amazon Detective",
       "security_area": "detection",
-      "implemented": "Per-Region organization configuration with auto_enable = true by default, so accounts that join the organization later are enabled as behavior graph members",
-      "missing": "Overridable (behavior_graph.auto_enable = false); auto-enable does not cover existing accounts and stops at 1,200 members per graph",
+      "implemented": "Per-Region organization configuration with organization_configuration.auto_enable = true by default, so accounts that join the organization later are enabled as behavior graph members; created only while organization_configuration.enabled = true (default), skipped in account-only mode",
+      "missing": "Overridable (organization_configuration.auto_enable = false); account-only mode enables no organization account; auto-enable does not cover existing accounts and stops at 1,200 members per graph",
       "expected": "Every organization account contributes data to the behavior graph in every Region in use",
       "capability": "required",
       "status_before": "PARTIAL",
@@ -15203,7 +15319,11 @@
         },
         {
           "file": "modules/aws/security/detective/main.tf",
-          "pattern": "auto_enable\\s*=\\s*var\\.behavior_graph\\.auto_enable"
+          "pattern": "auto_enable\\s*=\\s*var\\.organization_configuration\\.auto_enable"
+        },
+        {
+          "file": "modules/aws/security/detective/locals.tf",
+          "pattern": "organization_regions\\s*=\\s*var\\.organization_configuration\\.enabled \\? local\\.graph_regions : toset\\(\\[\\]\\)"
         },
         {
           "file": "modules/aws/security/detective/variables.tf",
@@ -15242,9 +15362,9 @@
       "resource_address": "aws_guardduty_detector.this",
       "aws_service": "Amazon GuardDuty",
       "security_area": "detection",
-      "implemented": "One detector per Region of regions with enable = true (never suspended) when detector.enabled (default)",
+      "implemented": "One detector per Region of regions with enable = true (never suspended) when detector.enabled (default), in the delegated administrator call and in account-only mode (organization_configuration.enabled = false)",
       "missing": "",
-      "expected": "GuardDuty is enabled in the delegated administrator account in every Region in use",
+      "expected": "GuardDuty is enabled in this account (the delegated administrator or a standalone account) in every Region in use",
       "capability": "required",
       "status_before": "PASS",
       "status": "PASS",
@@ -15323,7 +15443,7 @@
       "resource_address": "aws_guardduty_detector.this",
       "aws_service": "Amazon GuardDuty",
       "security_area": "tagging",
-      "implemented": "Detectors carry module.naming.tags: caller tags merged first, governance tags (Application, Environment, Name, ManagedBy) last",
+      "implemented": "Detectors carry module.naming.tags in both modes: caller tags merged first, governance tags (Application, Environment, Name, ManagedBy) last",
       "missing": "",
       "expected": "Every detector carries the governance tags",
       "capability": "required",
@@ -15359,7 +15479,7 @@
       "security_area": "detection",
       "implemented": "Every protection plan is managed on the detector in every Region and ENABLED by default: S3_DATA_EVENTS, EKS_AUDIT_LOGS, EBS_MALWARE_PROTECTION, RDS_LOGIN_EVENTS (+ RDS_DATA_RISK), LAMBDA_NETWORK_LOGS, RUNTIME_MONITORING (+ EKS_ADDON_MANAGEMENT, ECS_FARGATE_AGENT_MANAGEMENT, EC2_AGENT_MANAGEMENT), AI_PROTECTION; disabled plans are set DISABLED rather than left unmanaged",
       "missing": "Each plan can be turned off through features; acceptance of every plan in every Region of regions was not verified offline",
-      "expected": "Every GuardDuty protection plan, including Runtime Monitoring with automated agent management, is enabled on the delegated administrator",
+      "expected": "Every GuardDuty protection plan, including Runtime Monitoring with automated agent management, is enabled on this account in both modes",
       "capability": "required",
       "status_before": "PARTIAL",
       "status": "PARTIAL",
@@ -15531,8 +15651,8 @@
       "resource_address": "aws_guardduty_organization_configuration.this",
       "aws_service": "Amazon GuardDuty",
       "security_area": "detection",
-      "implemented": "Organization configuration in every Region of regions with auto_enable_organization_members = ALL by default (existing and new members and the administrator)",
-      "missing": "Callers may choose NEW or NONE; ALL can take up to 24 hours; Regions outside regions are not covered",
+      "implemented": "Organization configuration in every Region of regions with organization_configuration.auto_enable_members = ALL by default (existing and new members and the administrator), only while organization_configuration.enabled = true (default); account-only mode skips it because it needs the delegated administrator",
+      "missing": "Callers may choose NEW or NONE; ALL can take up to 24 hours; Regions outside regions are not covered; account-only mode configures no member account",
       "expected": "GuardDuty is enabled for every member account in every Region in use",
       "capability": "required",
       "status_before": "PARTIAL",
@@ -15546,11 +15666,19 @@
       "evidence": [
         {
           "file": "modules/aws/security/guardduty/main.tf",
-          "pattern": "auto_enable_organization_members\\s*=\\s*var\\.auto_enable_organization_members"
+          "pattern": "auto_enable_organization_members\\s*=\\s*local\\.auto_enable_members"
+        },
+        {
+          "file": "modules/aws/security/guardduty/locals.tf",
+          "pattern": "auto_enable_members\\s*=\\s*var\\.organization_configuration\\.auto_enable_members"
         },
         {
           "file": "modules/aws/security/guardduty/variables.tf",
-          "pattern": "default\\s*=\\s*\\\"ALL\\\""
+          "pattern": "auto_enable_members\\s*=\\s*optional\\(string, \\\"ALL\\\"\\)"
+        },
+        {
+          "file": "modules/aws/security/guardduty/locals.tf",
+          "pattern": "organization_regions\\s*=\\s*var\\.organization_configuration\\.enabled \\? local\\.detector_regions : \\[\\]"
         }
       ],
       "remediation": "Keep ALL, list every Region in regions, or add a GUARDDUTY_POLICY with a default block from modules/aws/governance/organizations"
@@ -15561,8 +15689,8 @@
       "resource_address": "aws_guardduty_organization_configuration_feature.this",
       "aws_service": "Amazon GuardDuty",
       "security_area": "detection",
-      "implemented": "Every protection plan and its additional configuration (RDS_DATA_RISK, EKS/ECS Fargate/EC2 agent management) is auto-enabled for the organization with auto_enable_organization_members (ALL by default) in every Region; disabled plans are set to NONE",
-      "missing": "Plans and auto-enable can be reduced through features and auto_enable_organization_members; NONE does not disable plans already running in member accounts",
+      "implemented": "Every protection plan and its additional configuration (RDS_DATA_RISK, EKS/ECS Fargate/EC2 agent management) is auto-enabled for the organization with organization_configuration.auto_enable_members (ALL by default) in every Region while organization_configuration.enabled = true; disabled plans are set to NONE",
+      "missing": "Plans and auto-enable can be reduced through features and organization_configuration.auto_enable_members; NONE does not disable plans already running in member accounts; account-only mode creates none",
       "expected": "Every protection plan is enabled for every member account",
       "capability": "required",
       "status_before": "PARTIAL",
@@ -15584,11 +15712,15 @@
       "evidence": [
         {
           "file": "modules/aws/security/guardduty/main.tf",
-          "pattern": "auto_enable\\s*=\\s*local\\.feature_catalog\\[each\\.value\\.name\\]\\.enabled \\? var\\.auto_enable_organization_members : \\\"NONE\\\""
+          "pattern": "auto_enable\\s*=\\s*local\\.feature_catalog\\[each\\.value\\.name\\]\\.enabled \\? local\\.auto_enable_members : \\\"NONE\\\""
         },
         {
           "file": "modules/aws/security/guardduty/main.tf",
           "pattern": "depends_on\\s*=\\s*\\[aws_guardduty_organization_configuration\\.this\\]"
+        },
+        {
+          "file": "modules/aws/security/guardduty/locals.tf",
+          "pattern": "organization_feature_instances\\s*=\\s*var\\.organization_configuration\\.enabled \\? local\\.feature_instances : \\{\\}"
         }
       ],
       "remediation": ""
@@ -15803,8 +15935,8 @@
       "resource_address": "aws_accessanalyzer_analyzer.external",
       "aws_service": "AWS IAM Access Analyzer",
       "security_area": "detection",
-      "implemented": "One external access analyzer with type = \"ORGANIZATION\" (fixed) per Region in regions (provider Region by default), created whenever analyzers.enabled = true (default)",
-      "missing": "Covers only the Regions listed in regions; Security Hub IAM.28 does not count organization analyzers when it evaluates member accounts (AWS suggests disabling IAM.28 for member accounts)",
+      "implemented": "One external access analyzer per Region in regions (provider Region by default) whenever analyzers.enabled = true (default): type ORGANIZATION, or ACCOUNT in account-only mode (organization_configuration.enabled = false)",
+      "missing": "Covers only the Regions listed in regions; Security Hub IAM.28 does not count organization analyzers when it evaluates member accounts (AWS suggests disabling IAM.28 for member accounts); an ACCOUNT analyzer covers only its own account",
       "expected": "An external access analyzer is active in every account and Region in use",
       "capability": "required",
       "status_before": "PARTIAL",
@@ -15818,7 +15950,11 @@
       "evidence": [
         {
           "file": "modules/aws/security/iam-access-analyzer/main.tf",
-          "pattern": "type\\s*=\\s*\"ORGANIZATION\"\\n"
+          "pattern": "type\\s*=\\s*local\\.analyzer_scope\\n"
+        },
+        {
+          "file": "modules/aws/security/iam-access-analyzer/locals.tf",
+          "pattern": "analyzer_scope\\s*=\\s*var\\.organization_configuration\\.enabled \\? \\\"ORGANIZATION\\\" : \\\"ACCOUNT\\\""
         },
         {
           "file": "modules/aws/security/iam-access-analyzer/main.tf",
@@ -15931,7 +16067,7 @@
       "resource_address": "aws_accessanalyzer_analyzer.internal",
       "aws_service": "AWS IAM Access Analyzer",
       "security_area": "detection",
-      "implemented": "Opt-in ORGANIZATION_INTERNAL_ACCESS analyzer (internal_access.enabled = false by default) in one Region with optional inclusion criteria",
+      "implemented": "Opt-in ORGANIZATION_INTERNAL_ACCESS analyzer (ACCOUNT_INTERNAL_ACCESS in account-only mode; internal_access.enabled = false by default) in one Region with optional inclusion criteria; account ID inclusions need organization analyzers",
       "missing": "Off by default (paid per resource monitored); one Region per module call",
       "expected": "Access from inside the organization to critical resources is analyzed where required",
       "capability": "optional",
@@ -15944,11 +16080,15 @@
       "evidence": [
         {
           "file": "modules/aws/security/iam-access-analyzer/main.tf",
-          "pattern": "type\\s*=\\s*\"ORGANIZATION_INTERNAL_ACCESS\""
+          "pattern": "type\\s*=\\s*\\\"\\$\\{local\\.analyzer_scope\\}_INTERNAL_ACCESS\\\""
         },
         {
           "file": "modules/aws/security/iam-access-analyzer/variables.tf",
           "pattern": "enabled\\s*=\\s*optional\\(bool, false\\)"
+        },
+        {
+          "file": "modules/aws/security/iam-access-analyzer/variables.tf",
+          "pattern": "internal_access\\.inclusions\\[\\*\\]\\.account_ids: needs organization_configuration\\.enabled\\."
         }
       ],
       "remediation": "Set internal_access.enabled = true with inclusions for the business-critical resources"
@@ -15959,7 +16099,7 @@
       "resource_address": "aws_accessanalyzer_analyzer.unused",
       "aws_service": "AWS IAM Access Analyzer",
       "security_area": "detection",
-      "implemented": "One ORGANIZATION_UNUSED_ACCESS analyzer (default on) in one Region with a 90-day tracking period, validated to 1-365 days; precondition keeps the owner account out of exclusions",
+      "implemented": "One ORGANIZATION_UNUSED_ACCESS analyzer (ACCOUNT_UNUSED_ACCESS in account-only mode, default on) in one Region with a 90-day tracking period, validated to 1-365 days; precondition keeps the owner account out of exclusions; account ID exclusions need organization analyzers",
       "missing": "Overridable (unused_access.enabled = false); paid per IAM role or user analyzed",
       "expected": "Unused roles, credentials and permissions reported for every account",
       "capability": "recommended",
@@ -15972,11 +16112,15 @@
       "evidence": [
         {
           "file": "modules/aws/security/iam-access-analyzer/main.tf",
-          "pattern": "type\\s*=\\s*\"ORGANIZATION_UNUSED_ACCESS\""
+          "pattern": "type\\s*=\\s*\\\"\\$\\{local\\.analyzer_scope\\}_UNUSED_ACCESS\\\""
         },
         {
           "file": "modules/aws/security/iam-access-analyzer/variables.tf",
           "pattern": "unused_access_age\\s*=\\s*optional\\(number, 90\\)"
+        },
+        {
+          "file": "modules/aws/security/iam-access-analyzer/variables.tf",
+          "pattern": "unused_access\\.exclusion_account_ids: needs organization_configuration\\.enabled\\."
         }
       ],
       "remediation": ""
@@ -15987,7 +16131,7 @@
       "resource_address": "aws_accessanalyzer_analyzer.unused",
       "aws_service": "AWS IAM Access Analyzer",
       "security_area": "iam",
-      "implemented": "The unused access analyzer reports UnusedIAMUserPassword and UnusedIAMUserAccessKey findings for credentials unused past unused_access_age (90 days by default; 45 matches IAM.22)",
+      "implemented": "The unused access analyzer (organization or account-only) reports UnusedIAMUserPassword and UnusedIAMUserAccessKey findings for credentials unused past unused_access_age (90 days by default; 45 matches IAM.22)",
       "missing": "Detective support only: IAM.8 and IAM.22 are evaluated by the Config rule iam-user-unused-credentials-check and pass only once the credentials are removed",
       "expected": "Unused IAM user credentials are found and removed",
       "capability": "recommended",
@@ -16452,12 +16596,12 @@
     {
       "module": "modules/aws/security/inspector",
       "resource_type": "aws_inspector2_enabler",
-      "resource_address": "aws_inspector2_enabler.admin",
+      "resource_address": "aws_inspector2_enabler.this",
       "aws_service": "Amazon Inspector",
       "security_area": "detection",
-      "implemented": "Activates the auto-enabled scan types (EC2, ECR, LAMBDA, LAMBDA_CODE by default) on the delegated administrator account in every Region (organization_configuration.activate_admin_account = true by default)",
-      "missing": "Overridable (activate_admin_account = false when an INSPECTOR_POLICY manages the account)",
-      "expected": "The delegated administrator account scans its own EC2, ECR and Lambda resources",
+      "implemented": "Activates scan_types (EC2, ECR, LAMBDA, LAMBDA_CODE by default) on this account in every Region: the delegated administrator (organization_configuration.activate_admin_account = true by default) or, in account-only mode (organization_configuration.enabled = false), the standalone or management account",
+      "missing": "Overridable (activate_admin_account = false when an INSPECTOR_POLICY manages the account); scan types can be reduced through scan_types",
+      "expected": "This account scans its own EC2, ECR and Lambda resources",
       "capability": "required",
       "status_before": "PARTIAL",
       "status": "PARTIAL",
@@ -16473,11 +16617,15 @@
       "evidence": [
         {
           "file": "modules/aws/security/inspector/main.tf",
-          "pattern": "resource \"aws_inspector2_enabler\" \"admin\""
+          "pattern": "resource \\\"aws_inspector2_enabler\\\" \\\"this\\\""
         },
         {
           "file": "modules/aws/security/inspector/main.tf",
           "pattern": "account_ids\\s*=\\s*\\[local\\.account_id\\]"
+        },
+        {
+          "file": "modules/aws/security/inspector/locals.tf",
+          "pattern": "account_enabled\\s*=\\s*local\\.org_enabled \\? var\\.organization_configuration\\.activate_admin_account : local\\.scanning"
         },
         {
           "file": "modules/aws/security/inspector/variables.tf",
@@ -16489,7 +16637,7 @@
     {
       "module": "modules/aws/security/inspector",
       "resource_type": "aws_inspector2_enabler",
-      "resource_address": "aws_inspector2_enabler.admin",
+      "resource_address": "aws_inspector2_enabler.this",
       "aws_service": "Amazon Inspector",
       "security_area": "encryption_at_rest",
       "implemented": "",
@@ -16508,12 +16656,12 @@
           "pattern": "UpdateEncryptionKey"
         }
       ],
-      "remediation": "aws inspector2 update-encryption-key --scan-type CODE --resource-type AWS_LAMBDA_FUNCTION --kms-key-id <key arn> from the delegated administrator"
+      "remediation": "aws inspector2 update-encryption-key --scan-type CODE --resource-type AWS_LAMBDA_FUNCTION --kms-key-id <key arn> from the delegated administrator or the account-only account"
     },
     {
       "module": "modules/aws/security/inspector",
       "resource_type": "aws_inspector2_enabler",
-      "resource_address": "aws_inspector2_enabler.admin",
+      "resource_address": "aws_inspector2_enabler.this",
       "aws_service": "Amazon Inspector",
       "security_area": "monitoring",
       "implemented": "Findings flow to Security Hub CSPM automatically once Security Hub CSPM is enabled (Code Security findings excepted); no Terraform configuration exists or is needed",
@@ -16540,7 +16688,7 @@
       "resource_address": "aws_inspector2_filter.this",
       "aws_service": "Amazon Inspector",
       "security_area": "governance",
-      "implemented": "Organization-wide suppression rules per Region from the delegated administrator; validations require at least one criterion per rule, valid action, comparison, severity and finding type values and at most 10 entries per criterion; rules exist only in the delegated-administrator call",
+      "implemented": "Suppression rules per Region from the delegated administrator (organization-wide) or the account-only call (this account); validations require at least one criterion per rule, valid action, comparison, severity and finding type values and at most 10 entries per criterion, and reject rules in the management account call",
       "missing": "",
       "expected": "Suppression rules are explicit, reviewed and cannot hide every finding",
       "capability": "optional",
@@ -16553,11 +16701,15 @@
       "evidence": [
         {
           "file": "modules/aws/security/inspector/main.tf",
-          "pattern": "resource \"aws_inspector2_filter\" \"this\""
+          "pattern": "resource \\\"aws_inspector2_filter\\\" \\\"this\\\""
         },
         {
           "file": "modules/aws/security/inspector/variables.tf",
           "pattern": "filters: at least one criterion each\\."
+        },
+        {
+          "file": "modules/aws/security/inspector/variables.tf",
+          "pattern": "filters: not in the management account call\\."
         }
       ],
       "remediation": ""
@@ -16592,7 +16744,7 @@
       "resource_address": "aws_inspector2_member_association.this",
       "aws_service": "Amazon Inspector",
       "security_area": "detection",
-      "implemented": "Associates every account in member_account_ids with the delegated administrator per account and Region; aws_inspector2_enabler.members activates the same scan types on them; precondition keeps the administrator out of the member list",
+      "implemented": "Associates every account in organization_configuration.member_account_ids with the delegated administrator per account and Region; aws_inspector2_enabler.members activates the same scan types on them; a precondition keeps the administrator out of the member list; account-only mode rejects members",
       "missing": "Opt-in list: existing accounts not listed stay unassociated unless an INSPECTOR_POLICY covers them",
       "expected": "Every existing organization account is associated and scanned",
       "capability": "recommended",
@@ -16610,18 +16762,22 @@
       "evidence": [
         {
           "file": "modules/aws/security/inspector/main.tf",
-          "pattern": "resource \"aws_inspector2_member_association\" \"this\""
+          "pattern": "resource \\\"aws_inspector2_member_association\\\" \\\"this\\\""
         },
         {
           "file": "modules/aws/security/inspector/main.tf",
-          "pattern": "resource \"aws_inspector2_enabler\" \"members\""
+          "pattern": "resource \\\"aws_inspector2_enabler\\\" \\\"members\\\""
         },
         {
           "file": "modules/aws/security/inspector/main.tf",
           "pattern": "account_ids\\s*=\\s*local\\.member_account_ids"
+        },
+        {
+          "file": "modules/aws/security/inspector/variables.tf",
+          "pattern": "organization_configuration\\.member_account_ids: needs enabled\\."
         }
       ],
-      "remediation": "List existing accounts in member_account_ids or attach an INSPECTOR_POLICY to the organization root"
+      "remediation": "List existing accounts in organization_configuration.member_account_ids or attach an INSPECTOR_POLICY to the organization root"
     },
     {
       "module": "modules/aws/security/inspector",
@@ -16629,8 +16785,8 @@
       "resource_address": "aws_inspector2_organization_configuration.this",
       "aws_service": "Amazon Inspector",
       "security_area": "detection",
-      "implemented": "Per-Region organization configuration auto-enables EC2, ECR, Lambda standard and Lambda code scanning by default for accounts that join the organization later; validation requires Lambda standard scanning for Lambda code scanning",
-      "missing": "Defaults are overridable; auto-enable covers only accounts that join later and is switched off by AWS above 5,000 members; Lambda code scanning exists only in a subset of Regions",
+      "implemented": "Per-Region organization configuration auto-enables scan_types (EC2, ECR, Lambda standard and Lambda code scanning by default) for accounts that join the organization later, while organization_configuration.enabled = true (default); validation requires Lambda standard scanning for Lambda code scanning",
+      "missing": "Defaults are overridable; auto-enable covers only accounts that join later and is switched off by AWS above 5,000 members; Lambda code scanning exists only in a subset of Regions; account-only mode covers only this account",
       "expected": "Every account in every Region in use has EC2, ECR, Lambda standard and Lambda code scanning enabled",
       "capability": "required",
       "status_before": "PARTIAL",
@@ -16647,7 +16803,7 @@
       "evidence": [
         {
           "file": "modules/aws/security/inspector/main.tf",
-          "pattern": "resource \"aws_inspector2_organization_configuration\" \"this\""
+          "pattern": "resource \\\"aws_inspector2_organization_configuration\\\" \\\"this\\\""
         },
         {
           "file": "modules/aws/security/inspector/variables.tf",
@@ -16656,9 +16812,13 @@
         {
           "file": "modules/aws/security/inspector/variables.tf",
           "pattern": "lambda_code\\s*=\\s*optional\\(bool, true\\)"
+        },
+        {
+          "file": "modules/aws/security/inspector/variables.tf",
+          "pattern": "scan_types\\.lambda_code needs scan_types\\.lambda\\."
         }
       ],
-      "remediation": "Cover existing accounts with member_account_ids or an INSPECTOR_POLICY (modules/aws/governance/organizations) using ALL_SUPPORTED Regions"
+      "remediation": "Cover existing accounts with organization_configuration.member_account_ids or an INSPECTOR_POLICY (modules/aws/governance/organizations) using ALL_SUPPORTED Regions"
     },
     {
       "module": "modules/aws/security/inspector",
@@ -16690,7 +16850,7 @@
       "resource_address": "aws_inspector2_organization_configuration.this",
       "aws_service": "Amazon Inspector",
       "security_area": "detection",
-      "implemented": "ECR scanning auto-enabled and activated by default, which makes Inspector the enhanced scanner of each account's private registry",
+      "implemented": "ECR scanning (scan_types.ecr) auto-enabled and activated by default, which makes Inspector the enhanced scanner of each account's private registry",
       "missing": "Scan on push / continuous scanning per repository is configured in the Amazon ECR registry scanning configuration, outside this module",
       "expected": "Every private ECR repository is configured for scan on push or continuous scanning",
       "capability": "recommended",
@@ -16705,7 +16865,7 @@
       "evidence": [
         {
           "file": "modules/aws/security/inspector/main.tf",
-          "pattern": "ecr\\s*=\\s*local\\.auto_enable\\.ecr"
+          "pattern": "ecr\\s*=\\s*var\\.scan_types\\.ecr"
         },
         {
           "file": "modules/aws/security/inspector/README.md",
@@ -17098,9 +17258,9 @@
       "resource_address": "aws_securityhub_account.this",
       "aws_service": "AWS Security Hub CSPM",
       "security_area": "governance",
-      "implemented": "enable_default_standards = false (fixed): standards come only from configuration policies; consolidated control findings (SECURITY_CONTROL); ignore_changes on the create-only argument so an imported hub is never replaced",
+      "implemented": "One hub per Region (home Region, plus regions in account-only mode) with enable_default_standards = false (fixed): standards come only from configuration policies or, in account-only mode, from the module's standards subscriptions; consolidated control findings (SECURITY_CONTROL); ignore_changes on the create-only argument so an imported hub is never replaced",
       "missing": "",
-      "expected": "No AWS default standards outside the centrally governed policy",
+      "expected": "No AWS default standards outside the module's standards selection",
       "capability": "required",
       "status_before": "PASS",
       "status": "PASS",
@@ -17206,7 +17366,7 @@
       "resource_address": "aws_securityhub_configuration_policy.this",
       "aws_service": "AWS Security Hub CSPM",
       "security_area": "governance",
-      "implemented": "One default map (local.standard_defaults): FSBP, CIS v5.0.0, NIST 800-171, Resource Tagging, PCI DSS v4.0.1 and AI Security on in every policy; CRI Profile v2.2 only when cri_profile_standard_arn is set; a policy is created only when it has targets",
+      "implemented": "One default map (local.standard_defaults): FSBP, CIS v5.0.0, NIST 800-171, Resource Tagging, PCI DSS v4.0.1 and AI Security on in every policy; standards changes the defaults for every policy and a policy's own standards override them; CRI Profile v2.2 only with cri_profile.enabled and its ARN; a policy is created only when it has targets",
       "missing": "Callers can turn default standards off per policy; CRI Profile v2.2 needs its ARN; nothing is created until a policy has targets",
       "expected": "Every governed account evaluates the default standards",
       "capability": "required",
@@ -17219,7 +17379,7 @@
       "evidence": [
         {
           "file": "modules/aws/security/security-hub/locals.tf",
-          "pattern": "var\\.cri_profile_standard_arn == null \\? \\{\\} :"
+          "pattern": "var\\.cri_profile\\.enabled \\? \\{ cri_profile_v2_2 ="
         },
         {
           "file": "modules/aws/security/security-hub/locals.tf",
@@ -17227,7 +17387,11 @@
         },
         {
           "file": "modules/aws/security/security-hub/locals.tf",
-          "pattern": "merge\\(local\\.standard_defaults, policy\\.standards\\)"
+          "pattern": "selected_standards\\s*=\\s*merge\\(local\\.standard_defaults, var\\.standards\\)"
+        },
+        {
+          "file": "modules/aws/security/security-hub/locals.tf",
+          "pattern": "merge\\(local\\.selected_standards, policy\\.standards\\)"
         }
       ],
       "remediation": ""
@@ -17350,7 +17514,7 @@
       "resource_address": "aws_securityhub_product_subscription.this",
       "aws_service": "AWS Security Hub CSPM",
       "security_area": "detection",
-      "implemented": "Optional third-party product subscriptions (validated product ARNs) in the delegated administrator home Region",
+      "implemented": "Optional third-party product subscriptions (validated product ARNs) in the home Region of the delegated administrator or account-only call",
       "missing": "Opt-in: no third-party product subscribed by default; other accounts and Regions follow the partner onboarding",
       "expected": "Third-party findings imported where the organization uses partner products",
       "capability": "optional",
@@ -17367,6 +17531,46 @@
         }
       ],
       "remediation": ""
+    },
+    {
+      "module": "modules/aws/security/security-hub",
+      "resource_type": "aws_securityhub_standards_subscription",
+      "resource_address": "aws_securityhub_standards_subscription.this",
+      "aws_service": "AWS Security Hub CSPM",
+      "security_area": "governance",
+      "implemented": "Account-only mode (organization_configuration.enabled = false): the same standards selection (FSBP, CIS v5.0.0, NIST 800-171, Resource Tagging, PCI DSS v4.0.1 and AI Security by default; opt-in standards through standards; CRI Profile v2.2 with cri_profile.enabled) subscribed in the home Region and every Region of regions with each Region's standards ARN; validations reject configuration policy targets and self_managed_targets without central configuration",
+      "missing": "Covers only this account and the Regions listed in regions; callers can turn default standards off; CRI Profile v2.2 needs its ARN",
+      "expected": "A standalone or management account evaluates the default standards in every Region in use",
+      "capability": "required",
+      "status_before": "NOT_APPLICABLE",
+      "status": "PARTIAL",
+      "enforcement": "detective",
+      "enforcement_layer": "terraform",
+      "controls": [],
+      "framework_refs": {},
+      "evidence": [
+        {
+          "file": "modules/aws/security/security-hub/main.tf",
+          "pattern": "resource \\\"aws_securityhub_standards_subscription\\\" \\\"this\\\""
+        },
+        {
+          "file": "modules/aws/security/security-hub/locals.tf",
+          "pattern": "standards_subscriptions\\s*=\\s*local\\.account_mode \\?"
+        },
+        {
+          "file": "modules/aws/security/security-hub/locals.tf",
+          "pattern": "standards_arn\\s*=\\s*local\\.regional_standard_arns\\[region\\]\\[standard\\]"
+        },
+        {
+          "file": "modules/aws/security/security-hub/variables.tf",
+          "pattern": "configuration_policies: targets need organization_configuration\\.enabled\\."
+        },
+        {
+          "file": "modules/aws/security/security-hub/variables.tf",
+          "pattern": "self_managed_targets: needs organization_configuration\\.enabled\\."
+        }
+      ],
+      "remediation": "List every Region in use in regions"
     },
     {
       "module": "modules/aws/storage/amplify",
@@ -18480,7 +18684,7 @@
       "resource_address": "module.bucket.aws_s3_bucket_policy.this",
       "aws_service": "Amazon S3",
       "security_area": "iam",
-      "implemented": "Per-type switches add only the delivery statements: logging.s3 with aws:SourceAccount and aws:SourceArn; ELB service principal and documented legacy ELB account on <prefix>/AWSLogs/<account>/*; delivery.logs with bucket-owner-full-control, aws:SourceAccount and aws:SourceArn",
+      "implemented": "Per-type switches add only the delivery statements: logging.s3 with aws:SourceAccount and aws:SourceArn; ELB service principal and documented legacy ELB account on <prefix>/AWSLogs/<account>/*; delivery.logs with bucket-owner-full-control, aws:SourceAccount and aws:SourceArn (default aws:SourceArn arn:aws:logs:*:<account>:*, so CloudFront v2 deliveries from us-east-1 and WAF deliveries from any Region are accepted)",
       "missing": "",
       "expected": "Log delivery services write only their own logs, scoped against confused deputies",
       "capability": "required",
@@ -18498,6 +18702,10 @@
         {
           "file": "modules/aws/storage/log-bucket/locals.tf",
           "pattern": "AWSLogs/\\$\\{a\\}/\\*"
+        },
+        {
+          "file": "modules/aws/storage/log-bucket/locals.tf",
+          "pattern": "\"arn:\\$\\{module\\.naming\\.partition\\}:logs:\\*:\\$\\{a\\}:\\*\""
         }
       ],
       "remediation": ""

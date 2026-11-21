@@ -1,6 +1,6 @@
 output "arn" {
   description = "Hub ARN; null when the hub is off."
-  value       = try(aws_securityhub_account.this[0].arn, null)
+  value       = try(aws_securityhub_account.this[local.home_region].arn, null)
 }
 
 output "finding_aggregator_arn" {

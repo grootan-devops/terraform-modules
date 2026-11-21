@@ -59,7 +59,7 @@ run "same_names_in_two_regions_do_not_collide" {
   }
 
   assert {
-    condition     = output.role_names == ["shop-prod-orders-exec-eu-west-1", "shop-prod-orders-exec-us-east-1"]
+    condition     = output.role_names == ["shop-prod-orders-lambda-eu-west-1", "shop-prod-orders-lambda-us-east-1"]
     error_message = "Account-global IAM role names must differ by Region."
   }
 

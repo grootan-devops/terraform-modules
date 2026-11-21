@@ -29,11 +29,11 @@ resource "aws_detective_graph" "this" {
 }
 
 resource "aws_detective_organization_configuration" "this" {
-  for_each = local.graph_regions
+  for_each = local.organization_regions
 
   region      = each.key
   graph_arn   = aws_detective_graph.this[each.key].graph_arn
-  auto_enable = var.behavior_graph.auto_enable
+  auto_enable = var.organization_configuration.auto_enable
 }
 
 resource "aws_detective_member" "this" {

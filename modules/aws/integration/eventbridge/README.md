@@ -117,13 +117,13 @@ module "events" {
         flexible_window_minutes = 15
         target = {
           type              = "ecs"
-          arn               = module.ecs.cluster_arn
+          arn               = module.ecs.arn
           dead_letter_queue = { arn = module.events_dlq.arn, kms_key_arn = module.events_dlq.kms_key_arn }
           ecs = {
-            task_definition_arn = module.sync_task.task_definition_arn
-            pass_role_arns      = [module.sync_task.task_role_arn, module.sync_task.execution_role_arn]
+            task_definition_arn = module.ecs.task_definition_arns["sync"]
+            pass_role_arns      = [module.ecs.task_role_arns["sync"], module.ecs.execution_role_arn]
             subnet_ids          = module.vpc.private_subnet_ids
-            security_group_ids  = [module.sync_task.security_group_id]
+            security_group_ids  = [module.ecs.security_group_id]
           }
         }
       }

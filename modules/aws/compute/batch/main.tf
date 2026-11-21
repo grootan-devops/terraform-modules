@@ -49,6 +49,7 @@ module "job_role" {
   permissions_boundary_arn = var.iam_role.permissions_boundary_arn
   managed_policy_arns      = var.iam_role.managed_policy_arns
   policy_statements        = var.iam_role.policy_statements
+  policy_documents         = length(local.job_statements) > 0 ? [jsonencode({ Version = "2012-10-17", Statement = local.job_statements })] : []
   trust = {
     services   = ["ecs-tasks.${local.dns_suffix}"]
     conditions = local.task_trust_conditions
@@ -62,7 +63,7 @@ module "execution_role" {
   application              = var.application
   environment              = var.environment
   name                     = var.name
-  purpose                  = "exec"
+  purpose                  = "batch-exec"
   tags                     = var.tags
   path                     = var.iam_role.path
   permissions_boundary_arn = var.iam_role.permissions_boundary_arn
@@ -90,6 +91,13 @@ module "instance_role" {
   }
 }
 
+data "aws_vpc" "this" {
+  count = var.security_group.create && length(var.compute_environments) > 0 && length(local.efs_mounts) > 0 ? 1 : 0
+
+  id = var.vpc_id
+}
+
+#trivy:ignore:AVD-AWS-0104
 module "security_group" {
   source = "../../network/security-group"
   count  = var.security_group.create && length(var.compute_environments) > 0 ? 1 : 0

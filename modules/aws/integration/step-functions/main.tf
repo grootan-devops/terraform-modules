@@ -43,7 +43,7 @@ module "role" {
   application              = var.application
   environment              = var.environment
   name                     = var.name
-  purpose                  = "exec"
+  purpose                  = "sfn"
   tags                     = var.tags
   role_name                = var.iam_role.name
   path                     = var.iam_role.path

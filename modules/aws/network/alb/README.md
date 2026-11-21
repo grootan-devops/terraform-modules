@@ -123,7 +123,7 @@ module "alb" {
 | Name | Description | Sensitive |
 | --- | --- | --- |
 | `id` | Load balancer ID. | No |
-| `arn` | Load balancer ARN. | No |
+| `arn` | Load balancer ARN, once its listeners exist. | No |
 | `arn_suffix` | ARN suffix for CloudWatch metrics. | No |
 | `name` | Load balancer name. | No |
 | `dns_name` | DNS name. | No |
@@ -131,5 +131,5 @@ module "alb" {
 | `security_group_id` | Load balancer security group ID; null when not created. | No |
 | `https_listener_arn` | HTTPS listener ARN; null when disabled. | No |
 | `http_listener_arn` | HTTP listener ARN; null when disabled. | No |
-| `target_group_arns` | Target group ARNs by key. | No |
+| `target_group_arns` | Target group ARNs by key, once a listener uses them. | No |
 | `target_group_arn_suffixes` | Target group ARN suffixes by key, for CloudWatch metrics. | No |

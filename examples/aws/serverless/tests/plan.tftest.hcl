@@ -36,7 +36,7 @@ run "plans_with_unknown_arns" {
   }
 
   assert {
-    condition     = output.role_names == ["shop-dev-api-exec-eu-west-1", "shop-dev-worker-exec-eu-west-1"]
+    condition     = output.role_names == ["shop-dev-api-lambda-eu-west-1", "shop-dev-worker-lambda-eu-west-1"]
     error_message = "Execution roles must be distinct and carry the Region."
   }
 

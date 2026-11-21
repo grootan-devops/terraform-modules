@@ -10,14 +10,14 @@ Counts are inventory entries (one per module, resource and security area), not c
 
 | Status | Before (2.0.0) | After (3.0.0) |
 | --- | ---: | ---: |
-| `PASS` | 258 | 415 |
-| `PARTIAL` | 220 | 204 |
+| `PASS` | 258 | 418 |
+| `PARTIAL` | 220 | 205 |
 | `FAIL` | 17 | 3 |
-| `NOT_APPLICABLE` | 131 | 5 |
+| `NOT_APPLICABLE` | 134 | 4 |
 | `PROVIDER_MANAGED` | 16 | 16 |
 | `NOT_SUPPORTED` | 13 | 14 |
 | `REQUIRES_RUNTIME_VALIDATION` | 11 | 9 |
-| **Total** | 666 | 666 |
+| **Total** | 669 | 669 |
 
 ### By enforcement layer
 
@@ -28,7 +28,7 @@ Counts are inventory entries (one per module, resource and security area), not c
 | `organizations` | 30 | 4 | 25 | 0 | 1 |
 | `runtime` | 17 | 0 | 0 | 0 | 17 |
 | `security_hub` | 12 | 1 | 5 | 0 | 6 |
-| `terraform` | 577 | 407 | 156 | 3 | 11 |
+| `terraform` | 580 | 410 | 157 | 3 | 10 |
 
 ### By framework
 
@@ -36,7 +36,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 
 | Framework | Mapped entries | Covered | Gaps | Distinct requirement IDs |
 | --- | ---: | ---: | ---: | ---: |
-| AWS FSBP v1.0.0 | 228 | 123 | 90 | 192 |
+| AWS FSBP v1.0.0 | 228 | 124 | 90 | 192 |
 | CIS AWS Foundations v5.0.0 | 72 | 39 | 25 | 36 |
 | CIS AWS Foundations v3.0.0 | 66 | 34 | 25 | 34 |
 | CIS AWS Foundations v1.4.0 | 56 | 26 | 22 | 39 |
@@ -57,8 +57,9 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | --- | --- | --- | --- | --- | --- | --- |
 | `aws_batch_compute_environment.this` | encryption_at_rest | `PROVIDER_MANAGED` → `PASS` | preventive / terraform | — | — | `main.tf` |
 | `aws_batch_compute_environment.this` | governance | `PARTIAL` → `PASS` | preventive / terraform | Batch.4 | CRI Profile v2.2: ID.AM-02.01, ID.AM-05.01 | `main.tf` |
-| `aws_batch_compute_environment.this` | network | `REQUIRES_RUNTIME_VALIDATION` → `PARTIAL` | preventive / terraform | — | — | `variables.tf`, `variables.tf` |
+| `aws_batch_compute_environment.this` | network | `REQUIRES_RUNTIME_VALIDATION` → `PARTIAL` | preventive / terraform | — | — | `variables.tf`, `variables.tf`, `locals.tf` |
 | `aws_batch_compute_environment.this` | tagging | `PASS` → `PASS` | preventive / terraform | Batch.3 | — | `main.tf` |
+| `aws_batch_job_definition.this` | encryption_in_transit | `NOT_APPLICABLE` → `PASS` | preventive / terraform | — | — | `locals.tf`, `locals.tf` |
 | `aws_batch_job_definition.this` | governance | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `variables.tf`, `variables.tf` |
 | `aws_batch_job_definition.this` | logging | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `locals.tf` |
 | `aws_batch_job_definition.this` | network | `REQUIRES_RUNTIME_VALIDATION` → `PASS` | preventive / terraform | — | — | `locals.tf` |
@@ -72,11 +73,11 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_launch_template.this` | tagging | `NOT_APPLICABLE` → `PASS` | preventive / terraform | EC2.175, EC2.45 | — | `main.tf` |
 | `module.execution_role[0].aws_iam_role.this` | iam | `PARTIAL` → `PASS` | preventive / terraform | IAM.21, KMS.1, KMS.2 | NIST SP 800-53 r5: AC-2, AC-2(1), AC-3, AC-3(15), AC-3(7), AC-5, AC-6, AC-6(10), AC-6(2), AC-6(3); NIST SP 800-171 r2: 3.1.1, 3.1.2, 3.1.5, 3.1.7, 3.13.3, 3.13.4, 3.3.8, 3.3.9; CRI Profile v2.2: PR.AA-01.02, PR.AA-03.02, PR.AA-05.01, PR.AA-05.02, PR.DS-01.01, PR.PS-01.01, PR.PS-01.03, PR.PS-01.06, PR.PS-01.07 | `locals.tf`, `locals.tf` |
 | `module.instance_role[0].aws_iam_role.this` | iam | `NOT_APPLICABLE` → `PASS` | preventive / terraform | — | — | `main.tf`, `main.tf` |
-| `module.job_role[0].aws_iam_role.this` | iam | `PARTIAL` → `PASS` | preventive / terraform | IAM.24 | — | `locals.tf`, `main.tf` |
+| `module.job_role[0].aws_iam_role.this` | iam | `PARTIAL` → `PASS` | preventive / terraform | IAM.24 | — | `locals.tf`, `main.tf`, `locals.tf`, `locals.tf` |
 | `module.log_group[0].aws_cloudwatch_log_group.this` | deletion_protection | `PARTIAL` → `PASS` | preventive / terraform | — | — | `variables.tf` |
 | `module.log_group[0].aws_cloudwatch_log_group.this` | encryption_at_rest | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf` |
 | `module.log_group[0].aws_cloudwatch_log_group.this` | log_retention | `PARTIAL` → `PASS` | preventive / terraform | CloudWatch.16 | NIST SP 800-53 r5: AU-10, AU-11, AU-6(3), AU-6(4), CA-7, SI-12; CRI Profile v2.2: ID.AM-08.03, ID.AM-08.05, PR.PS-04.01, PR.PS-04.03 | `variables.tf` |
-| `module.security_group[0].aws_vpc_security_group_egress_rule.this` | network | `NOT_APPLICABLE` → `PARTIAL` | preventive / terraform | EC2.18, EC2.19 | NIST SP 800-53 r5: AC-4, AC-4(21), CA-9(1), CM-2, CM-2(2), CM-7, SC-7, SC-7(11), SC-7(16), SC-7(21), SC-7(4), SC-7(5); NIST SP 800-171 r2: 3.1.20, 3.1.3, 3.13.1; CRI Profile v2.2: PR.IR-01.01, PR.IR-01.02, PR.PS-01.02 | `main.tf` |
+| `module.security_group[0].aws_vpc_security_group_egress_rule.this` | network | `NOT_APPLICABLE` → `PARTIAL` | preventive / terraform | EC2.18, EC2.19 | NIST SP 800-53 r5: AC-4, AC-4(21), CA-9(1), CM-2, CM-2(2), CM-7, SC-7, SC-7(11), SC-7(16), SC-7(21), SC-7(4), SC-7(5); NIST SP 800-171 r2: 3.1.20, 3.1.3, 3.13.1; CRI Profile v2.2: PR.IR-01.01, PR.IR-01.02, PR.PS-01.02 | `main.tf`, `locals.tf`, `main.tf` |
 
 ### `modules/aws/compute/ecr`
 
@@ -102,7 +103,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_ecs_service.this` | api_security | `PASS` → `PASS` | preventive / terraform | ECS.10 | NIST SP 800-53 r5: SI-2, SI-2(2), SI-2(4), SI-2(5); PCI DSS v4.0.1: 6.3.3; CRI Profile v2.2: PR.PS-02.03 | `main.tf` |
 | `aws_ecs_service.this` | network | `PASS` → `PASS` | preventive / terraform | ECS.2 | NIST SP 800-53 r5: AC-21, AC-3, AC-3(7), AC-4, AC-4(21), AC-6, SC-7, SC-7(11), SC-7(16), SC-7(20), SC-7(21), SC-7(3), SC-7(4), SC-7(9); PCI DSS v4.0.1: 1.4.4; CRI Profile v2.2: PR.IR-01.01, PR.PS-01.02 | `main.tf`, `variables.tf` |
 | `aws_ecs_service.this` | tagging | `PASS` → `PASS` | preventive / terraform | ECS.13 | — | `main.tf` |
-| `aws_ecs_task_definition.this` | encryption_in_transit | `NOT_APPLICABLE` → `NOT_APPLICABLE` | preventive / terraform | ECS.18 | — | `main.tf` |
+| `aws_ecs_task_definition.this` | encryption_in_transit | `NOT_APPLICABLE` → `PASS` | preventive / terraform | ECS.18 | — | `main.tf`, `main.tf` |
 | `aws_ecs_task_definition.this` | governance | `PARTIAL` → `PARTIAL` | preventive / terraform | ECS.4, ECS.5, ECS.20 | NIST SP 800-53 r5: AC-2(1), AC-3, AC-3(15), AC-3(7), AC-5, AC-6; CRI Profile v2.2: PR.AA-05.01, PR.DS-01.01, PR.PS-01.01, PR.PS-01.02, PR.PS-01.03 | `variables.tf`, `variables.tf` |
 | `aws_ecs_task_definition.this` | iam | `NOT_APPLICABLE` → `NOT_APPLICABLE` | preventive / terraform | ECS.21 | — | `main.tf` |
 | `aws_ecs_task_definition.this` | logging | `PASS` → `PASS` | preventive / terraform | ECS.9 | NIST SP 800-53 r5: AC-4(26), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(9), SI-7(8); CRI Profile v2.2: PR.PS-04.02, PR.PS-04.03 | `locals.tf` |
@@ -120,7 +121,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `module.security_group[0].aws_vpc_security_group_egress_rule.this` | network | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `variables.tf` |
 | `module.security_group[0].aws_vpc_security_group_ingress_rule.this` | network | `NOT_APPLICABLE` → `PASS` | preventive / terraform | — | — | `locals.tf`, `locals.tf` |
 | `module.security_group[0].aws_vpc_security_group_ingress_rule.this` | network | `PARTIAL` → `PASS` | preventive / terraform | EC2.18, EC2.19, EC2.13, EC2.14, EC2.53, EC2.54 | CIS AWS Foundations v5.0.0: 5.3, 5.4; CIS AWS Foundations v3.0.0: 5.2, 5.3; CIS AWS Foundations v1.2.0: 4.1, 4.2; NIST SP 800-53 r5: AC-4, AC-4(21), CA-9(1), CM-2, CM-2(2), CM-7, SC-7, SC-7(11), SC-7(16), SC-7(21), SC-7(4), SC-7(5); NIST SP 800-171 r2: 3.1.20, 3.1.3, 3.13.1; PCI DSS v4.0.1: 1.3.1; PCI DSS v3.2.1: 1.2.1, 1.3.1, 2.2.2; CRI Profile v2.2: DE.CM-01.03, PR.AA-03.02, PR.IR-01.01, PR.IR-01.02, PR.IR-01.03, PR.IR-01.05, PR.PS-01.01, PR.PS-01.02, PR.PS-01.03 | `locals.tf`, `variables.tf` |
-| `module.task_role.aws_iam_role.this` | iam | `PASS` → `PASS` | preventive / terraform | IAM.24, KMS.1, KMS.2 | NIST SP 800-53 r5: AC-2, AC-2(1), AC-3, AC-3(15), AC-3(7), AC-5, AC-6, AC-6(3); CRI Profile v2.2: PR.AA-01.02, PR.AA-03.02, PR.AA-05.01, PR.AA-05.02, PR.DS-01.01, PR.PS-01.01, PR.PS-01.03, PR.PS-01.06, PR.PS-01.07 | `locals.tf`, `locals.tf` |
+| `module.task_role.aws_iam_role.this` | iam | `PASS` → `PASS` | preventive / terraform | IAM.24, KMS.1, KMS.2 | NIST SP 800-53 r5: AC-2, AC-2(1), AC-3, AC-3(15), AC-3(7), AC-5, AC-6, AC-6(3); CRI Profile v2.2: PR.AA-01.02, PR.AA-03.02, PR.AA-05.01, PR.AA-05.02, PR.DS-01.01, PR.PS-01.01, PR.PS-01.03, PR.PS-01.06, PR.PS-01.07 | `locals.tf`, `locals.tf`, `locals.tf`, `locals.tf` |
 
 ### `modules/aws/compute/eks`
 
@@ -253,7 +254,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `module.role[0].aws_iam_role_policy.this[0]` | iam | `PASS` → `PASS` | preventive / terraform | — | — | `locals.tf`, `locals.tf` |
 | `module.security_group[0].aws_security_group.this` | network | `PASS` → `PASS` | preventive / terraform | EC2.13, EC2.14, EC2.22, EC2.43, EC2.53, EC2.54 | CIS AWS Foundations v5.0.0: 5.3, 5.4; CIS AWS Foundations v3.0.0: 5.2, 5.3; CIS AWS Foundations v1.2.0: 4.1, 4.2; NIST SP 800-53 r5: AC-4, AC-4(21), CM-7, SC-7, SC-7(11), SC-7(16), SC-7(21), SC-7(4), SC-7(5); NIST SP 800-171 r2: 3.1.3, 3.13.1; PCI DSS v4.0.1: 1.3.1; PCI DSS v3.2.1: 1.2.1, 1.3.1, 2.2.2; CRI Profile v2.2: DE.CM-01.03, PR.AA-03.02, PR.IR-01.01, PR.IR-01.02, PR.IR-01.03, PR.IR-01.05, PR.PS-01.01, PR.PS-01.02, PR.PS-01.03 | `locals.tf`, `main.tf` |
 | `module.security_group[0].aws_security_group.this` | network | `PARTIAL` → `PASS` | preventive / terraform | EC2.18, EC2.19 | NIST SP 800-53 r5: AC-4, AC-4(21), CA-9(1), CM-2, CM-2(2), CM-7, SC-7, SC-7(11), SC-7(16), SC-7(21), SC-7(4), SC-7(5); NIST SP 800-171 r2: 3.1.20, 3.1.3, 3.13.1; CRI Profile v2.2: PR.IR-01.01, PR.IR-01.02, PR.PS-01.02 | `variables.tf` |
-| `module.security_group[0].aws_security_group.this` | network | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `locals.tf`, `variables.tf` |
+| `module.security_group[0].aws_security_group.this` | network | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `locals.tf`, `variables.tf`, `variables.tf`, `locals.tf`, `main.tf` |
 
 ### `modules/aws/governance/account-baseline`
 
@@ -504,8 +505,9 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_cloudfront_distribution.this` | public_access | `PARTIAL` → `PARTIAL` | preventive / terraform | CloudFront.1 | NIST SP 800-53 r5: SC-7(11), SC-7(16); PCI DSS v4.0.1: 2.2.6; CRI Profile v2.2: DE.CM-01.03, PR.DS-01.01, PR.PS-01.01, PR.PS-01.03 | `main.tf` |
 | `aws_cloudfront_distribution.this` | tagging | `PASS` → `PASS` | preventive / terraform | CloudFront.14 | — | `main.tf` |
 | `aws_cloudfront_origin_access_control.this` | public_access | `PARTIAL` → `PASS` | preventive / terraform | CloudFront.13 | CRI Profile v2.2: PR.AA-01.02, PR.AA-03.02 | `main.tf`, `main.tf` |
-| `aws_cloudwatch_log_delivery.this` | logging | `FAIL` → `FAIL` | preventive / terraform | CloudFront.5 | NIST SP 800-53 r5: AC-2(4), AC-4(26), AC-6(9), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(9), SI-3(8), SI-4(20), SI-7(8); PCI DSS v4.0.1: 10.4.2; CRI Profile v2.2: DE.AE-03.01, DE.CM-03.01, PR.PS-04.02, PR.PS-04.03 | `logs.tf` |
+| `aws_cloudwatch_log_delivery.this` | logging | `FAIL` → `FAIL` | preventive / terraform | CloudFront.5 | NIST SP 800-53 r5: AC-2(4), AC-4(26), AC-6(9), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(9), SI-3(8), SI-4(20), SI-7(8); PCI DSS v4.0.1: 10.4.2; CRI Profile v2.2: DE.AE-03.01, DE.CM-03.01, PR.PS-04.02, PR.PS-04.03 | `logs.tf`, `variables.tf` |
 | `aws_cloudwatch_log_delivery.this` | logging | `PASS` → `PASS` | preventive / terraform | — | — | `locals.tf`, `logs.tf` |
+| `aws_cloudwatch_log_delivery.this` | logging | `NOT_APPLICABLE` → `PASS` | preventive / terraform | — | — | `logs.tf`, `logs.tf`, `locals.tf`, `variables.tf` |
 | `module.log_group.aws_cloudwatch_log_group.this` | deletion_protection | `PARTIAL` → `PASS` | preventive / terraform | — | — | `variables.tf` |
 | `module.log_group.aws_cloudwatch_log_group.this` | encryption_at_rest | `PASS` → `PASS` | preventive / terraform | — | — | `logs.tf` |
 | `module.log_group.aws_cloudwatch_log_group.this` | log_retention | `PARTIAL` → `PASS` | preventive / terraform | CloudWatch.16 | NIST SP 800-53 r5: AU-10, AU-11, AU-6(3), AU-6(4), CA-7, SI-12; CRI Profile v2.2: ID.AM-08.03, ID.AM-08.05, PR.PS-04.01, PR.PS-04.03 | `variables.tf` |
@@ -580,7 +582,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_wafv2_web_acl.this` | api_security | `PARTIAL` → `PASS` | preventive / terraform | WAF.10 | NIST SP 800-53 r5: CA-9(1), CM-2; CRI Profile v2.2: DE.CM-01.03, PR.IR-01.02, PR.PS-01.01 | `variables.tf` |
 | `aws_wafv2_web_acl.this` | monitoring | `PASS` → `PASS` | preventive / terraform | WAF.12 | NIST SP 800-53 r5: AC-4(26), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(10), SC-7(9), SI-7(8); NIST SP 800-171 r2: 3.14.6, 3.14.7; CRI Profile v2.2: DE.AE-02.01, DE.AE-02.02, DE.AE-03.01, RS.MA-02.01 | `main.tf`, `outputs.tf` |
 | `aws_wafv2_web_acl.this` | tagging | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf` |
-| `aws_wafv2_web_acl_logging_configuration.this` | logging | `PASS` → `PASS` | preventive / terraform | WAF.11 | NIST SP 800-53 r5: AC-4(26), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(10), SC-7(9), SI-7(8); PCI DSS v4.0.1: 10.4.2; CRI Profile v2.2: DE.AE-03.01, PR.PS-04.01, PR.PS-04.02, PR.PS-04.03 | `logs.tf`, `locals.tf` |
+| `aws_wafv2_web_acl_logging_configuration.this` | logging | `PASS` → `PASS` | preventive / terraform | WAF.11 | NIST SP 800-53 r5: AC-4(26), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(10), SC-7(9), SI-7(8); PCI DSS v4.0.1: 10.4.2; CRI Profile v2.2: DE.AE-03.01, PR.PS-04.01, PR.PS-04.02, PR.PS-04.03 | `logs.tf`, `locals.tf`, `variables.tf` |
 | `aws_wafv2_web_acl_logging_configuration.this` | secrets | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `variables.tf` |
 | `module.log_group.aws_cloudwatch_log_group.this` | deletion_protection | `FAIL` → `PASS` | preventive / terraform | — | — | `variables.tf` |
 | `module.log_group.aws_cloudwatch_log_group.this` | encryption_at_rest | `PASS` → `PASS` | preventive / terraform | — | — | `logs.tf` |
@@ -744,7 +746,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_detective_graph.this` | tagging | `PASS` → `PASS` | preventive / terraform | Detective.1 | — | `main.tf`, `locals.tf`, `locals.tf` |
 | `aws_detective_member.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `main.tf`, `main.tf` |
 | `aws_detective_organization_admin_account.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf`, `main.tf`, `main.tf`, `variables.tf` |
-| `aws_detective_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `main.tf`, `variables.tf` |
+| `aws_detective_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `main.tf`, `locals.tf`, `variables.tf` |
 
 ### `modules/aws/security/guardduty`
 
@@ -761,8 +763,8 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_guardduty_filter.this` | tagging | `PASS` → `PASS` | preventive / terraform | GuardDuty.2 | — | `main.tf` |
 | `aws_guardduty_organization_admin_account.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `organization.tf`, `organization.tf`, `organization.tf`, `variables.tf` |
 | `aws_guardduty_organization_admin_account.this` | iam | `PROVIDER_MANAGED` → `PROVIDER_MANAGED` | preventive / runtime | — | — | — |
-| `aws_guardduty_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | GuardDuty.1 | NIST SP 800-53 r5: AC-2(12), AU-6(1), AU-6(5), CA-7, CM-8(3), RA-3(4), SA-11(1), SA-11(6), SA-15(2), SA-15(8), SA-8(19), SA-8(21), SA-8(25), SC-5, SC-5(1), SC-5(3), SI-20, SI-3(8), SI-4, SI-4(1), SI-4(13), SI-4(2), SI-4(22), SI-4(25), SI-4(4), SI-4(5); NIST SP 800-171 r2: 3.14.6, 3.14.7, 3.4.2; PCI DSS v4.0.1: 11.5.1; PCI DSS v3.2.1: 11.4; CRI Profile v2.2: DE.CM-01.01, DE.CM-01.02, DE.CM-01.03 | `main.tf`, `variables.tf` |
-| `aws_guardduty_organization_configuration_feature.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | GuardDuty.5, GuardDuty.6, GuardDuty.7, GuardDuty.8, GuardDuty.9, GuardDuty.10, GuardDuty.11, GuardDuty.12, GuardDuty.13 | PCI DSS v4.0.1: 11.5.1; CRI Profile v2.2: DE.AE-02.01, DE.AE-03.01, DE.AE-03.02, DE.AE-07.01, DE.AE-07.02, DE.CM-01.01, DE.CM-01.03, DE.CM-02.01, DE.CM-03.01, DE.CM-03.02, DE.CM-03.03, GV.OC-04.03, GV.RM-09.02, PR.DS-01.01, PR.DS-01.02, PR.PS-04.02, PR.PS-04.03, PR.PS-05.01, RS.AN-07.01, RS.MA-02.01 | `main.tf`, `main.tf` |
+| `aws_guardduty_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | GuardDuty.1 | NIST SP 800-53 r5: AC-2(12), AU-6(1), AU-6(5), CA-7, CM-8(3), RA-3(4), SA-11(1), SA-11(6), SA-15(2), SA-15(8), SA-8(19), SA-8(21), SA-8(25), SC-5, SC-5(1), SC-5(3), SI-20, SI-3(8), SI-4, SI-4(1), SI-4(13), SI-4(2), SI-4(22), SI-4(25), SI-4(4), SI-4(5); NIST SP 800-171 r2: 3.14.6, 3.14.7, 3.4.2; PCI DSS v4.0.1: 11.5.1; PCI DSS v3.2.1: 11.4; CRI Profile v2.2: DE.CM-01.01, DE.CM-01.02, DE.CM-01.03 | `main.tf`, `locals.tf`, `variables.tf`, `locals.tf` |
+| `aws_guardduty_organization_configuration_feature.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | GuardDuty.5, GuardDuty.6, GuardDuty.7, GuardDuty.8, GuardDuty.9, GuardDuty.10, GuardDuty.11, GuardDuty.12, GuardDuty.13 | PCI DSS v4.0.1: 11.5.1; CRI Profile v2.2: DE.AE-02.01, DE.AE-03.01, DE.AE-03.02, DE.AE-07.01, DE.AE-07.02, DE.CM-01.01, DE.CM-01.03, DE.CM-02.01, DE.CM-03.01, DE.CM-03.02, DE.CM-03.03, GV.OC-04.03, GV.RM-09.02, PR.DS-01.01, PR.DS-01.02, PR.PS-04.02, PR.PS-04.03, PR.PS-05.01, RS.AN-07.01, RS.MA-02.01 | `main.tf`, `main.tf`, `locals.tf` |
 | `aws_guardduty_publishing_destination.this` | encryption_at_rest | `PASS` → `PASS` | preventive / terraform | — | — | `export.tf`, `variables.tf` |
 | `aws_guardduty_publishing_destination.this` | encryption_in_transit | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `locals.tf`, `locals.tf`, `locals.tf` |
 | `aws_guardduty_publishing_destination.this` | iam | `PARTIAL` → `PARTIAL` | preventive / terraform | — | — | `locals.tf`, `locals.tf` |
@@ -775,13 +777,13 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 
 | Resource | Area | Status (before → after) | Enforcement | Security Hub controls | Framework requirements | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| `aws_accessanalyzer_analyzer.external` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | IAM.28 | CIS AWS Foundations v5.0.0: 1.19; CIS AWS Foundations v3.0.0: 1.20; CRI Profile v2.2: PR.AA-01.02, PR.AA-05.01, PR.AA-05.04 | `main.tf`, `main.tf` |
+| `aws_accessanalyzer_analyzer.external` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | IAM.28 | CIS AWS Foundations v5.0.0: 1.19; CIS AWS Foundations v3.0.0: 1.20; CRI Profile v2.2: PR.AA-01.02, PR.AA-05.01, PR.AA-05.04 | `main.tf`, `locals.tf`, `main.tf` |
 | `aws_accessanalyzer_analyzer.external` | encryption_at_rest | `NOT_APPLICABLE` → `PROVIDER_MANAGED` | preventive / runtime | — | — | `README.md` |
 | `aws_accessanalyzer_analyzer.external` | iam | `NOT_SUPPORTED` → `NOT_SUPPORTED` | preventive / operational | — | — | `README.md` |
 | `aws_accessanalyzer_analyzer.external` | monitoring | `PROVIDER_MANAGED` → `PROVIDER_MANAGED` | detective / security_hub | — | — | `README.md` |
 | `aws_accessanalyzer_analyzer.external` | tagging | `PASS` → `PASS` | preventive / terraform | IAM.23 | — | `main.tf` |
-| `aws_accessanalyzer_analyzer.internal` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `variables.tf` |
-| `aws_accessanalyzer_analyzer.unused` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `variables.tf` |
+| `aws_accessanalyzer_analyzer.internal` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `variables.tf`, `variables.tf` |
+| `aws_accessanalyzer_analyzer.unused` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `variables.tf`, `variables.tf` |
 | `aws_accessanalyzer_analyzer.unused` | iam | `PARTIAL` → `PARTIAL` | detective / terraform | IAM.8, IAM.22 | CIS AWS Foundations v5.0.0: 1.11; CIS AWS Foundations v3.0.0: 1.12; CIS AWS Foundations v1.4.0: 1.12; CIS AWS Foundations v1.2.0: 1.3; NIST SP 800-53 r5: AC-2, AC-2(1), AC-2(3), AC-3, AC-3(15), AC-3(7), AC-6; NIST SP 800-171 r2: 3.1.2; PCI DSS v4.0.1: 8.2.6; PCI DSS v3.2.1: 8.1.4; CRI Profile v2.2: PR.AA-01.01, PR.AA-05.03 | `main.tf` |
 | `aws_accessanalyzer_archive_rule.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf`, `variables.tf` |
 | `aws_organizations_aws_service_access.this` | governance | `PARTIAL` → `PARTIAL` | preventive / organizations | — | — | `main.tf`, `README.md` |
@@ -814,13 +816,13 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | --- | --- | --- | --- | --- | --- | --- |
 | `aws_inspector2_delegated_admin_account.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf`, `main.tf`, `main.tf`, `variables.tf` |
 | `aws_inspector2_delegated_admin_account.this` | iam | `PROVIDER_MANAGED` → `PROVIDER_MANAGED` | preventive / runtime | — | — | `README.md` |
-| `aws_inspector2_enabler.admin` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | Inspector.1, Inspector.2, Inspector.3, Inspector.4 | PCI DSS v4.0.1: 11.3.1, 6.2.4, 6.3.1; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.02 | `main.tf`, `main.tf`, `variables.tf` |
-| `aws_inspector2_enabler.admin` | encryption_at_rest | `NOT_SUPPORTED` → `NOT_SUPPORTED` | preventive / operational | — | — | `README.md` |
-| `aws_inspector2_enabler.admin` | monitoring | `PROVIDER_MANAGED` → `PROVIDER_MANAGED` | detective / security_hub | — | — | `README.md` |
-| `aws_inspector2_filter.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf`, `variables.tf` |
+| `aws_inspector2_enabler.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | Inspector.1, Inspector.2, Inspector.3, Inspector.4 | PCI DSS v4.0.1: 11.3.1, 6.2.4, 6.3.1; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.02 | `main.tf`, `main.tf`, `locals.tf`, `variables.tf` |
+| `aws_inspector2_enabler.this` | encryption_at_rest | `NOT_SUPPORTED` → `NOT_SUPPORTED` | preventive / operational | — | — | `README.md` |
+| `aws_inspector2_enabler.this` | monitoring | `PROVIDER_MANAGED` → `PROVIDER_MANAGED` | detective / security_hub | — | — | `README.md` |
+| `aws_inspector2_filter.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf`, `variables.tf`, `variables.tf` |
 | `aws_inspector2_filter.this` | tagging | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf` |
-| `aws_inspector2_member_association.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | Inspector.1, Inspector.2, Inspector.3, Inspector.4 | PCI DSS v4.0.1: 11.3.1, 6.2.4, 6.3.1; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.02 | `main.tf`, `main.tf`, `main.tf` |
-| `aws_inspector2_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | Inspector.1, Inspector.2, Inspector.3, Inspector.4 | PCI DSS v4.0.1: 11.3.1, 6.2.4, 6.3.1; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.02 | `main.tf`, `variables.tf`, `variables.tf` |
+| `aws_inspector2_member_association.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | Inspector.1, Inspector.2, Inspector.3, Inspector.4 | PCI DSS v4.0.1: 11.3.1, 6.2.4, 6.3.1; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.02 | `main.tf`, `main.tf`, `main.tf`, `variables.tf` |
+| `aws_inspector2_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | Inspector.1, Inspector.2, Inspector.3, Inspector.4 | PCI DSS v4.0.1: 11.3.1, 6.2.4, 6.3.1; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.02 | `main.tf`, `variables.tf`, `variables.tf`, `variables.tf` |
 | `aws_inspector2_organization_configuration.this` | detection | `NOT_SUPPORTED` → `NOT_SUPPORTED` | detective / operational | — | — | `README.md` |
 | `aws_inspector2_organization_configuration.this` | detection | `PARTIAL` → `PARTIAL` | detective / terraform | ECR.1 | NIST SP 800-53 r5: RA-5; PCI DSS v4.0.1: 6.2.3, 6.2.4; CRI Profile v2.2: ID.RA-01.03, PR.PS-02.01, PR.PS-02.02 | `main.tf`, `README.md` |
 
@@ -857,12 +859,13 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `aws_securityhub_account.this` | iam | `PROVIDER_MANAGED` → `PROVIDER_MANAGED` | preventive / runtime | — | — | `README.md` |
 | `aws_securityhub_account.this` | tagging | `NOT_SUPPORTED` → `NOT_SUPPORTED` | preventive / terraform | — | — | `README.md`, `main.tf` |
 | `aws_securityhub_configuration_policy.this` | detection | `PARTIAL` → `PARTIAL` | detective / security_hub | — | — | `variables.tf` |
-| `aws_securityhub_configuration_policy.this` | governance | `NOT_APPLICABLE` → `PARTIAL` | detective / security_hub | — | — | `locals.tf`, `locals.tf`, `locals.tf` |
+| `aws_securityhub_configuration_policy.this` | governance | `NOT_APPLICABLE` → `PARTIAL` | detective / security_hub | — | — | `locals.tf`, `locals.tf`, `locals.tf`, `locals.tf` |
 | `aws_securityhub_configuration_policy_association.this` | governance | `PARTIAL` → `PARTIAL` | preventive / security_hub | — | — | `main.tf`, `variables.tf` |
 | `aws_securityhub_finding_aggregator.this` | monitoring | `PARTIAL` → `PARTIAL` | detective / security_hub | — | — | `variables.tf`, `main.tf` |
 | `aws_securityhub_organization_admin_account.this` | governance | `PASS` → `PASS` | preventive / terraform | — | — | `main.tf`, `variables.tf` |
 | `aws_securityhub_organization_configuration.this` | governance | `PASS` → `PASS` | preventive / security_hub | — | — | `main.tf`, `main.tf` |
 | `aws_securityhub_product_subscription.this` | detection | `PARTIAL` → `PARTIAL` | detective / security_hub | — | — | `main.tf` |
+| `aws_securityhub_standards_subscription.this` | governance | `NOT_APPLICABLE` → `PARTIAL` | detective / terraform | — | — | `main.tf`, `locals.tf`, `locals.tf`, `variables.tf`, `variables.tf` |
 
 ### `modules/aws/storage/amplify`
 
@@ -923,7 +926,7 @@ A framework requirement counts once per inventory entry that maps to it. `Covere
 | `module.bucket.aws_s3_bucket_lifecycle_configuration.this` | log_retention | `NOT_APPLICABLE` → `PASS` | preventive / terraform | S3.10, S3.13 | NIST SP 800-53 r5: CP-10, CP-6(2), CP-9, SC-5(2), SI-13(5); CRI Profile v2.2: ID.AM-08.01 | `variables.tf`, `locals.tf` |
 | `module.bucket.aws_s3_bucket_logging.this[0]` | logging | `NOT_APPLICABLE` → `PARTIAL` | preventive / terraform | S3.9 | NIST SP 800-53 r5: AC-2(4), AC-4(26), AC-6(9), AU-10, AU-12, AU-2, AU-3, AU-6(3), AU-6(4), CA-7, SC-7(9), SI-3(8), SI-4(20), SI-7(8); NIST SP 800-171 r2: 3.3.8; PCI DSS v4.0.1: 10.2.1; CRI Profile v2.2: DE.AE-03.01, DE.CM-03.01, PR.PS-04.02 | `main.tf` |
 | `module.bucket.aws_s3_bucket_policy.this` | encryption_in_transit | `NOT_APPLICABLE` → `PASS` | preventive / terraform | S3.5 | CIS AWS Foundations v5.0.0: 2.1.1; CIS AWS Foundations v3.0.0: 2.1.1; CIS AWS Foundations v1.4.0: 2.1.2; NIST SP 800-53 r5: AC-17(2), AC-4, IA-5(1), SC-12(3), SC-13, SC-23, SC-23(3), SC-7(4), SC-8, SC-8(1), SC-8(2), SI-7(6); NIST SP 800-171 r2: 3.13.15, 3.13.8; PCI DSS v4.0.1: 4.2.1; PCI DSS v3.2.1: 4.1; CRI Profile v2.2: PR.DS-02.01, PR.PS-01.06 | `main.tf`, `locals.tf` |
-| `module.bucket.aws_s3_bucket_policy.this` | iam | `NOT_APPLICABLE` → `PASS` | preventive / terraform | — | — | `locals.tf`, `locals.tf` |
+| `module.bucket.aws_s3_bucket_policy.this` | iam | `NOT_APPLICABLE` → `PASS` | preventive / terraform | — | — | `locals.tf`, `locals.tf`, `locals.tf` |
 | `module.bucket.aws_s3_bucket_public_access_block.this` | public_access | `NOT_APPLICABLE` → `PASS` | preventive / terraform | S3.1, S3.8, S3.12 | CIS AWS Foundations v5.0.0: 2.1.4; CIS AWS Foundations v3.0.0: 2.1.4; CIS AWS Foundations v1.4.0: 2.1.5; NIST SP 800-53 r5: AC-2(1), AC-21, AC-3, AC-3(15), AC-3(7), AC-4, AC-4(21), AC-6, SC-7, SC-7(11), SC-7(16), SC-7(20), SC-7(21), SC-7(3), SC-7(4), SC-7(9); PCI DSS v4.0.1: 1.4.4; PCI DSS v3.2.1: 1.2.1, 1.3.1, 1.3.2, 1.3.4, 1.3.6; CRI Profile v2.2: PR.AA-03.02, PR.AA-05.01, PR.DS-01.01, PR.IR-01.01, PR.PS-01.01, PR.PS-01.03, PR.PS-04.03, RS.AN-07.01 | `main.tf`, `main.tf` |
 | `module.bucket.aws_s3_bucket_server_side_encryption_configuration.this` | encryption_at_rest | `NOT_APPLICABLE` → `PARTIAL` | preventive / terraform | S3.17 | NIST SP 800-53 r5: AU-9, CA-9(1), CM-3(6), SC-12(2), SC-13, SC-28, SC-28(1), SC-7(10), SI-7(6); NIST SP 800-171 r2: 3.13.11, 3.13.16, 3.8.9; PCI DSS v4.0.1: 3.5.1; CRI Profile v2.2: PR.DS-01.01, PR.PS-01.06, PR.PS-01.07 | `main.tf` |
 | `module.bucket.aws_s3_bucket_versioning.this` | versioning | `NOT_APPLICABLE` → `PASS` | preventive / terraform | S3.14 | NIST SP 800-53 r5: AU-9(2), CP-10, CP-6, CP-6(1), CP-6(2), CP-9, SC-5(2), SI-12, SI-13(5); NIST SP 800-171 r2: 3.3.8; CRI Profile v2.2: PR.AA-05.01, PR.DS-01.01, PR.IR-03.01, PR.PS-01.03 | `main.tf` |

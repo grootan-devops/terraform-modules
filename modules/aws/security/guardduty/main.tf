@@ -50,27 +50,27 @@ resource "aws_guardduty_detector_feature" "this" {
 }
 
 resource "aws_guardduty_organization_configuration" "this" {
-  for_each = toset(local.detector_regions)
+  for_each = toset(local.organization_regions)
 
   region                           = each.key
   detector_id                      = aws_guardduty_detector.this[each.key].id
-  auto_enable_organization_members = var.auto_enable_organization_members
+  auto_enable_organization_members = local.auto_enable_members
 }
 
 resource "aws_guardduty_organization_configuration_feature" "this" {
-  for_each = local.feature_instances
+  for_each = local.organization_feature_instances
 
   region      = each.value.region
   detector_id = aws_guardduty_detector.this[each.value.region].id
   name        = each.value.name
-  auto_enable = local.feature_catalog[each.value.name].enabled ? var.auto_enable_organization_members : "NONE"
+  auto_enable = local.feature_catalog[each.value.name].enabled ? local.auto_enable_members : "NONE"
 
   dynamic "additional_configuration" {
     for_each = local.feature_catalog[each.value.name].additional
 
     content {
       name        = additional_configuration.value.name
-      auto_enable = additional_configuration.value.enabled ? var.auto_enable_organization_members : "NONE"
+      auto_enable = additional_configuration.value.enabled ? local.auto_enable_members : "NONE"
     }
   }
 

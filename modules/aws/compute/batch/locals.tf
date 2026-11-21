@@ -9,6 +9,8 @@ locals {
   log_group_name = "/aws/batch/${module.naming.name}"
   log_group_arn  = "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:${local.log_group_name}"
   job_role_arn   = var.iam_role.create ? try(module.job_role[0].arn, null) : var.iam_role.arn
+  efs_arn_prefix = "${local.arn_prefix}:elasticfilesystem:${local.region}:${local.account_id}"
+  efs_mounts     = flatten([for k in keys(var.job_definitions) : values(var.job_definitions[k].efs_volumes)])
 
   ec2_environments   = { for k, c in var.compute_environments : k => c if contains(["EC2", "SPOT"], c.type) }
   has_ec2            = length(local.ec2_environments) > 0
@@ -120,15 +122,33 @@ locals {
 
   execution_statements = [for c in local.execution_statement_candidates : c.statement if c.when]
 
+  job_statement_candidates = [
+    for i, v in local.efs_mounts : {
+      when = true
+      statement = merge(
+        {
+          Sid      = "MountEfs${i}"
+          Effect   = "Allow"
+          Action   = v.read_only ? ["elasticfilesystem:ClientMount"] : ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"]
+          Resource = ["${local.efs_arn_prefix}:file-system/${v.file_system_id}"]
+        },
+        v.access_point_id == null ? {} : { Condition = { StringEquals = { "elasticfilesystem:AccessPointArn" = "${local.efs_arn_prefix}:access-point/${v.access_point_id}" } } }
+      )
+    }
+  ]
+
+  job_statements = [for c in local.job_statement_candidates : c.statement if c.when]
+
   task_trust_conditions = [
     { test = "StringEquals", variable = "aws:SourceAccount", values = [local.account_id] },
     { test = "ArnLike", variable = "aws:SourceArn", values = ["${local.arn_prefix}:ecs:${local.region}:${local.account_id}:*"] }
   ]
 
   egress_rules = merge(
-    { for i, cidr in var.security_group.egress_cidr_blocks : "cidr-${i}" => { description = "Outbound to ${cidr}", ip_protocol = "-1", cidr_ipv4 = cidr } },
+    { for i, cidr in var.security_group.egress_cidr_blocks : "https-${i}" => { description = "HTTPS to ${cidr}", ip_protocol = "tcp", from_port = 443, to_port = 443, cidr_ipv4 = strcontains(cidr, ":") ? null : cidr, cidr_ipv6 = strcontains(cidr, ":") ? cidr : null } },
     { for i, pl in var.security_group.egress_prefix_list_ids : "pl-${i}" => { description = "Outbound to a prefix list", ip_protocol = "-1", prefix_list_id = pl } },
-    { for i, sg in var.security_group.egress_security_group_ids : "sg-${i}" => { description = "Outbound to a security group", ip_protocol = "-1", referenced_security_group_id = sg } }
+    { for i, sg in var.security_group.egress_security_group_ids : "sg-${i}" => { description = "Outbound to a security group", ip_protocol = "-1", referenced_security_group_id = sg } },
+    length(local.efs_mounts) > 0 ? { nfs = { description = "NFS to EFS mount targets in the VPC", ip_protocol = "tcp", from_port = 2049, to_port = 2049, cidr_ipv4 = one(data.aws_vpc.this[*].cidr_block) } } : {}
   )
 
   container_properties = {
@@ -147,8 +167,28 @@ locals {
       length(j.environment) > 0 ? { environment = [for n, v in j.environment : { name = n, value = v }] } : {},
       length(j.secrets) > 0 ? { secrets = [for n, v in j.secrets : { name = n, valueFrom = v }] } : {},
       j.user == null ? {} : { user = j.user },
-      length(j.writable_paths) > 0 ? { volumes = [for i, p in j.writable_paths : { name = "scratch-${i}" }] } : {},
-      length(j.writable_paths) > 0 ? { mountPoints = [for i, p in j.writable_paths : { sourceVolume = "scratch-${i}", containerPath = p, readOnly = false }] } : {},
+      length(j.writable_paths) + length(j.efs_volumes) > 0 ? {
+        volumes = concat(
+          [for i, p in j.writable_paths : { name = "scratch-${i}" }],
+          [for n, v in j.efs_volumes : {
+            name = n
+            efsVolumeConfiguration = merge(
+              {
+                fileSystemId        = v.file_system_id
+                transitEncryption   = "ENABLED"
+                authorizationConfig = merge({ iam = v.access_point_id != null ? "ENABLED" : "DISABLED" }, v.access_point_id == null ? {} : { accessPointId = v.access_point_id })
+              },
+              v.root_directory == null ? {} : { rootDirectory = v.root_directory }
+            )
+          }]
+        )
+      } : {},
+      length(j.writable_paths) + length(j.efs_volumes) > 0 ? {
+        mountPoints = concat(
+          [for i, p in j.writable_paths : { sourceVolume = "scratch-${i}", containerPath = p, readOnly = false }],
+          [for n, v in j.efs_volumes : { sourceVolume = n, containerPath = v.container_path, readOnly = v.read_only }]
+        )
+      } : {},
       j.platform == "FARGATE" ? { networkConfiguration = { assignPublicIp = "DISABLED" } } : {},
       j.platform == "FARGATE" ? { fargatePlatformConfiguration = { platformVersion = "LATEST" } } : {},
       j.platform == "EC2" ? { privileged = false } : {},

@@ -31,6 +31,7 @@ module "role" {
   }
 }
 
+#trivy:ignore:AVD-AWS-0104
 module "security_group" {
   source = "../../../network/security-group"
   count  = var.security_group.create ? 1 : 0

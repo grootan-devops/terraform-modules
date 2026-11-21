@@ -28,9 +28,10 @@ extra read/write endpoints and a pre-created log group.
   `rds-db:connect` statement to `iam_role.policy_statements`.
 - **Least privilege:** the role reads only the `auth` secrets and decrypts them only through Secrets Manager in this
   Region (`kms:ViaService`).
-- **Network:** `/0` ingress rejected. Egress reaches the database security groups on the database port and AWS APIs
-  (Secrets Manager, KMS, STS) on 443; the default destination `0.0.0.0/0` covers NAT gateways, so set
-  `security_group.egress_cidr_blocks` to the VPC CIDR when interface endpoints serve those APIs.
+- **Network:** `/0` ingress rejected. Egress reaches `target.security_group_ids` on the target port (at least one
+  group is required while the module creates its security group) and AWS APIs (Secrets Manager, KMS, STS) on TCP 443
+  only. The default HTTPS destination `0.0.0.0/0` covers NAT gateways (registered Trivy suppression `AVD-AWS-0104`);
+  set `security_group.egress_cidr_blocks` to the VPC CIDR when interface endpoints serve those APIs.
 - **Logs:** RDS Proxy otherwise creates its own log group without retention or a key. The `/aws/rds/proxy/<proxy>`
   name is observed service behaviour, not documented, so the group is opt-in (`cloudwatch_logs.enabled`); on an
   existing proxy, import the group first.
@@ -59,7 +60,7 @@ module "proxy" {
   name        = "orders"
   vpc_id      = "vpc-0a1b2c3d4e5f67890"
   subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  target      = { db_instance_identifier = "core-prod-orders" }
+  target      = { db_instance_identifier = "core-prod-orders", security_group_ids = ["sg-0dddddddddddddddd"] }
   auth        = [{ secret_arn = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:rds!db-1234-AbCdEf" }]
 }
 ```

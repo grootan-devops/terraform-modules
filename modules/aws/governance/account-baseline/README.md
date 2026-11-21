@@ -22,7 +22,7 @@ role, ECR registry scanning and optional ECR replication and pull through cache 
   `aws_ecr_pull_through_cache_rule.this`.
 - `module.api_gateway_role` ([`security/iam-role`](../../security/iam-role)):
   `<application>-<environment>-apigw-logs-<region>` with `AmazonAPIGatewayPushToCloudWatchLogs`; one role for every
-  Region. API Gateway execution logging (`network/api-gateway`) needs it.
+  Region. API Gateway execution logging (`integration/api-gateway`) needs it.
 - `module.naming` ([`core/naming`](../../core/naming)): names and governance tags.
 
 ## Security & Compliance Guardrails

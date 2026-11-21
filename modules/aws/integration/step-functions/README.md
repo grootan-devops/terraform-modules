@@ -8,7 +8,7 @@ functions it calls are other modules; pass their ARNs in `lambda_function_arns`.
 ## Architecture & Managed Resources
 
 - `aws_sfn_state_machine.this`: `<application>-<environment>-<name>`, `STANDARD` or `EXPRESS`.
-- `module.role` ([`security/iam-role`](../../security/iam-role)): execution role `<...>-exec-<region>`, trusted by
+- `module.role` ([`security/iam-role`](../../security/iam-role)): execution role `<...>-sfn-<region>`, trusted by
   Step Functions for this state machine in this account only.
 - `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/aws/vendedlogs/states/<name>`
   (the `/aws/vendedlogs/` prefix keeps the CloudWatch Logs resource policy small).

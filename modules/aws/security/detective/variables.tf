@@ -40,10 +40,9 @@ variable "regions" {
 }
 
 variable "behavior_graph" {
-  description = "Administrator call: behavior graph, auto-enable, members (account ID => root email)."
+  description = "Behavior graph and members (account ID => root email)."
   type = object({
     enabled         = optional(bool, false)
-    auto_enable     = optional(bool, true)
     member_accounts = optional(map(string), {})
   })
   default  = {}
@@ -63,6 +62,16 @@ variable "behavior_graph" {
     condition     = length(var.behavior_graph.member_accounts) == 0 || var.behavior_graph.enabled
     error_message = "behavior_graph.member_accounts: needs behavior_graph.enabled."
   }
+}
+
+variable "organization_configuration" {
+  description = "Organization auto-enable for new accounts; off for account-only mode."
+  type = object({
+    enabled     = optional(bool, true)
+    auto_enable = optional(bool, true)
+  })
+  default  = {}
+  nullable = false
 }
 
 variable "organization_admin" {

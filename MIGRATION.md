@@ -30,6 +30,9 @@ README.
 - **Networking, IAM and logs** use the same `security_group`, `iam_role` and `cloudwatch_logs` inputs in every module.
 - **Account and organization modules** (`Scope: account`/`organization` in their README) are called once per account
   or organization and take no `name`.
+- **One account or an organization:** GuardDuty, Detective, Inspector, IAM Access Analyzer and Security Hub default to
+  an organization with a delegated administrator; a single account sets `organization_configuration = { enabled = false }`
+  ([account layouts](docs/AWS.md#account-layouts)).
 - **Exclusive roles, security groups and permission sets:** module roles keep only the policies given through
   `iam_role`, module security groups only their module rules, Identity Center permission sets only their listed
   policies. Anything attached outside Terraform is removed on the next apply.

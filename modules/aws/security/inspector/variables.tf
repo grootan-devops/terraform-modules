@@ -60,46 +60,46 @@ variable "organization_admin" {
 }
 
 variable "organization_configuration" {
-  description = "Delegated administrator call: auto-enabled scan types and administrator activation."
+  description = "Organization auto-enable, administrator activation and members; off for account-only mode."
   type = object({
     enabled                = optional(bool, true)
     activate_admin_account = optional(bool, true)
-    auto_enable = optional(object({
-      ec2             = optional(bool, true)
-      ecr             = optional(bool, true)
-      lambda          = optional(bool, true)
-      lambda_code     = optional(bool, true)
-      code_repository = optional(bool, false)
-    }), {})
+    member_account_ids     = optional(list(string), [])
   })
   default  = {}
   nullable = false
 
   validation {
-    condition     = !var.organization_configuration.auto_enable.lambda_code || var.organization_configuration.auto_enable.lambda
-    error_message = "auto_enable.lambda_code needs auto_enable.lambda."
+    condition     = alltrue([for account_id in var.organization_configuration.member_account_ids : can(regex("^[0-9]{12}$", account_id))])
+    error_message = "organization_configuration.member_account_ids: 12-digit account IDs."
   }
 
   validation {
-    condition     = !var.organization_configuration.enabled || anytrue(values(var.organization_configuration.auto_enable))
-    error_message = "auto_enable: at least one scan type."
+    condition     = var.organization_configuration.enabled || length(var.organization_configuration.member_account_ids) == 0
+    error_message = "organization_configuration.member_account_ids: needs enabled."
   }
 }
 
-variable "member_account_ids" {
-  description = "Existing accounts to associate and activate."
-  type        = list(string)
-  default     = []
-  nullable    = false
+variable "scan_types" {
+  description = "Scan types for this account, members and organization auto-enable."
+  type = object({
+    ec2             = optional(bool, true)
+    ecr             = optional(bool, true)
+    lambda          = optional(bool, true)
+    lambda_code     = optional(bool, true)
+    code_repository = optional(bool, false)
+  })
+  default  = {}
+  nullable = false
 
   validation {
-    condition     = alltrue([for account_id in var.member_account_ids : can(regex("^[0-9]{12}$", account_id))])
-    error_message = "member_account_ids: 12-digit account IDs."
+    condition     = !var.scan_types.lambda_code || var.scan_types.lambda
+    error_message = "scan_types.lambda_code needs scan_types.lambda."
   }
 
   validation {
-    condition     = length(var.member_account_ids) == 0 || var.organization_configuration.enabled
-    error_message = "member_account_ids needs organization_configuration.enabled."
+    condition     = var.organization_admin.enabled || anytrue(values(var.scan_types))
+    error_message = "scan_types: at least one."
   }
 }
 
@@ -183,7 +183,7 @@ variable "filters" {
   }
 
   validation {
-    condition     = length(var.filters) == 0 || var.organization_configuration.enabled
-    error_message = "filters needs organization_configuration.enabled."
+    condition     = length(var.filters) == 0 || !var.organization_admin.enabled
+    error_message = "filters: not in the management account call."
   }
 }

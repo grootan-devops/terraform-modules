@@ -59,6 +59,10 @@ several `regions`, use `kms.create` (one key per Region) or a bare `mrk-` multi-
 allow `report_bucket_policy_json`; each Region's report plan delivers to it. The managed policies are attached rather
 than copied because they span every supported service and AWS updates them with new features.
 
+`region_settings` is account-wide in each Region: enable it in one call per account. List every resource type AWS
+Backup supports in `resource_type_opt_in_preference`, each `true` or `false`; AWS returns the full map, so a partial
+one shows a change on every plan.
+
 ## Requirements & Providers
 
 | Requirement | Version |

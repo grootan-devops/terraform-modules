@@ -11,7 +11,7 @@ Queues, streams, topics and buses are other modules; pass their ARNs in.
 - `aws_lambda_function.this`: `<application>-<environment>-<name>`, published versions; a placeholder package when no
   code is given (CI deploys code later; code fields are ignored after creation).
 - `aws_lambda_alias.this` (`live`): every trigger, URL and provisioned concurrency targets the alias.
-- `module.role` ([`security/iam-role`](../../security/iam-role)): execution role `<...>-exec-<region>`, trusted by
+- `module.role` ([`security/iam-role`](../../security/iam-role)): execution role `<...>-lambda-<region>`, trusted by
   Lambda in this account only.
 - `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/aws/lambda/<function>`.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): AWS managed key, module key or your key.
@@ -44,8 +44,8 @@ variables.
 | Requirement | Version |
 | --- | --- |
 | `terraform` | `>= 1.17.0` |
-| `aws` | `>= 6.73.0` |
 | `archive` | `>= 2.8.1` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 

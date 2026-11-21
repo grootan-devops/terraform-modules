@@ -1,5 +1,6 @@
 module "log_group" {
   source = "../../observability/log-group"
+  count  = local.logs_to_s3 ? 0 : 1
 
   application                 = var.application
   environment                 = var.environment
@@ -16,7 +17,7 @@ module "log_group" {
 resource "aws_wafv2_web_acl_logging_configuration" "this" {
   region                  = local.region
   resource_arn            = aws_wafv2_web_acl.this.arn
-  log_destination_configs = [module.log_group.arn]
+  log_destination_configs = [local.logs_to_s3 ? var.logging.s3_bucket_arn : one(module.log_group[*].arn)]
 
   dynamic "redacted_fields" {
     for_each = var.redacted_fields.headers

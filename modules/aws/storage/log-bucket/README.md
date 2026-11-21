@@ -20,6 +20,14 @@ switch per log type.
 | `elb_logs` | `logdelivery.elasticloadbalancing.amazonaws.com`, and the Region's ELB account where AWS documents one (Regions before August 2022) | `s3:PutObject` on `<prefix>/AWSLogs/<account>/*` |
 | `vended_logs` | `delivery.logs.amazonaws.com` (CloudFront standard logging v2, VPC flow logs, WAF, NLB, other vended logs) | `s3:PutObject` with `bucket-owner-full-control`, `s3:GetBucketAcl`, `s3:ListBucket`; `aws:SourceAccount`, `aws:SourceArn` (`source_arns`, else `arn:aws:logs:*:<account>:*`) |
 
+- CloudFront standard logging v2: [`network/cloudfront`](../../network/cloudfront) with
+  `logging = { destination = "s3", s3_bucket_arn = module.logs.arn }`. The delivery is created in us-east-1 and writes
+  across Regions, so the bucket can be in any Region; its `aws:SourceArn` is
+  `arn:aws:logs:us-east-1:<account>:delivery-source:*`, which the default covers (add it when you set `source_arns`).
+  CloudFront rejects bucket names with dots.
+- WAF: [`network/waf`](../../network/waf) with `logging = { destination = "s3", s3_bucket_arn = ... }`, into a log bucket
+  of its own named `aws-waf-logs-*` (`bucket_name`) in the web ACL's account.
+
 ## Security & Compliance Guardrails
 
 - **SSE-S3 only:** S3 server access logs and ELB access logs support only SSE-S3, and vended logs reject AWS managed
@@ -32,8 +40,8 @@ switch per log type.
 - **Retention (S3.10, S3.13):** 365 days by default; versioning stays on (S3.14).
 - **Its own access logs (S3.9):** `access_logs` to another bucket; a log bucket does not log to itself.
 
-WAF delivers only to buckets named `aws-waf-logs-*`: set `bucket_name`. No Object Lock: S3 server access logs cannot
-target a bucket with a default retention.
+WAF delivers only to buckets named `aws-waf-logs-*`: set `bucket_name = "aws-waf-logs-..."`. No Object Lock: S3 server
+access logs cannot target a bucket with a default retention.
 
 ## Requirements & Providers
 

@@ -60,6 +60,11 @@ variable "target" {
     condition     = var.target.port == null || try(var.target.port >= 1150 && var.target.port <= 65535, false)
     error_message = "target.port: 1150-65535."
   }
+
+  validation {
+    condition     = !var.security_group.create || length(var.target.security_group_ids) > 0
+    error_message = "target.security_group_ids: at least one with security_group.create."
+  }
 }
 
 variable "vpc_id" {

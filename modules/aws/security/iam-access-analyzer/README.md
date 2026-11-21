@@ -5,7 +5,8 @@ Scope: `account`
 IAM Access Analyzer for an organization. The management account call enables trusted access and registers the
 delegated administrator; the delegated administrator call creates an organization external access analyzer in every
 Region of `regions`, one organization unused access analyzer, an opt-in organization internal access analyzer and
-archive rules.
+archive rules. With `organization_configuration.enabled = false` the module runs in account-only mode for a standalone
+account, or a management account that is also the workload account: the same analyzers with the `ACCOUNT` types.
 
 ## Architecture & Managed Resources
 
@@ -13,11 +14,12 @@ archive rules.
   `aws_organizations_delegated_administrator.this` (`organization_admin.enabled`, management account) for
   `access-analyzer.amazonaws.com`. This module owns that trusted access; `governance/organizations` rejects the
   principal.
-- `aws_accessanalyzer_analyzer.external` (`analyzers.enabled`, default): `ORGANIZATION`, one per Region,
-  `<application>-<environment>-external`.
-- `aws_accessanalyzer_analyzer.unused`: `ORGANIZATION_UNUSED_ACCESS` in `unused_access.region` (IAM is global, one
-  analyzer covers every Region), `<application>-<environment>-unused`.
-- `aws_accessanalyzer_analyzer.internal` (`internal_access.enabled`): `ORGANIZATION_INTERNAL_ACCESS` in one Region.
+- `aws_accessanalyzer_analyzer.external` (`analyzers.enabled`, default): `ORGANIZATION` (`ACCOUNT` in account-only
+  mode), one per Region, `<application>-<environment>-external`.
+- `aws_accessanalyzer_analyzer.unused`: `ORGANIZATION_UNUSED_ACCESS` (`ACCOUNT_UNUSED_ACCESS`) in
+  `unused_access.region` (IAM is global, one analyzer covers every Region), `<application>-<environment>-unused`.
+- `aws_accessanalyzer_analyzer.internal` (`internal_access.enabled`): `ORGANIZATION_INTERNAL_ACCESS`
+  (`ACCOUNT_INTERNAL_ACCESS`) in one Region.
 - `aws_accessanalyzer_archive_rule.this`: named after the map key; an external rule without `region` lands on every
   external analyzer. Archive rules archive only new findings.
 
@@ -25,7 +27,11 @@ The two calls need different credentials, so a validation rejects `organization_
 
 ## Security & Compliance Guardrails
 
-- **External access (IAM.28):** an organization analyzer in every Region of `regions`.
+- **Modes:** `organization_configuration.enabled = true` (default) creates organization analyzers in the delegated
+  administrator; `false` (account-only mode) creates `ACCOUNT` analyzers that cover only this account. Account IDs in
+  `unused_access.exclusion_account_ids` and `internal_access.inclusions` need organization analyzers, so account-only
+  mode rejects them.
+- **External access (IAM.28):** an external analyzer in every Region of `regions`.
 - **Unused access:** on by default, 90-day tracking period (1-365); the owner account cannot be excluded. Use 45 days
   to match IAM.22.
 - **Internal access:** opt-in, billed per resource monitored; scope it with `inclusions`.
@@ -116,6 +122,21 @@ module "iam_access_analyzer" {
 
 The `import` block adopts trusted access that is already enabled.
 
+### Account-only Mode Example
+
+A standalone account, or a management account with no delegated administrator:
+
+```hcl
+module "iam_access_analyzer" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/iam-access-analyzer?ref=<version>"
+
+  environment                = "prod"
+  regions                    = ["us-east-1", "eu-west-1"]
+  organization_configuration = { enabled = false }
+  unused_access              = { region = "us-east-1", unused_access_age = 45 }
+}
+```
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -124,10 +145,11 @@ The `import` block adopts trusted access that is already enabled.
 | `environment` | Environment name. | `string` | **Required** | Yes |
 | `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
 | `regions` | Regions for external access analyzers. Empty: provider Region. | `list(string)` | `[]` | No |
-| `analyzers` | Delegated administrator call: organization analyzers and archive rules. | `object({...})` | `{}` | No |
+| `analyzers` | Analyzers and archive rules; off for the management account call. | `object({...})` | `{}` | No |
+| `organization_configuration` | Organization analyzers; off for account-only analyzers. | `object({...})` | `{}` | No |
 | `organization_admin` | Management account call: trusted access and delegated administrator. | `object({...})` | `{}` | No |
-| `unused_access` | Organization unused access analyzer in one Region (null: provider Region). | `object({...})` | `{}` | No |
-| `internal_access` | Organization internal access analyzer in one Region (null: provider Region). | `object({...})` | `{}` | No |
+| `unused_access` | Unused access analyzer in one Region (null: provider Region). | `object({...})` | `{}` | No |
+| `internal_access` | Internal access analyzer in one Region (null: provider Region). | `object({...})` | `{}` | No |
 | `archive_rules` | Archive rules by rule name: analyzer (external, unused, internal), region, filters. | `map(object({...}))` | `{}` | No |
 
 ## Outputs Specification

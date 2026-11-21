@@ -3,6 +3,7 @@ locals {
   regions         = length(var.regions) > 0 ? distinct(var.regions) : [module.naming.region]
   unused_region   = coalesce(var.unused_access.region, module.naming.region)
   internal_region = coalesce(var.internal_access.region, module.naming.region)
+  analyzer_scope  = var.organization_configuration.enabled ? "ORGANIZATION" : "ACCOUNT"
 
   analyzer_created = {
     external = var.analyzers.enabled

@@ -27,15 +27,15 @@ others.
 | [`security/cloudtrail`](../modules/aws/security/cloudtrail) | `account` | One multi-Region CloudTrail trail (an organization trail by default) with log file validation, a KMS key, a CloudWatch Logs log group with its delivery role and a hardened S3 log bucket. |
 | [`security/cognito`](../modules/aws/security/cognito) | `workload` | A Cognito user pool with required MFA, a 14-character password policy, app clients, groups, an optional hosted domain, Lambda triggers, notification-error logs and, on the Plus plan, threat protection with user activity logs. |
 | [`security/config`](../modules/aws/security/config) | `account` | AWS Config for one account: a customer managed recorder, delivery channel and retention in every Region of `regions`, plus, in the account that needs them, the delivery bucket (log archive or single account), the organization aggregator, organization or account rules, conformance packs and remediations (delegated administrator), and trusted access and delegated administrator registration (management account). |
-| [`security/detective`](../modules/aws/security/detective) | `account` | Amazon Detective for an organization: the management account call designates the Detective administrator in every Region of `regions`; the administrator account call manages the organization behavior graph, auto-enable for new accounts and existing member accounts in the same Regions. |
-| [`security/guardduty`](../modules/aws/security/guardduty) | `account` | Amazon GuardDuty for an organization: the management account call enables trusted access and designates the delegated administrator; the delegated administrator call runs the detector, every protection plan, the organization auto-enable configuration, suppression rules and an optional findings export, in every Region of `regions`. |
-| [`security/iam-access-analyzer`](../modules/aws/security/iam-access-analyzer) | `account` | IAM Access Analyzer for an organization. |
+| [`security/detective`](../modules/aws/security/detective) | `account` | Amazon Detective for an organization: the management account call designates the Detective administrator in every Region of `regions`; the administrator account call manages the organization behavior graph, auto-enable for new accounts and existing member accounts in the same Regions. With `organization_configuration.enabled = false`, one account's behavior graph, with invited members. |
+| [`security/guardduty`](../modules/aws/security/guardduty) | `account` | Amazon GuardDuty for an organization: the management account call enables trusted access and designates the delegated administrator; the delegated administrator call runs the detector, every protection plan, the organization auto-enable configuration, suppression rules and an optional findings export, in every Region of `regions`. With `organization_configuration.enabled = false`, one account's detector and plans. |
+| [`security/iam-access-analyzer`](../modules/aws/security/iam-access-analyzer) | `account` | IAM Access Analyzer for an organization, or account analyzers with `organization_configuration.enabled = false`. |
 | [`security/iam-role`](../modules/aws/security/iam-role) | `workload` | An IAM role with a trust policy, an inline policy, managed policy attachments, an optional permissions boundary and an optional instance profile. |
 | [`security/identity-center`](../modules/aws/security/identity-center) | `organization` | Permission sets, account assignments and optional identity store groups for the organization's IAM Identity Center instance. |
-| [`security/inspector`](../modules/aws/security/inspector) | `account` | Amazon Inspector (v2) for an organization, in every Region of `regions`. |
+| [`security/inspector`](../modules/aws/security/inspector) | `account` | Amazon Inspector (v2) for an organization, or one account with `organization_configuration.enabled = false`, in every Region of `regions`. |
 | [`security/kms`](../modules/aws/security/kms) | `workload` | A customer managed key with an alias, an optional key policy extension and optional multi-Region replicas. |
 | [`security/secrets-manager`](../modules/aws/security/secrets-manager) | `workload` | A Secrets Manager secret with an optional write-only value, Lambda rotation, a resource policy and replicas in other Regions. |
-| [`security/security-hub`](../modules/aws/security/security-hub) | `account` | Security Hub CSPM for an AWS organization with central configuration. |
+| [`security/security-hub`](../modules/aws/security/security-hub) | `account` | Security Hub CSPM for an AWS organization with central configuration, or one account's hub and standards subscriptions in every Region of `regions` with `organization_configuration.enabled = false`. |
 
 ### Network
 
@@ -104,6 +104,17 @@ others.
 | [`governance/cost-guardrails`](../modules/aws/governance/cost-guardrails) | `account` | Cost guardrails for one account: budgets with tag, service and account filters and actual and forecast alerts, Cost Anomaly Detection with the AWS services monitor (or the existing one) and custom monitors, immediate SNS and daily email anomaly alerts, and cost allocation tag activation in the management account. |
 | [`governance/organizations`](../modules/aws/governance/organizations) | `organization` | Organization-wide governance from the management account: trusted access, delegated administrators, centralized root access, an optional policy-management delegation, an optional adopted organization that owns the enabled policy types, and a library of service control policies (SCPs), resource control policies (RCPs), declarative, tag and AI opt-out policies. |
 | [`governance/systems-manager`](../modules/aws/governance/systems-manager) | `account` | A Systems Manager baseline for one account in every Region of `regions` (default: the provider Region): service settings (block public document sharing, Automation logging, Default Host Management), Session Manager preferences with session logs, Patch Manager through one Quick Setup patch policy (scan and install schedules, AWS default or custom baselines, local deployment roles), Inventory with an optional resource data sync and central bucket, and weekly SSM Agent updates. |
+
+## Account layouts
+
+| Layout | `organization` modules | `account` modules | `workload` modules |
+| --- | --- | --- | --- |
+| One account | Only when the account manages an organization: `governance/organizations`, `security/identity-center` | Once, in the account; guardduty, detective, inspector, iam-access-analyzer and security-hub with `organization_configuration = { enabled = false }` | Once per environment; names carry the environment |
+| An organization | In the management account | In the management, security tooling and log archive accounts, in the [rollout](compliance/aws-organizations-governance.md#rollout) order; `security/config` recording in every workload account | Once per environment, in each workload account |
+
+With `organization_configuration.enabled = false` a security module covers only its own account: no delegated
+administrator and no auto-enable for new accounts. The [Terragrunt architecture](terragrunt.md) runs each column in its
+own unit.
 
 ## How the modules connect
 

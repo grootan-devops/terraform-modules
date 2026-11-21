@@ -21,8 +21,9 @@ resource "aws_securityhub_organization_admin_account" "this" {
 }
 
 resource "aws_securityhub_account" "this" {
-  count = var.hub.enabled ? 1 : 0
+  for_each = local.hub_regions
 
+  region                    = each.key
   enable_default_standards  = false
   control_finding_generator = "SECURITY_CONTROL"
   auto_enable_controls      = true
@@ -37,6 +38,15 @@ resource "aws_securityhub_finding_aggregator" "this" {
 
   linking_mode      = var.finding_aggregator.linking_mode
   specified_regions = length(var.finding_aggregator.specified_regions) > 0 ? toset(var.finding_aggregator.specified_regions) : null
+
+  depends_on = [aws_securityhub_account.this]
+}
+
+resource "aws_securityhub_standards_subscription" "this" {
+  for_each = local.standards_subscriptions
+
+  region        = each.value.region
+  standards_arn = each.value.standards_arn
 
   depends_on = [aws_securityhub_account.this]
 }

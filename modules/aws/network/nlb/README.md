@@ -146,7 +146,7 @@ module "nlb" {
 | `zone_id` | Route 53 zone ID for alias records. | No |
 | `security_group_id` | Load balancer security group ID. | No |
 | `listener_arns` | Listener ARNs by key. | No |
-| `target_group_arns` | Target group ARNs by key. | No |
+| `target_group_arns` | Target group ARNs by key, once a listener uses them. | No |
 | `target_group_arn_suffixes` | Target group ARN suffixes by key, for CloudWatch metrics. | No |
 | `endpoint_service_name` | PrivateLink endpoint service name; null when disabled. | No |
 | `endpoint_service_id` | PrivateLink endpoint service ID; null when disabled. | No |

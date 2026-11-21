@@ -30,6 +30,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_resource "aws_securityhub_standards_subscription" {
+    defaults = {
+      arn = "arn:aws:securityhub:eu-west-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0"
+    }
+  }
+
   mock_resource "aws_securityhub_configuration_policy" {
     defaults = {
       id  = "00000000-1111-2222-3333-444444444444"
@@ -47,7 +53,7 @@ run "secure_defaults" {
   command = plan
 
   assert {
-    condition     = length(aws_securityhub_account.this) == 1 && aws_securityhub_account.this[0].enable_default_standards == false && aws_securityhub_account.this[0].control_finding_generator == "SECURITY_CONTROL" && aws_securityhub_account.this[0].auto_enable_controls == true
+    condition     = keys(aws_securityhub_account.this) == ["eu-west-1"] && aws_securityhub_account.this["eu-west-1"].region == "eu-west-1" && aws_securityhub_account.this["eu-west-1"].enable_default_standards == false && aws_securityhub_account.this["eu-west-1"].control_finding_generator == "SECURITY_CONTROL" && aws_securityhub_account.this["eu-west-1"].auto_enable_controls == true
     error_message = "The hub uses consolidated findings, no default standards and auto-enabled controls."
   }
 
@@ -64,6 +70,11 @@ run "secure_defaults" {
   assert {
     condition     = length(aws_securityhub_configuration_policy.this) == 0 && length(aws_securityhub_configuration_policy_association.this) == 0 && output.configuration_policy_ids == {}
     error_message = "The baseline policy is created only with targets."
+  }
+
+  assert {
+    condition     = length(aws_securityhub_standards_subscription.this) == 0
+    error_message = "Central configuration enables standards through policies, not local subscriptions."
   }
 
   assert {
@@ -126,7 +137,7 @@ run "cri_profile_with_arn" {
   command = plan
 
   variables {
-    cri_profile_standard_arn = "arn:aws:securityhub:eu-west-1::standards/test-only-cri-profile/v/0.0.0"
+    cri_profile = { enabled = true, standard_arn = "arn:aws:securityhub:eu-west-1::standards/test-only-cri-profile/v/0.0.0" }
     configuration_policies = {
       baseline = { targets = ["r-ab12"] }
       no-cri   = { targets = ["ou-ab12-cdef3456"], standards = { cri_profile_v2_2 = false } }
@@ -135,7 +146,7 @@ run "cri_profile_with_arn" {
 
   assert {
     condition     = contains(aws_securityhub_configuration_policy.this["baseline"].configuration_policy[0].enabled_standard_arns, "arn:aws:securityhub:eu-west-1::standards/test-only-cri-profile/v/0.0.0") && length(aws_securityhub_configuration_policy.this["baseline"].configuration_policy[0].enabled_standard_arns) == 7
-    error_message = "CRI joins the defaults when its ARN is supplied."
+    error_message = "CRI joins the defaults when it is enabled with its ARN."
   }
 
   assert {
@@ -169,6 +180,28 @@ run "standards_selection" {
       "arn:aws:securityhub:eu-west-1::standards/custom-standard/v/1.0.0",
     ] : contains(aws_securityhub_configuration_policy.this["baseline"].configuration_policy[0].enabled_standard_arns, arn)])
     error_message = "Opt-in and additional standards are enabled."
+  }
+}
+
+run "module_standards_reach_policies" {
+  command = plan
+
+  variables {
+    standards = { nist_800_53_r5 = true, pci_v4_0_1 = false }
+    configuration_policies = {
+      baseline  = { targets = ["r-ab12"] }
+      regulated = { targets = ["ou-ab12-cdef3456"], standards = { pci_v4_0_1 = true } }
+    }
+  }
+
+  assert {
+    condition     = contains(aws_securityhub_configuration_policy.this["baseline"].configuration_policy[0].enabled_standard_arns, "arn:aws:securityhub:eu-west-1::standards/nist-800-53/v/5.0.0") && !contains(aws_securityhub_configuration_policy.this["baseline"].configuration_policy[0].enabled_standard_arns, "arn:aws:securityhub:eu-west-1::standards/pci-dss/v/4.0.1")
+    error_message = "standards changes the defaults of every policy."
+  }
+
+  assert {
+    condition     = contains(aws_securityhub_configuration_policy.this["regulated"].configuration_policy[0].enabled_standard_arns, "arn:aws:securityhub:eu-west-1::standards/pci-dss/v/4.0.1")
+    error_message = "A policy's standards override the module standards."
   }
 }
 
@@ -268,21 +301,87 @@ run "aggregator_specified_regions" {
   }
 }
 
-run "hub_without_central_configuration" {
+run "account_only_mode" {
   command = plan
+
+  variables {
+    regions                    = ["us-east-1", "eu-west-1"]
+    organization_configuration = { enabled = false }
+    product_subscriptions      = ["arn:aws:securityhub:eu-west-1:956882708938:product/crowdstrike/crowdstrike-falcon"]
+  }
+
+  assert {
+    condition     = keys(aws_securityhub_account.this) == ["eu-west-1", "us-east-1"] && aws_securityhub_account.this["us-east-1"].region == "us-east-1" && aws_securityhub_account.this["us-east-1"].enable_default_standards == false
+    error_message = "Account-only mode enables the hub in the provider Region and every listed Region."
+  }
+
+  assert {
+    condition = keys(aws_securityhub_standards_subscription.this) == [
+      "eu-west-1/ai_security_v1_0_0", "eu-west-1/cis_v5_0_0", "eu-west-1/fsbp_v1_0_0", "eu-west-1/nist_800_171_r2", "eu-west-1/pci_v4_0_1", "eu-west-1/tagging_v1_0_0",
+      "us-east-1/ai_security_v1_0_0", "us-east-1/cis_v5_0_0", "us-east-1/fsbp_v1_0_0", "us-east-1/nist_800_171_r2", "us-east-1/pci_v4_0_1", "us-east-1/tagging_v1_0_0",
+    ]
+    error_message = "The default standards are subscribed in each Region; no CRI without it."
+  }
+
+  assert {
+    condition     = aws_securityhub_standards_subscription.this["us-east-1/fsbp_v1_0_0"].standards_arn == "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0" && aws_securityhub_standards_subscription.this["us-east-1/fsbp_v1_0_0"].region == "us-east-1"
+    error_message = "Each subscription uses its Region's standards ARN."
+  }
+
+  assert {
+    condition     = length(aws_securityhub_organization_configuration.this) + length(aws_securityhub_configuration_policy.this) + length(aws_securityhub_configuration_policy_association.this) + length(aws_securityhub_organization_admin_account.this) == 0
+    error_message = "Account-only mode creates no central configuration."
+  }
+
+  assert {
+    condition     = aws_securityhub_finding_aggregator.this[0].linking_mode == "ALL_REGIONS" && length(aws_securityhub_product_subscription.this) == 1
+    error_message = "Finding aggregation and product subscriptions keep working."
+  }
+}
+
+run "account_only_standard_selection" {
+  command = plan
+
+  variables {
+    regions                    = ["us-east-1"]
+    organization_configuration = { enabled = false }
+    standards                  = { fsbp_v1_0_0 = false, cis_v1_2_0 = true, nist_800_53_r5 = true }
+    cri_profile                = { enabled = true, standard_arn = "arn:aws:securityhub:eu-west-1::standards/test-only-cri-profile/v/0.0.0" }
+  }
+
+  assert {
+    condition     = !contains(keys(aws_securityhub_standards_subscription.this), "eu-west-1/fsbp_v1_0_0") && aws_securityhub_standards_subscription.this["eu-west-1/nist_800_53_r5"].standards_arn == "arn:aws:securityhub:eu-west-1::standards/nist-800-53/v/5.0.0"
+    error_message = "standards turns defaults off and opt-in standards on."
+  }
+
+  assert {
+    condition     = aws_securityhub_standards_subscription.this["us-east-1/cis_v1_2_0"].standards_arn == "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.2.0"
+    error_message = "CIS v1.2.0 uses its global ruleset ARN."
+  }
+
+  assert {
+    condition     = aws_securityhub_standards_subscription.this["us-east-1/cri_profile_v2_2"].standards_arn == "arn:aws:securityhub:us-east-1::standards/test-only-cri-profile/v/0.0.0" && aws_securityhub_standards_subscription.this["eu-west-1/cri_profile_v2_2"].standards_arn == "arn:aws:securityhub:eu-west-1::standards/test-only-cri-profile/v/0.0.0"
+    error_message = "The CRI ARN takes each subscription's Region."
+  }
+}
+
+run "account_only_mode_outputs" {
+  command   = apply
+  state_key = "account_only"
 
   variables {
     organization_configuration = { enabled = false }
     organization_admin         = { enabled = true, account_id = "222222222222" }
-    configuration_policies = {
-      baseline = { targets = ["r-ab12"] }
-    }
-    self_managed_targets = ["123456789013"]
   }
 
   assert {
-    condition     = length(aws_securityhub_account.this) == 1 && length(aws_securityhub_organization_configuration.this) == 0 && length(aws_securityhub_configuration_policy.this) == 0 && length(aws_securityhub_configuration_policy_association.this) == 0
-    error_message = "Without central configuration only the hub and aggregator remain."
+    condition     = output.arn == "arn:aws:securityhub:eu-west-1:123456789012:hub/default" && output.finding_aggregator_arn == "arn:aws:securityhub:eu-west-1:123456789012:finding-aggregator/abcd1234-abcd-1234-1234-abcdef123456" && output.configuration_policy_ids == {}
+    error_message = "Hub and aggregator outputs work without central configuration."
+  }
+
+  assert {
+    condition     = length(aws_securityhub_standards_subscription.this) == 6 && aws_securityhub_standards_subscription.this["eu-west-1/fsbp_v1_0_0"].arn == "arn:aws:securityhub:eu-west-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0"
+    error_message = "Standards are subscribed in the provider Region."
   }
 
   assert {
@@ -478,10 +577,75 @@ run "rejects_malformed_cri_arn" {
   command = plan
 
   variables {
-    cri_profile_standard_arn = "cri-profile"
+    cri_profile = { enabled = true, standard_arn = "cri-profile" }
   }
 
-  expect_failures = [var.cri_profile_standard_arn]
+  expect_failures = [var.cri_profile]
+}
+
+run "rejects_cri_without_arn" {
+  command = plan
+
+  variables {
+    cri_profile = { enabled = true }
+  }
+
+  expect_failures = [var.cri_profile]
+}
+
+run "rejects_malformed_region" {
+  command = plan
+
+  variables {
+    organization_configuration = { enabled = false }
+    regions                    = ["useast1"]
+  }
+
+  expect_failures = [var.regions]
+}
+
+run "rejects_regions_with_central_configuration" {
+  command = plan
+
+  variables {
+    regions = ["us-east-1"]
+  }
+
+  expect_failures = [var.regions]
+}
+
+run "rejects_unknown_module_standard_key" {
+  command = plan
+
+  variables {
+    standards = { fsbp = true }
+  }
+
+  expect_failures = [var.standards]
+}
+
+run "rejects_policy_targets_without_central_configuration" {
+  command = plan
+
+  variables {
+    organization_configuration = { enabled = false }
+    configuration_policies = {
+      baseline = { targets = ["r-ab12"] }
+    }
+  }
+
+  expect_failures = [var.configuration_policies]
+}
+
+run "rejects_self_managed_targets_without_central_configuration" {
+  command = plan
+
+  variables {
+    organization_configuration = { enabled = false }
+    self_managed_targets       = ["123456789013"]
+  }
+
+  expect_failures = [var.self_managed_targets]
 }
 
 run "rejects_malformed_product_arn" {

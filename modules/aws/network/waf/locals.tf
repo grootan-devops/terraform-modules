@@ -4,6 +4,7 @@ locals {
   log_region     = coalesce(local.region, module.naming.region)
   log_group_name = "aws-waf-logs-${local.base}"
   log_group_arn  = "arn:${module.naming.partition}:logs:${local.log_region}:${module.naming.account_id}:log-group:${local.log_group_name}"
+  logs_to_s3     = var.logging.destination == "s3"
   kms_key_arn    = module.encryption.key_arn
 
   kms_service_statements = [{

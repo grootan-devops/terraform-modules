@@ -27,8 +27,25 @@ variable "tags" {
   nullable    = false
 }
 
+variable "regions" {
+  description = "Account-only mode: more Regions for the hub and standards."
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition     = alltrue([for region in var.regions : can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]+$", region))])
+    error_message = "regions: AWS Region codes."
+  }
+
+  validation {
+    condition     = length(var.regions) == 0 || !var.organization_configuration.enabled
+    error_message = "regions: needs organization_configuration.enabled = false."
+  }
+}
+
 variable "hub" {
-  description = "Hub, aggregator and central configuration in this account."
+  description = "Hub, aggregator and standards in this account."
   type = object({
     enabled = optional(bool, true)
   })
@@ -77,12 +94,24 @@ variable "finding_aggregator" {
 }
 
 variable "organization_configuration" {
-  description = "Central configuration: policies and associations."
+  description = "Central configuration: policies and associations; off for account-only mode."
   type = object({
     enabled = optional(bool, true)
   })
   default  = {}
   nullable = false
+}
+
+variable "standards" {
+  description = "Standards on or off by key, over the defaults; policies override."
+  type        = map(bool)
+  default     = {}
+  nullable    = false
+
+  validation {
+    condition     = alltrue([for standard in keys(var.standards) : contains(keys(local.standard_defaults), standard)])
+    error_message = "standards: unknown standard key."
+  }
 }
 
 variable "configuration_policies" {
@@ -153,6 +182,11 @@ variable "configuration_policies" {
     condition     = length(concat(flatten([for policy in values(var.configuration_policies) : policy.targets]), var.self_managed_targets)) == length(distinct(concat(flatten([for policy in values(var.configuration_policies) : policy.targets]), var.self_managed_targets)))
     error_message = "targets: each target once across policies and self_managed_targets."
   }
+
+  validation {
+    condition     = var.organization_configuration.enabled || alltrue([for policy in values(var.configuration_policies) : length(policy.targets) == 0])
+    error_message = "configuration_policies: targets need organization_configuration.enabled."
+  }
 }
 
 variable "self_managed_targets" {
@@ -165,16 +199,25 @@ variable "self_managed_targets" {
     condition     = alltrue([for target in var.self_managed_targets : can(regex("^(r-[a-z0-9]{4,32}|ou-[a-z0-9]{4,32}-[a-z0-9]{8,32}|[0-9]{12})$", target))])
     error_message = "self_managed_targets: root, OU or account IDs."
   }
-}
-
-variable "cri_profile_standard_arn" {
-  description = "CRI Profile v2.2 StandardsArn; null leaves CRI out."
-  type        = string
-  default     = null
 
   validation {
-    condition     = var.cri_profile_standard_arn == null || can(regex("^arn:aws[a-z-]*:securityhub:[a-z0-9-]*::standards/[A-Za-z0-9._/-]+$", var.cri_profile_standard_arn))
-    error_message = "cri_profile_standard_arn: a standards ARN."
+    condition     = var.organization_configuration.enabled || length(var.self_managed_targets) == 0
+    error_message = "self_managed_targets: needs organization_configuration.enabled."
+  }
+}
+
+variable "cri_profile" {
+  description = "CRI Profile v2.2 and its StandardsArn; off leaves CRI out."
+  type = object({
+    enabled      = optional(bool, false)
+    standard_arn = optional(string)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !var.cri_profile.enabled || can(regex("^arn:aws[a-z-]*:securityhub:[a-z0-9-]*::standards/[A-Za-z0-9._/-]+$", var.cri_profile.standard_arn))
+    error_message = "cri_profile.standard_arn: a standards ARN."
   }
 }
 

@@ -197,8 +197,39 @@ variable "price_class" {
   }
 }
 
+variable "logging" {
+  description = "Access log destination: cloudwatch or s3 (s3_bucket_arn, prefix)."
+  type = object({
+    destination   = optional(string, "cloudwatch")
+    s3_bucket_arn = optional(string)
+    prefix        = optional(string, "AWSLogs")
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = contains(["cloudwatch", "s3"], var.logging.destination)
+    error_message = "logging.destination: cloudwatch or s3."
+  }
+
+  validation {
+    condition     = var.logging.destination != "s3" || can(regex("^arn:aws[a-z-]*:s3:::[A-Za-z0-9_-]+$", var.logging.s3_bucket_arn))
+    error_message = "logging: s3 needs s3_bucket_arn, a bucket ARN without dots or path."
+  }
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_-]+$", var.logging.prefix))
+    error_message = "logging.prefix: one folder, A-Z a-z 0-9 _ -."
+  }
+
+  validation {
+    condition     = var.logging.destination != "s3" || (!var.kms.create && var.kms.key_id == null)
+    error_message = "kms: only with destination cloudwatch."
+  }
+}
+
 variable "cloudwatch_logs" {
-  description = "Access log group in us-east-1."
+  description = "Access log group in us-east-1 (destination cloudwatch)."
   type = object({
     retention_in_days           = optional(number, 365)
     log_group_class             = optional(string, "STANDARD")

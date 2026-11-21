@@ -77,8 +77,13 @@ run "secure_defaults" {
   }
 
   assert {
-    condition     = module.log_group.name == "/aws/cloudfront/core-prod" && module.log_group.retention_in_days == 365 && module.log_group.kms_key_arn == null && output.kms_key_arn == null
+    condition     = length(module.log_group) == 1 && module.log_group[0].name == "/aws/cloudfront/core-prod" && module.log_group[0].retention_in_days == 365 && module.log_group[0].kms_key_arn == null && output.kms_key_arn == null
     error_message = "Access logs go to a 365-day log group with service encryption by default."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_destination.this.output_format == "json"
+    error_message = "The log group gets JSON records."
   }
 
   assert {
@@ -118,7 +123,7 @@ run "custom_domain" {
   }
 
   assert {
-    condition     = module.log_group.name == "/aws/cloudfront/core-prod-web" && aws_cloudwatch_log_delivery_source.this.name == "core-prod-web-cloudfront"
+    condition     = module.log_group[0].name == "/aws/cloudfront/core-prod-web" && aws_cloudwatch_log_delivery_source.this.name == "core-prod-web-cloudfront"
     error_message = "Names follow <application>-<environment>-<name>."
   }
 }
@@ -176,7 +181,7 @@ run "module_key_is_planned_safely" {
   }
 
   assert {
-    condition     = module.encryption.created && module.log_group.name == "/aws/cloudfront/core-prod"
+    condition     = module.encryption.created && module.log_group[0].name == "/aws/cloudfront/core-prod"
     error_message = "kms.create must plan without knowing the key ARN."
   }
 }
@@ -189,12 +194,12 @@ run "module_key_encrypts_logs" {
   }
 
   assert {
-    condition     = module.log_group.kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555" && output.kms_key_arn == module.log_group.kms_key_arn
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555" && output.kms_key_arn == module.log_group[0].kms_key_arn
     error_message = "The us-east-1 module key must encrypt the log group."
   }
 
   assert {
-    condition     = aws_cloudwatch_log_delivery_source.this.resource_arn == "arn:aws:cloudfront::123456789012:distribution/E2EXAMPLE12345" && aws_cloudwatch_log_delivery_destination.this.delivery_destination_configuration[0].destination_resource_arn == module.log_group.arn
+    condition     = aws_cloudwatch_log_delivery_source.this.resource_arn == "arn:aws:cloudfront::123456789012:distribution/E2EXAMPLE12345" && aws_cloudwatch_log_delivery_destination.this.delivery_destination_configuration[0].destination_resource_arn == module.log_group[0].arn
     error_message = "The distribution's access logs are delivered to the log group."
   }
 
@@ -213,8 +218,51 @@ run "caller_key_id" {
   }
 
   assert {
-    condition     = module.log_group.kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
     error_message = "A key ID becomes a us-east-1 key ARN."
+  }
+}
+
+run "logs_to_s3" {
+  command   = apply
+  state_key = "s3"
+
+  variables {
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1" }
+  }
+
+  assert {
+    condition     = length(module.log_group) == 0 && output.log_group_name == null && output.log_group_arn == null
+    error_message = "The s3 destination creates no log group."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_destination.this.delivery_destination_configuration[0].destination_resource_arn == "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1/AWSLogs" && aws_cloudwatch_log_delivery_destination.this.output_format == "json" && aws_cloudwatch_log_delivery_destination.this.region == "us-east-1"
+    error_message = "The us-east-1 destination writes JSON under <bucket>/AWSLogs."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery.this.s3_delivery_configuration[0].suffix_path == "123456789012/CloudFront/{DistributionId}/{yyyy}/{MM}/{dd}/{HH}" && !aws_cloudwatch_log_delivery.this.s3_delivery_configuration[0].enable_hive_compatible_path && length(aws_cloudwatch_log_delivery.this.s3_delivery_configuration) == 1
+    error_message = "Objects land under <account>/CloudFront/<distribution>/<hour>, no Hive paths."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_delivery_source.this.resource_arn == "arn:aws:cloudfront::123456789012:distribution/E2EXAMPLE12345" && aws_cloudwatch_log_delivery.this.delivery_destination_arn == "arn:aws:logs:us-east-1:123456789012:delivery-destination:core-prod-cloudfront" && contains(aws_cloudwatch_log_delivery.this.record_fields, "c-ip")
+    error_message = "The distribution's access logs are delivered to the bucket destination."
+  }
+}
+
+run "logs_to_s3_plan_safely" {
+  command   = plan
+  state_key = "s3_plan"
+
+  variables {
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1", prefix = "cdn" }
+  }
+
+  assert {
+    condition     = length(module.log_group) == 0 && !module.encryption.created && aws_cloudwatch_log_delivery_destination.this.delivery_destination_configuration[0].destination_resource_arn == "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1/cdn"
+    error_message = "The s3 destination plans from the literal destination and puts prefix in the bucket path."
   }
 }
 
@@ -367,4 +415,55 @@ run "rejects_key_outside_us_east_1" {
   }
 
   expect_failures = [var.kms]
+}
+
+run "rejects_invalid_log_destination" {
+  command = plan
+
+  variables {
+    logging = { destination = "firehose" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_s3_logging_without_bucket" {
+  command = plan
+
+  variables {
+    logging = { destination = "s3" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_log_bucket_with_dots" {
+  command = plan
+
+  variables {
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::logs.example.com" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_nested_log_prefix" {
+  command = plan
+
+  variables {
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1", prefix = "cdn/edge" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_kms_with_s3_logging" {
+  command = plan
+
+  variables {
+    kms     = { create = true }
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1" }
+  }
+
+  expect_failures = [var.logging]
 }

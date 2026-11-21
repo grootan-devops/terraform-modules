@@ -4,6 +4,9 @@ locals {
   default_certificate = length(var.aliases) == 0
   log_group_name      = "/aws/cloudfront/${local.base}"
   log_group_arn       = "arn:${module.naming.partition}:logs:${local.region}:${module.naming.account_id}:log-group:${local.log_group_name}"
+  logs_to_cloudwatch  = var.logging.destination == "cloudwatch"
+  logs_to_s3          = var.logging.destination == "s3"
+  s3_suffix_path      = "${module.naming.account_id}/CloudFront/{DistributionId}/{yyyy}/{MM}/{dd}/{HH}"
   kms_key_arn         = module.encryption.key_arn
   oac_types           = toset([for o in values(var.origins) : o.type if o.type != "custom"])
 

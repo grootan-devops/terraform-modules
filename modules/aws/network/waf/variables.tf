@@ -198,8 +198,38 @@ variable "redacted_fields" {
   nullable = false
 }
 
+variable "logging" {
+  description = "Log destination: cloudwatch or s3 (aws-waf-logs- s3_bucket_arn)."
+  type = object({
+    destination   = optional(string, "cloudwatch")
+    s3_bucket_arn = optional(string)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = contains(["cloudwatch", "s3"], var.logging.destination)
+    error_message = "logging.destination: cloudwatch or s3."
+  }
+
+  validation {
+    condition     = var.logging.destination != "s3" || var.logging.s3_bucket_arn != null
+    error_message = "logging: s3 needs s3_bucket_arn."
+  }
+
+  validation {
+    condition     = var.logging.s3_bucket_arn == null || can(regex("^arn:aws[a-z-]*:s3:::aws-waf-logs-", var.logging.s3_bucket_arn))
+    error_message = "logging.s3_bucket_arn: bucket name starts with aws-waf-logs-."
+  }
+
+  validation {
+    condition     = var.logging.destination != "s3" || (!var.kms.create && var.kms.key_id == null)
+    error_message = "kms: only with destination cloudwatch."
+  }
+}
+
 variable "cloudwatch_logs" {
-  description = "WAF log group (aws-waf-logs- prefix)."
+  description = "WAF log group, aws-waf-logs- prefix (destination cloudwatch)."
   type = object({
     retention_in_days           = optional(number, 365)
     log_group_class             = optional(string, "STANDARD")

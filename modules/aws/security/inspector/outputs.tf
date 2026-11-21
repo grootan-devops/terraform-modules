@@ -10,6 +10,6 @@ output "filter_arns" {
       for instance_key, filter in aws_inspector2_filter.this : local.filter_instances[instance_key].region => filter.arn
       if local.filter_instances[instance_key].key == key
     }
-    if local.org_enabled
+    if local.scanning
   }
 }

@@ -60,7 +60,7 @@ variable "subnet_ids" {
 }
 
 variable "security_group" {
-  description = "Compute environment security group: egress and extra groups."
+  description = "Compute environment security group: HTTPS egress CIDRs, other destinations, extra groups."
   type = object({
     create                        = optional(bool, true)
     egress_cidr_blocks            = optional(list(string), ["0.0.0.0/0"])
@@ -215,6 +215,13 @@ variable "job_definitions" {
       on_reason        = optional(string)
       on_status_reason = optional(string)
     })), [])
+    efs_volumes = optional(map(object({
+      file_system_id  = string
+      access_point_id = optional(string)
+      root_directory  = optional(string)
+      container_path  = string
+      read_only       = optional(bool, false)
+    })), {})
   }))
   default  = {}
   nullable = false
@@ -242,6 +249,21 @@ variable "job_definitions" {
   validation {
     condition     = alltrue([for j in values(var.job_definitions) : j.attempts >= 1 && j.attempts <= 10 && (j.timeout_seconds == null || j.timeout_seconds >= 60)])
     error_message = "job_definitions: attempts 1-10, timeout_seconds 60 or more."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for k in keys(j.efs_volumes) : can(regex("^[a-z][a-z0-9-]{0,31}$", k)) && !can(regex("^scratch-[0-9]+$", k))]]))
+    error_message = "job_definitions[*].efs_volumes keys: 1-32 chars, a-z 0-9 -, not scratch-<n>."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for v in values(j.efs_volumes) : can(regex("^fs-[0-9a-f]{8,40}$", v.file_system_id)) && (v.access_point_id == null || can(regex("^fsap-[0-9a-f]{8,40}$", v.access_point_id))) && startswith(v.container_path, "/")]]))
+    error_message = "job_definitions[*].efs_volumes: fs- and fsap- IDs, absolute container_path."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for v in values(j.efs_volumes) : v.root_directory == null || (v.access_point_id == null && startswith(coalesce(v.root_directory, "/"), "/"))]]))
+    error_message = "job_definitions[*].efs_volumes: absolute root_directory, only without access_point_id."
   }
 }
 

@@ -36,9 +36,12 @@ module "s3" {
 ## Composition
 
 - A new project uses the [Terragrunt layout](terragrunt.md): a shared `root.hcl`, one `resources/`
-  composition root, and one `<environment>/terragrunt.hcl` per environment that includes
-  `root.hcl`, sources `resources/` and supplies the inputs. A project already on native
-  Terraform keeps its layout unless a migration is asked for.
+  composition root for the `workload` modules, and one `<environment>/terragrunt.hcl` per
+  environment that includes `root.hcl`, sources `resources/` and supplies the inputs. A project
+  already on native Terraform keeps its layout unless a migration is asked for.
+- Call each module at its scope (the `Scope` column of the [AWS catalog](AWS.md#catalog)):
+  `account` and `organization` modules run once, in their own composition root and unit under
+  `layers/`, never once per environment.
 - Keep one composition stack and one state per environment. If independently operated
   components would make one state too broad, raise that trade-off; never split an existing
   state silently.
@@ -46,9 +49,11 @@ module "s3" {
   configuration, variables, outputs, locals and supporting data sources. Connect modules
   through their documented outputs; keep non-secret environment values in the environment's
   `terragrunt.hcl`.
-- New work adds module calls, not `resource` blocks. Existing direct resources (such as the
-  IAM and DNS files in the [Terragrunt layout](terragrunt.md)) stay as they are, and a capability no module provides is reported as
-  a module gap.
+- New work adds module calls, not `resource` blocks. Existing direct resources stay as they
+  are, and a capability no module provides is reported as a module gap.
+- Several environments in one account share every account-unique name (IAM roles, buckets,
+  log groups); the modules put the environment and `name` in each, so keep `environment`
+  distinct per environment and give two calls of one module distinct `name`s.
 
 ## State, providers and secrets
 

@@ -87,15 +87,18 @@ variable "detector" {
   }
 }
 
-variable "auto_enable_organization_members" {
-  description = "Organization auto-enable: ALL, NEW or NONE."
-  type        = string
-  default     = "ALL"
-  nullable    = false
+variable "organization_configuration" {
+  description = "Organization auto-enable; off for account-only mode."
+  type = object({
+    enabled             = optional(bool, true)
+    auto_enable_members = optional(string, "ALL")
+  })
+  default  = {}
+  nullable = false
 
   validation {
-    condition     = contains(["ALL", "NEW", "NONE"], var.auto_enable_organization_members)
-    error_message = "auto_enable_organization_members: ALL, NEW or NONE."
+    condition     = contains(["ALL", "NEW", "NONE"], var.organization_configuration.auto_enable_members)
+    error_message = "organization_configuration.auto_enable_members: ALL, NEW or NONE."
   }
 }
 

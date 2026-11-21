@@ -1,5 +1,6 @@
 module "log_group" {
   source = "../../observability/log-group"
+  count  = local.logs_to_cloudwatch ? 1 : 0
 
   application                 = var.application
   environment                 = var.environment
@@ -28,7 +29,7 @@ resource "aws_cloudwatch_log_delivery_destination" "this" {
   output_format = "json"
 
   delivery_destination_configuration {
-    destination_resource_arn = module.log_group.arn
+    destination_resource_arn = local.logs_to_s3 ? "${var.logging.s3_bucket_arn}/${var.logging.prefix}" : one(module.log_group[*].arn)
   }
 
   tags = merge(module.naming.tags, { Name = module.naming.names.delivery })
@@ -39,6 +40,11 @@ resource "aws_cloudwatch_log_delivery" "this" {
   delivery_source_name     = aws_cloudwatch_log_delivery_source.this.name
   delivery_destination_arn = aws_cloudwatch_log_delivery_destination.this.arn
   record_fields            = local.record_fields
+
+  s3_delivery_configuration = local.logs_to_s3 ? [{
+    suffix_path                 = local.s3_suffix_path
+    enable_hive_compatible_path = false
+  }] : null
 
   tags = merge(module.naming.tags, { Name = module.naming.names.delivery })
 }

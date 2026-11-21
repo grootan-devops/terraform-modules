@@ -130,15 +130,15 @@ module "api" {
   }
 }
 
-resource "aws_route53_record" "api" {
-  zone_id = module.zone.zone_id
-  name    = "api.example.com"
-  type    = "A"
+module "zone" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/route53?ref=<version>"
 
-  alias {
-    name                   = module.api.domain_target_name
-    zone_id                = module.api.domain_zone_id
-    evaluate_target_health = false
+  application = "core"
+  environment = "prod"
+  zone_name   = "example.com"
+
+  records = {
+    api = { name = "api", type = "A", alias = { name = module.api.domain_target_name, zone_id = module.api.domain_zone_id } }
   }
 }
 ```

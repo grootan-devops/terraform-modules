@@ -239,6 +239,13 @@ variable "services" {
         })), [])
       })), [])
     }), {})
+    efs_volumes = optional(map(object({
+      file_system_id  = string
+      access_point_id = optional(string)
+      root_directory  = optional(string)
+      container_path  = string
+      read_only       = optional(bool, false)
+    })), {})
   }))
   default  = {}
   nullable = false
@@ -281,5 +288,20 @@ variable "services" {
   validation {
     condition     = alltrue([for s in values(var.services) : s.task_role.create || s.task_role.arn != null || !var.iam_role.create])
     error_message = "services[*].task_role: set arn when create = false."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for s in values(var.services) : [for k in keys(s.efs_volumes) : can(regex("^[a-z][a-z0-9-]{0,31}$", k)) && !can(regex("^scratch-[0-9]+$", k))]]))
+    error_message = "services[*].efs_volumes keys: 1-32 chars, a-z 0-9 -, not scratch-<n>."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for s in values(var.services) : [for v in values(s.efs_volumes) : can(regex("^fs-[0-9a-f]{8,40}$", v.file_system_id)) && (v.access_point_id == null || can(regex("^fsap-[0-9a-f]{8,40}$", v.access_point_id))) && startswith(v.container_path, "/")]]))
+    error_message = "services[*].efs_volumes: fs- and fsap- IDs, absolute container_path."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for s in values(var.services) : [for v in values(s.efs_volumes) : v.root_directory == null || (v.access_point_id == null && startswith(coalesce(v.root_directory, "/"), "/"))]]))
+    error_message = "services[*].efs_volumes: absolute root_directory, only without access_point_id."
   }
 }

@@ -57,7 +57,7 @@ module "execution_role" {
   application              = var.application
   environment              = var.environment
   name                     = var.name
-  purpose                  = "exec"
+  purpose                  = "ecs-exec"
   tags                     = var.tags
   path                     = var.iam_role.path
   permissions_boundary_arn = var.iam_role.permissions_boundary_arn
@@ -80,7 +80,7 @@ module "task_role" {
   permissions_boundary_arn = var.iam_role.permissions_boundary_arn
   managed_policy_arns      = concat(var.iam_role.managed_policy_arns, each.value.task_role.managed_policy_arns)
   policy_statements        = concat(var.iam_role.policy_statements, each.value.task_role.policy_statements)
-  policy_documents         = each.value.execute_command || var.tracing.enabled ? [jsonencode({ Version = "2012-10-17", Statement = local.task_statements[each.key] })] : []
+  policy_documents         = each.value.execute_command || var.tracing.enabled || length(each.value.efs_volumes) > 0 ? [jsonencode({ Version = "2012-10-17", Statement = local.task_statements[each.key] })] : []
   trust = {
     services   = ["ecs-tasks.${local.dns_suffix}"]
     conditions = local.task_trust_conditions
@@ -187,6 +187,24 @@ resource "aws_ecs_task_definition" "this" {
     for_each = each.value.writable_paths
     content {
       name = "scratch-${volume.key}"
+    }
+  }
+
+  dynamic "volume" {
+    for_each = each.value.efs_volumes
+    content {
+      name = volume.key
+
+      efs_volume_configuration {
+        file_system_id     = volume.value.file_system_id
+        root_directory     = volume.value.root_directory
+        transit_encryption = "ENABLED"
+
+        authorization_config {
+          access_point_id = volume.value.access_point_id
+          iam             = volume.value.access_point_id != null ? "ENABLED" : "DISABLED"
+        }
+      }
     }
   }
 

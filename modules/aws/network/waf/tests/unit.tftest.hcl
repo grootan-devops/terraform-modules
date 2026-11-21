@@ -74,7 +74,7 @@ run "secure_defaults" {
   }
 
   assert {
-    condition     = module.log_group.name == "aws-waf-logs-core-prod" && module.log_group.retention_in_days == 365 && module.log_group.kms_key_arn == null && output.kms_key_arn == null
+    condition     = length(module.log_group) == 1 && module.log_group[0].name == "aws-waf-logs-core-prod" && module.log_group[0].retention_in_days == 365 && module.log_group[0].kms_key_arn == null && output.kms_key_arn == null
     error_message = "Logs go to aws-waf-logs-<base>, kept 365 days with service encryption by default (WAF.11)."
   }
 
@@ -109,7 +109,7 @@ run "cloudfront_scope" {
   }
 
   assert {
-    condition     = aws_wafv2_web_acl.this.name == "core-prod-edge" && module.log_group.name == "aws-waf-logs-core-prod-edge" && length(aws_wafv2_web_acl.this.default_action[0].block) == 1
+    condition     = aws_wafv2_web_acl.this.name == "core-prod-edge" && module.log_group[0].name == "aws-waf-logs-core-prod-edge" && length(aws_wafv2_web_acl.this.default_action[0].block) == 1
     error_message = "Names follow <application>-<environment>-<name>."
   }
 }
@@ -149,7 +149,7 @@ run "custom_rules" {
   }
 
   assert {
-    condition     = output.arn == "arn:aws:wafv2:eu-west-1:123456789012:regional/webacl/core-prod/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" && aws_wafv2_web_acl_logging_configuration.this.resource_arn == output.arn && aws_wafv2_web_acl_logging_configuration.this.log_destination_configs == toset([module.log_group.arn])
+    condition     = output.arn == "arn:aws:wafv2:eu-west-1:123456789012:regional/webacl/core-prod/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" && aws_wafv2_web_acl_logging_configuration.this.resource_arn == output.arn && aws_wafv2_web_acl_logging_configuration.this.log_destination_configs == toset([module.log_group[0].arn])
     error_message = "Logging is configured for the web ACL to its log group."
   }
 }
@@ -162,7 +162,7 @@ run "module_key_is_planned_safely" {
   }
 
   assert {
-    condition     = module.encryption.created && module.log_group.name == "aws-waf-logs-core-prod"
+    condition     = module.encryption.created && module.log_group[0].name == "aws-waf-logs-core-prod"
     error_message = "kms.create must plan without knowing the key ARN."
   }
 }
@@ -176,7 +176,7 @@ run "module_key_encrypts_logs" {
   }
 
   assert {
-    condition     = module.log_group.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && output.kms_key_arn == module.log_group.kms_key_arn
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && output.kms_key_arn == module.log_group[0].kms_key_arn
     error_message = "The module key must encrypt the log group."
   }
 }
@@ -191,13 +191,52 @@ run "caller_key_and_redaction" {
   }
 
   assert {
-    condition     = module.log_group.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && module.log_group.retention_in_days == 731
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && module.log_group[0].retention_in_days == 731
     error_message = "A key ID becomes the key ARN; retention follows cloudwatch_logs."
   }
 
   assert {
     condition     = length(aws_wafv2_web_acl_logging_configuration.this.redacted_fields) == 2
     error_message = "Redaction follows redacted_fields."
+  }
+}
+
+run "logs_to_s3" {
+  command   = apply
+  state_key = "s3"
+
+  variables {
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::aws-waf-logs-core-prod" }
+  }
+
+  assert {
+    condition     = length(module.log_group) == 0 && output.log_group_name == null && output.log_group_arn == null
+    error_message = "The s3 destination creates no log group."
+  }
+
+  assert {
+    condition     = aws_wafv2_web_acl_logging_configuration.this.log_destination_configs == toset(["arn:aws:s3:::aws-waf-logs-core-prod"]) && aws_wafv2_web_acl_logging_configuration.this.resource_arn == output.arn
+    error_message = "The web ACL logs to the aws-waf-logs- bucket (WAF.11)."
+  }
+
+  assert {
+    condition     = [for f in aws_wafv2_web_acl_logging_configuration.this.redacted_fields : f.single_header[0].name] == ["authorization", "cookie"]
+    error_message = "Redaction applies to the s3 destination too."
+  }
+}
+
+run "logs_to_s3_plan_safely" {
+  command   = plan
+  state_key = "s3_plan"
+
+  variables {
+    scope   = "CLOUDFRONT"
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::aws-waf-logs-core-prod" }
+  }
+
+  assert {
+    condition     = length(module.log_group) == 0 && !module.encryption.created && aws_wafv2_web_acl_logging_configuration.this.region == "us-east-1" && aws_wafv2_web_acl_logging_configuration.this.log_destination_configs == toset(["arn:aws:s3:::aws-waf-logs-core-prod"])
+    error_message = "The s3 destination plans from the literal destination."
   }
 }
 
@@ -350,4 +389,45 @@ run "rejects_web_acl_without_rules" {
   }
 
   expect_failures = [var.managed_rules]
+}
+
+run "rejects_invalid_log_destination" {
+  command = plan
+
+  variables {
+    logging = { destination = "firehose" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_s3_logging_without_bucket" {
+  command = plan
+
+  variables {
+    logging = { destination = "s3" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_log_bucket_without_waf_prefix" {
+  command = plan
+
+  variables {
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::core-prod-logs-123456789012-eu-west-1" }
+  }
+
+  expect_failures = [var.logging]
+}
+
+run "rejects_kms_with_s3_logging" {
+  command = plan
+
+  variables {
+    kms     = { create = true }
+    logging = { destination = "s3", s3_bucket_arn = "arn:aws:s3:::aws-waf-logs-core-prod" }
+  }
+
+  expect_failures = [var.logging]
 }

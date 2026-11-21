@@ -142,13 +142,75 @@ run "frequency_and_auto_enable" {
   command = plan
 
   variables {
-    detector                         = { finding_publishing_frequency = "ONE_HOUR" }
-    auto_enable_organization_members = "NEW"
+    detector                   = { finding_publishing_frequency = "ONE_HOUR" }
+    organization_configuration = { auto_enable_members = "NEW" }
   }
 
   assert {
     condition     = aws_guardduty_detector.this["us-east-1"].finding_publishing_frequency == "ONE_HOUR" && aws_guardduty_organization_configuration.this["us-east-1"].auto_enable_organization_members == "NEW" && aws_guardduty_organization_configuration_feature.this["us-east-1/S3_DATA_EVENTS"].auto_enable == "NEW"
     error_message = "Frequency and auto-enable follow the inputs."
+  }
+}
+
+run "account_only_mode" {
+  command = plan
+
+  variables {
+    regions                    = ["us-east-1", "eu-west-1"]
+    organization_configuration = { enabled = false, auto_enable_members = "NONE" }
+    filters                    = { portscan = { criteria = { type = { equals = ["Recon:EC2/Portscan"] } } } }
+  }
+
+  assert {
+    condition     = toset(keys(aws_guardduty_detector.this)) == toset(["us-east-1", "eu-west-1"]) && length(aws_guardduty_detector_feature.this) == 14 && alltrue([for f in values(aws_guardduty_detector_feature.this) : f.status == "ENABLED"])
+    error_message = "Account-only mode keeps a detector and every plan in each Region."
+  }
+
+  assert {
+    condition     = length(aws_guardduty_organization_configuration.this) + length(aws_guardduty_organization_configuration_feature.this) + length(aws_organizations_aws_service_access.this) + length(aws_guardduty_organization_admin_account.this) == 0
+    error_message = "Account-only mode creates no organization resources."
+  }
+
+  assert {
+    condition     = length(aws_guardduty_filter.this) == 2
+    error_message = "Suppression rules work in account-only mode."
+  }
+}
+
+run "account_only_mode_export_plans_safely" {
+  command   = plan
+  state_key = "account_only"
+
+  variables {
+    organization_configuration = { enabled = false }
+    kms                        = { create = true }
+    publishing_destination     = { enabled = true, bucket_arn = "arn:aws:s3:::security-findings" }
+  }
+
+  assert {
+    condition     = module.encryption.created && keys(aws_guardduty_publishing_destination.this) == ["us-east-1"] && length(aws_guardduty_organization_configuration.this) == 0
+    error_message = "Account-only mode plans the export with an unknown key ARN."
+  }
+}
+
+run "account_only_mode_outputs" {
+  command   = apply
+  state_key = "account_only"
+
+  variables {
+    organization_configuration = { enabled = false }
+    kms                        = { create = true }
+    publishing_destination     = { enabled = true, bucket_arn = "arn:aws:s3:::security-findings" }
+  }
+
+  assert {
+    condition     = output.detector_ids == { "us-east-1" = "12abc34d567e8fa901bc2d34e56789f0" } && aws_guardduty_detector_feature.this["us-east-1/S3_DATA_EVENTS"].detector_id == "12abc34d567e8fa901bc2d34e56789f0"
+    error_message = "Plans attach to the account's own detector."
+  }
+
+  assert {
+    condition     = output.publishing_destination_ids == { "us-east-1" = "a4b86f27a0e464e4a7e0516d242f1234" } && output.kms_key_arn == "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "The export and its key work without an organization."
   }
 }
 
@@ -423,10 +485,10 @@ run "rejects_auto_enable" {
   command = plan
 
   variables {
-    auto_enable_organization_members = "SOME"
+    organization_configuration = { auto_enable_members = "SOME" }
   }
 
-  expect_failures = [var.auto_enable_organization_members]
+  expect_failures = [var.organization_configuration]
 }
 
 run "rejects_export_bucket_arn" {

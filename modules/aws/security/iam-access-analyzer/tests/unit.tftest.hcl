@@ -83,6 +83,63 @@ run "regions_fan_out" {
   }
 }
 
+run "account_only_mode" {
+  command = plan
+
+  variables {
+    regions                    = ["us-east-1", "eu-west-1"]
+    organization_configuration = { enabled = false }
+    unused_access              = { unused_access_age = 45, exclusion_resource_tags = [{ break-glass = "true" }] }
+    internal_access            = { enabled = true, inclusions = [{ resource_types = ["AWS::S3::Bucket"] }] }
+    archive_rules = {
+      TrustedAudit = { analyzer = "external", filters = [{ criteria = "isPublic", eq = ["false"] }] }
+      ServiceRoles = { analyzer = "unused", filters = [{ criteria = "resource", contains = ["aws-service-role"] }] }
+    }
+  }
+
+  assert {
+    condition     = keys(aws_accessanalyzer_analyzer.external) == ["eu-west-1", "us-east-1"] && alltrue([for a in values(aws_accessanalyzer_analyzer.external) : a.type == "ACCOUNT"])
+    error_message = "Account-only mode creates an ACCOUNT external analyzer in each Region."
+  }
+
+  assert {
+    condition     = aws_accessanalyzer_analyzer.unused[0].type == "ACCOUNT_UNUSED_ACCESS" && aws_accessanalyzer_analyzer.unused[0].configuration[0].unused_access[0].unused_access_age == 45 && length(aws_accessanalyzer_analyzer.unused[0].configuration[0].unused_access[0].analysis_rule[0].exclusion) == 1
+    error_message = "The ACCOUNT_UNUSED_ACCESS analyzer keeps the tracking period and tag exclusions."
+  }
+
+  assert {
+    condition     = aws_accessanalyzer_analyzer.internal[0].type == "ACCOUNT_INTERNAL_ACCESS" && aws_accessanalyzer_analyzer.internal[0].configuration[0].internal_access[0].analysis_rule[0].inclusion[0].resource_types == tolist(["AWS::S3::Bucket"])
+    error_message = "The ACCOUNT_INTERNAL_ACCESS analyzer keeps its inclusions."
+  }
+
+  assert {
+    condition     = keys(aws_accessanalyzer_archive_rule.this) == ["ServiceRoles/eu-west-1", "TrustedAudit/eu-west-1", "TrustedAudit/us-east-1"] && length(aws_organizations_aws_service_access.this) + length(aws_organizations_delegated_administrator.this) == 0
+    error_message = "Archive rules work in account-only mode, with no organization resources."
+  }
+}
+
+run "account_only_mode_outputs" {
+  command   = apply
+  state_key = "account_only"
+
+  variables {
+    organization_configuration = { enabled = false }
+    archive_rules = {
+      TrustedAudit = { analyzer = "external", filters = [{ criteria = "isPublic", eq = ["false"] }] }
+    }
+  }
+
+  assert {
+    condition     = output.external_analyzer_arns == { "eu-west-1" = "arn:aws:access-analyzer:eu-west-1:123456789012:analyzer/platform-prod-external" } && output.unused_access_analyzer_arn != null
+    error_message = "Account analyzer ARNs are exported."
+  }
+
+  assert {
+    condition     = aws_accessanalyzer_archive_rule.this["TrustedAudit/eu-west-1"].analyzer_name == "platform-prod-external" && output.analyzer_names == { external = "platform-prod-external", unused = "platform-prod-unused" }
+    error_message = "Archive rules target the account analyzer."
+  }
+}
+
 run "management_account_call" {
   command = plan
 
@@ -313,6 +370,28 @@ run "rejects_owner_in_exclusions" {
   }
 
   expect_failures = [aws_accessanalyzer_analyzer.unused]
+}
+
+run "rejects_exclusion_account_ids_in_account_mode" {
+  command = plan
+
+  variables {
+    organization_configuration = { enabled = false }
+    unused_access              = { exclusion_account_ids = ["210987654321"] }
+  }
+
+  expect_failures = [var.unused_access]
+}
+
+run "rejects_inclusion_account_ids_in_account_mode" {
+  command = plan
+
+  variables {
+    organization_configuration = { enabled = false }
+    internal_access            = { enabled = true, inclusions = [{ account_ids = ["210987654321"] }] }
+  }
+
+  expect_failures = [var.internal_access]
 }
 
 run "rejects_invalid_archive_rule_name" {

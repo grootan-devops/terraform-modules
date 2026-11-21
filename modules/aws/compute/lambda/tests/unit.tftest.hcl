@@ -20,7 +20,7 @@ mock_provider "aws" {
 
   mock_resource "aws_iam_role" {
     defaults = {
-      arn = "arn:aws:iam::123456789012:role/core-prod-orders-exec-eu-west-1"
+      arn = "arn:aws:iam::123456789012:role/core-prod-orders-lambda-eu-west-1"
     }
   }
 
@@ -107,8 +107,8 @@ run "execution_role" {
   command = plan
 
   assert {
-    condition     = module.role[0].name == "core-prod-orders-exec-eu-west-1"
-    error_message = "The role must be <application>-<environment>-<name>-exec-<region>."
+    condition     = module.role[0].name == "core-prod-orders-lambda-eu-west-1"
+    error_message = "The role must be <application>-<environment>-<name>-lambda-<region>."
   }
 
   assert {

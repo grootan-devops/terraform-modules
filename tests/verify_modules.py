@@ -172,6 +172,22 @@ def contract_checks(module):
     return errors
 
 
+def role_purpose_checks():
+    """Two modules with the same name in one environment must never share an IAM role name."""
+    owners = {}
+    for tf in sorted((ROOT / "modules/aws").rglob("*.tf")):
+        if ".terraform" in tf.parts or "tests" in tf.parts:
+            continue
+        module = tf.parent.relative_to(ROOT / "modules/aws").as_posix()
+        for _, body in blocks(tf.read_text(), "module"):
+            if re.search(r'source\s*=\s*"[^"]*security/iam-role"', body):
+                purpose = re.search(r'(?m)^\s*purpose\s*=\s*"([^"$]+)"\s*$', body)
+                if purpose:
+                    owners.setdefault(purpose.group(1), set()).add(module)
+    return [f'IAM role purpose "{p}" is used by {", ".join(sorted(m))}; give each module its own'
+            for p, m in sorted(owners.items()) if len(m) > 1]
+
+
 def documentation_checks():
     errors = []
     relative_source = re.compile(r'source\s*=\s*"\.\.?/')
@@ -196,6 +212,7 @@ def main():
     if not discovered:
         failures.append("no Terraform modules discovered")
     failures.extend(documentation_checks())
+    failures.extend(role_purpose_checks())
     for module in discovered:
         failures.extend(contract_checks(module))
         if args.static_only:

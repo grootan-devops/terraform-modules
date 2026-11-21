@@ -4,8 +4,10 @@ locals {
   account_id = module.naming.account_id
   regions    = length(var.regions) > 0 ? distinct(var.regions) : [module.naming.region]
 
-  detector_regions = var.detector.enabled ? local.regions : []
-  admin_regions    = var.organization_admin.enabled ? toset(local.regions) : toset([])
+  detector_regions     = var.detector.enabled ? local.regions : []
+  organization_regions = var.organization_configuration.enabled ? local.detector_regions : []
+  admin_regions        = var.organization_admin.enabled ? toset(local.regions) : toset([])
+  auto_enable_members  = var.organization_configuration.auto_enable_members
 
   feature_catalog = {
     S3_DATA_EVENTS = {
@@ -50,6 +52,8 @@ locals {
       name   = pair[1]
     }
   }
+
+  organization_feature_instances = var.organization_configuration.enabled ? local.feature_instances : {}
 
   filter_ranks = { for index, key in sort(keys(var.filters)) : key => coalesce(var.filters[key].rank, index + 1) }
 

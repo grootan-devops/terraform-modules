@@ -1,5 +1,10 @@
 locals {
+  partition       = module.naming.partition
+  home_region     = module.naming.region
+  regions         = distinct(concat([local.home_region], var.regions))
   central_enabled = var.hub.enabled && var.organization_configuration.enabled
+  account_mode    = var.hub.enabled && !var.organization_configuration.enabled
+  hub_regions     = var.hub.enabled ? toset(local.regions) : toset([])
 
   standard_defaults = {
     fsbp_v1_0_0        = true
@@ -29,20 +34,34 @@ locals {
     ai_security_v1_0_0 = "standards/ai-security-best-practices/v/1.0.0"
   }
 
-  standard_arns = merge(
-    { for key, path in local.regional_standard_paths : key => "arn:${module.naming.partition}:securityhub:${module.naming.region}::${path}" },
-    { cis_v1_2_0 = "arn:${module.naming.partition}:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.2.0" },
-    var.cri_profile_standard_arn == null ? {} : { cri_profile_v2_2 = var.cri_profile_standard_arn },
-  )
+  regional_standard_arns = {
+    for region in local.regions : region => merge(
+      { for key, path in local.regional_standard_paths : key => "arn:${local.partition}:securityhub:${region}::${path}" },
+      { cis_v1_2_0 = "arn:${local.partition}:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.2.0" },
+      var.cri_profile.enabled ? { cri_profile_v2_2 = replace(var.cri_profile.standard_arn, "/^(arn:[^:]+:securityhub:)[a-z0-9-]+::/", "$${1}${region}::") } : {},
+    )
+  }
+
+  standard_arns      = local.regional_standard_arns[local.home_region]
+  selected_standards = merge(local.standard_defaults, var.standards)
 
   policies = local.central_enabled ? { for key, policy in var.configuration_policies : key => policy if length(policy.targets) > 0 } : {}
 
   policy_standard_arns = {
     for key, policy in local.policies : key => policy.service_enabled ? sort(distinct(concat(
-      [for standard, enabled in merge(local.standard_defaults, policy.standards) : local.standard_arns[standard] if enabled && contains(keys(local.standard_arns), standard)],
+      [for standard, enabled in merge(local.selected_standards, policy.standards) : local.standard_arns[standard] if enabled && contains(keys(local.standard_arns), standard)],
       policy.additional_standard_arns,
     ))) : []
   }
+
+  standards_subscriptions = local.account_mode ? merge({}, [
+    for region in local.regions : {
+      for standard, enabled in local.selected_standards : "${region}/${standard}" => {
+        region        = region
+        standards_arn = local.regional_standard_arns[region][standard]
+      } if enabled && contains(keys(local.regional_standard_arns[region]), standard)
+    }
+  ]...) : {}
 
   self_managed = "SELF_MANAGED_SECURITY_HUB"
 

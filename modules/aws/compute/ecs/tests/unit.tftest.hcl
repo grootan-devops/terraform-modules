@@ -220,8 +220,8 @@ run "execution_role" {
   }
 
   assert {
-    condition     = module.execution_role[0].name == "core-prod-exec-eu-west-1" && jsondecode(module.execution_role[0].trust_policy_json).Statement[0].Principal.Service == ["ecs-tasks.amazonaws.com"]
-    error_message = "Execution role <base>-exec-<region>, trusted by ECS tasks."
+    condition     = module.execution_role[0].name == "core-prod-ecs-exec-eu-west-1" && jsondecode(module.execution_role[0].trust_policy_json).Statement[0].Principal.Service == ["ecs-tasks.amazonaws.com"]
+    error_message = "Execution role <base>-ecs-exec-<region>, trusted by ECS tasks."
   }
 
   assert {
@@ -455,6 +455,87 @@ run "container_options" {
   assert {
     condition     = jsondecode(aws_ecs_task_definition.this["api"].container_definitions)[0].environment == [{ name = "LOG_LEVEL", value = "info" }] && jsondecode(aws_ecs_task_definition.this["api"].container_definitions)[0].command == ["serve"] && aws_ecs_task_definition.this["api"].runtime_platform[0].cpu_architecture == "ARM64"
     error_message = "Environment, command and architecture are rendered."
+  }
+}
+
+run "efs_volumes" {
+  command   = apply
+  state_key = "efs"
+
+  variables {
+    services = {
+      api = {
+        image          = "nginx:1.27"
+        container_port = 8080
+        writable_paths = ["/tmp"]
+        efs_volumes = {
+          shared  = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", container_path = "/mnt/shared" }
+          reports = { file_system_id = "fs-0fedcba9876543210", root_directory = "/reports", container_path = "/mnt/reports", read_only = true }
+        }
+      }
+      worker = { image = "nginx:1.27", container_port = 9090 }
+    }
+  }
+
+  assert {
+    condition     = toset([for v in aws_ecs_task_definition.this["api"].volume : v.name]) == toset(["scratch-0", "shared", "reports"]) && length(aws_ecs_task_definition.this["worker"].volume) == 0
+    error_message = "efs_volumes add one volume per key beside the scratch volumes."
+  }
+
+  assert {
+    condition     = one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "shared"]).file_system_id == "fs-0123456789abcdef0" && one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "shared"]).transit_encryption == "ENABLED" && one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "shared"]).authorization_config[0] == { access_point_id = "fsap-00000000000000001", iam = "ENABLED" } && one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "shared"]).root_directory == null
+    error_message = "An access point mounts with TLS and IAM authorization (ECS.18)."
+  }
+
+  assert {
+    condition     = one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "reports"]).transit_encryption == "ENABLED" && one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "reports"]).authorization_config[0].iam == "DISABLED" && one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "reports"]).authorization_config[0].access_point_id == null && one([for v in aws_ecs_task_definition.this["api"].volume : v.efs_volume_configuration[0] if v.name == "reports"]).root_directory == "/reports"
+    error_message = "Without an access point the volume mounts root_directory with TLS, IAM off."
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.this["api"].container_definitions)[0].mountPoints == [{ sourceVolume = "scratch-0", containerPath = "/tmp", readOnly = false }, { sourceVolume = "reports", containerPath = "/mnt/reports", readOnly = true }, { sourceVolume = "shared", containerPath = "/mnt/shared", readOnly = false }]
+    error_message = "Each EFS volume is mounted at container_path, read-only when asked."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.task_role["api"].policy_json).Statement : s.Sid] == ["MountEfs0", "MountEfs1"] && module.task_role["worker"].policy_json == null
+    error_message = "Only services with EFS volumes get mount permissions."
+  }
+
+  assert {
+    condition     = jsondecode(module.task_role["api"].policy_json).Statement[0].Action == ["elasticfilesystem:ClientMount"] && jsondecode(module.task_role["api"].policy_json).Statement[0].Resource == ["arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-0fedcba9876543210"] && !can(jsondecode(module.task_role["api"].policy_json).Statement[0].Condition)
+    error_message = "A read-only mount gets ClientMount only, on the file system."
+  }
+
+  assert {
+    condition     = jsondecode(module.task_role["api"].policy_json).Statement[1].Action == ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"] && jsondecode(module.task_role["api"].policy_json).Statement[1].Resource == ["arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-0123456789abcdef0"] && jsondecode(module.task_role["api"].policy_json).Statement[1].Condition.StringEquals["elasticfilesystem:AccessPointArn"] == "arn:aws:elasticfilesystem:eu-west-1:123456789012:access-point/fsap-00000000000000001"
+    error_message = "An access point mount is scoped to that access point."
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.this["api"].task_role_arn == output.task_role_arns["api"] && output.task_role_arns["api"] == "arn:aws:iam::123456789012:role/core-prod-api-task-eu-west-1"
+    error_message = "The task definition uses the role that carries the mount permissions."
+  }
+}
+
+run "efs_with_module_key_is_planned_safely" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+    services = {
+      api = {
+        image           = "nginx:1.27"
+        container_port  = 8080
+        execute_command = true
+        efs_volumes     = { shared = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", container_path = "/mnt/shared" } }
+      }
+    }
+  }
+
+  assert {
+    condition     = module.encryption.created && length(module.task_role) == 1 && length(aws_ecs_task_definition.this["api"].volume) == 1
+    error_message = "EFS volumes and mount permissions must plan without knowing the key ARN."
   }
 }
 
@@ -696,6 +777,36 @@ run "rejects_task_role_without_arn" {
 
   variables {
     services = { api = { image = "nginx:1.27", container_port = 8080, task_role = { create = false } } }
+  }
+
+  expect_failures = [var.services]
+}
+
+run "rejects_efs_volume_named_like_scratch" {
+  command = plan
+
+  variables {
+    services = { api = { image = "nginx:1.27", container_port = 8080, efs_volumes = { scratch-0 = { file_system_id = "fs-0123456789abcdef0", container_path = "/mnt/data" } } } }
+  }
+
+  expect_failures = [var.services]
+}
+
+run "rejects_invalid_efs_ids_and_path" {
+  command = plan
+
+  variables {
+    services = { api = { image = "nginx:1.27", container_port = 8080, efs_volumes = { data = { file_system_id = "efs-123", container_path = "mnt/data" } } } }
+  }
+
+  expect_failures = [var.services]
+}
+
+run "rejects_root_directory_with_access_point" {
+  command = plan
+
+  variables {
+    services = { api = { image = "nginx:1.27", container_port = 8080, efs_volumes = { data = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", root_directory = "/data", container_path = "/mnt/data" } } } }
   }
 
   expect_failures = [var.services]

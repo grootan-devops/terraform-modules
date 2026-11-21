@@ -146,6 +146,16 @@ run "security_group_wiring" {
   }
 
   assert {
+    condition     = local.egress_rules["db-0"].ip_protocol == "tcp" && local.egress_rules["db-0"].from_port == 5432 && local.egress_rules["db-0"].to_port == 5432 && local.egress_rules["db-0"].referenced_security_group_id == "sg-0dddddddddddddddd"
+    error_message = "Default egress reaches the target security groups on the database port only."
+  }
+
+  assert {
+    condition     = local.egress_rules["https-0"].ip_protocol == "tcp" && local.egress_rules["https-0"].from_port == 443 && local.egress_rules["https-0"].to_port == 443 && local.egress_rules["https-0"].cidr_ipv4 == "0.0.0.0/0"
+    error_message = "Default egress to AWS APIs is TCP 443 only."
+  }
+
+  assert {
     condition     = aws_db_proxy.this.vpc_security_group_ids == toset(["sg-0123456789abcdef0", "sg-0bbbbbbbbbbbbbbbb"]) && output.security_group_id == "sg-0123456789abcdef0"
     error_message = "The proxy must use the module group and the extra group."
   }
@@ -171,6 +181,19 @@ run "outputs" {
   }
 }
 
+run "egress_is_planned_safely" {
+  command = plan
+
+  variables {
+    target = { db_instance_identifier = "core-prod-orders", security_group_ids = ["sg-0dddddddddddddddd", "sg-0eeeeeeeeeeeeeeee"] }
+  }
+
+  assert {
+    condition     = length(module.security_group) == 1 && keys(local.egress_rules) == ["db-0", "db-1", "https-0"] && length(aws_db_proxy.this.vpc_security_group_ids) == 1
+    error_message = "Egress rules come from list lengths, so they plan before the group and role exist."
+  }
+}
+
 run "aws_api_egress_through_endpoints" {
   command   = apply
   state_key = "endpoints_egress"
@@ -183,6 +206,11 @@ run "aws_api_egress_through_endpoints" {
   assert {
     condition     = toset(keys(module.security_group[0].egress_rule_ids)) == toset(["db-0", "https-0"]) && length(module.security_group[0].ingress_rule_ids) == 0
     error_message = "egress_cidr_blocks replaces the default HTTPS destination; no ingress without sources."
+  }
+
+  assert {
+    condition     = local.egress_rules["db-0"].from_port == 5433 && local.egress_rules["https-0"].cidr_ipv4 == "10.0.0.0/16" && local.egress_rules["https-0"].from_port == 443
+    error_message = "The target port and the HTTPS destinations follow the inputs."
   }
 }
 
@@ -346,7 +374,17 @@ run "rejects_invalid_target_port" {
   command = plan
 
   variables {
-    target = { db_instance_identifier = "core-prod-orders", port = 80 }
+    target = { db_instance_identifier = "core-prod-orders", port = 80, security_group_ids = ["sg-0dddddddddddddddd"] }
+  }
+
+  expect_failures = [var.target]
+}
+
+run "rejects_target_without_security_groups" {
+  command = plan
+
+  variables {
+    target = { db_instance_identifier = "core-prod-orders" }
   }
 
   expect_failures = [var.target]

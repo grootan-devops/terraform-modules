@@ -38,7 +38,7 @@ resource "aws_accessanalyzer_analyzer" "external" {
 
   region        = each.key
   analyzer_name = module.naming.names.external
-  type          = "ORGANIZATION"
+  type          = local.analyzer_scope
 
   tags = merge(module.naming.tags, { Name = module.naming.names.external })
 }
@@ -48,7 +48,7 @@ resource "aws_accessanalyzer_analyzer" "unused" {
 
   region        = local.unused_region
   analyzer_name = module.naming.names.unused
-  type          = "ORGANIZATION_UNUSED_ACCESS"
+  type          = "${local.analyzer_scope}_UNUSED_ACCESS"
 
   configuration {
     unused_access {
@@ -90,7 +90,7 @@ resource "aws_accessanalyzer_analyzer" "internal" {
 
   region        = local.internal_region
   analyzer_name = module.naming.names.internal
-  type          = "ORGANIZATION_INTERNAL_ACCESS"
+  type          = "${local.analyzer_scope}_INTERNAL_ACCESS"
 
   dynamic "configuration" {
     for_each = length(var.internal_access.inclusions) > 0 ? [true] : []

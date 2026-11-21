@@ -11,7 +11,8 @@ and ECS Exec. Load balancers, target groups and repositories are other modules; 
 - `aws_ecs_cluster.this`: `<application>-<environment>[-<name>]`, Container Insights `enhanced`; ECS Exec and Fargate
   ephemeral storage use the module key when one is set.
 - `aws_ecs_task_definition.this`, `aws_ecs_service.this`: one per `services` key. Services ignore later
-  `task_definition` and `desired_count` changes: CI deploys new revisions and autoscaling owns the count.
+  `task_definition` and `desired_count` changes: CI deploys new revisions and autoscaling owns the count. Task
+  definitions carry a scratch volume per `writable_paths` entry and an EFS volume per `efs_volumes` key.
 - `module.execution_role` ([`security/iam-role`](../../security/iam-role)): shared; pulls images, writes logs,
   resolves secrets. `module.task_role`: one per service, `<base>-<service>-task-<region>`.
 - `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/ecs/<cluster>/<service>`;
@@ -27,6 +28,13 @@ and ECS Exec. Load balancers, target groups and repositories are other modules; 
 
 - **Containers (ECS.4, ECS.5, ECS.20):** `readonly_root_filesystem` is a required choice (per-service override,
   `writable_paths` for scratch volumes); `user` rejects root and UID 0; Fargate rejects privileged containers.
+- **EFS volumes (ECS.18):** each `efs_volumes` entry mounts a file system at `container_path` with transit encryption
+  always `ENABLED`; with `access_point_id` IAM authorization is `ENABLED` and `root_directory` is rejected (the access
+  point sets it). The service's task role gets `elasticfilesystem:ClientMount`, plus `ClientWrite` unless `read_only`,
+  on the file system ARN, conditioned on `elasticfilesystem:AccessPointArn` when an access point is given; a task role
+  you bring must carry the same. The file system and access point must be in this account and Region. The EFS
+  security group must allow NFS (2049) from this module's `security_group_id`; the default egress reaches the mount
+  targets. Services run on the `LATEST` Fargate platform (1.4.0 or later), which EFS needs.
 - **No credentials in environment variables (ECS.8):** names like `PASSWORD`, `SECRET`, `TOKEN` are rejected; pass
   Secrets Manager ARNs or SSM parameter names/ARNs in `secrets`.
 - **Network (ECS.2, ECS.17):** private subnets, no public IP, `awsvpc`. Ingress only on the service container ports
@@ -38,8 +46,8 @@ and ECS Exec. Load balancers, target groups and repositories are other modules; 
 - **Least privilege:** the execution role writes only to the service log groups, pulls only from the ECR repositories
   in the images, reads only the referenced secrets (`secretsmanager:GetSecretValue`) and parameters
   (`ssm:GetParameters`), and decrypts only through Secrets Manager and SSM. Task roles have no permissions until ECS
-  Exec (`ssmmessages`, exec log group, session key), tracing (X-Ray) or your statements add them, and trust ECS tasks
-  in this account only.
+  Exec (`ssmmessages`, exec log group, session key), EFS mounts, tracing (X-Ray) or your statements add them, and
+  trust ECS tasks in this account only.
 - **Tags (ECS.13-15):** cluster, services and task definitions carry the governance tags; services propagate them to
   tasks.
 
@@ -121,6 +129,51 @@ module "ecs" {
   }
 }
 ```
+
+### EFS Volumes Example
+
+```hcl
+module "efs" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=<version>"
+
+  application    = "core"
+  environment    = "prod"
+  name           = "shared"
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  security_group = { ingress_security_group_ids = [module.ecs.security_group_id] }
+  client_access  = { principal_arns = [module.ecs.task_role_arns["api"]] }
+  access_points  = { api = { uid = 1000, gid = 1000, path = "/api" } }
+}
+
+module "ecs" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=<version>"
+
+  application              = "core"
+  environment              = "prod"
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnet_ids
+  readonly_root_filesystem = true
+
+  services = {
+    api = {
+      image          = "${module.ecr.repository_url}:1.0.0"
+      container_port = 8080
+      user           = "1000:1000"
+      efs_volumes = {
+        data = {
+          file_system_id  = module.efs.id
+          access_point_id = module.efs.access_point_ids["api"]
+          container_path  = "/mnt/data"
+        }
+      }
+    }
+  }
+}
+```
+
+`client_access.principal_arns` admits only the listed roles, so mount through an access point there: a volume
+without one mounts with IAM authorization off, has no role identity and is refused.
 
 ## Inputs Specification
 

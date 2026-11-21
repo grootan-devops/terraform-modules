@@ -14,13 +14,14 @@ queues this module outputs.
 - `aws_launch_template.this`: EC2 and Spot environments only: IMDSv2, encrypted gp3 root volume, tagged instances
   and volumes, ECS-optimized Amazon Linux 2023.
 - `aws_batch_job_queue.this`, `aws_batch_scheduling_policy.this` (when `scheduling_policy.enabled`).
-- `aws_batch_job_definition.this`: container jobs with the module roles, log configuration and secure defaults.
+- `aws_batch_job_definition.this`: container jobs with the module roles, log configuration and secure defaults; a
+  scratch volume per `writable_paths` entry and an EFS volume per `efs_volumes` key.
 - `module.job_role`, `module.execution_role` ([`security/iam-role`](../../security/iam-role)): only with job
   definitions. `module.instance_role` (with instance profile): only with EC2 or Spot environments.
 - `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/aws/batch/<base>`, only with job
   definitions.
 - `module.security_group` ([`network/security-group`](../../network/security-group)): only with compute environments;
-  egress only.
+  egress only. `data.aws_vpc.this` reads the VPC CIDR for the NFS rule when jobs mount EFS.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): log group and EC2 root volumes.
 
 ## Security & Compliance Guardrails
@@ -33,12 +34,23 @@ queues this module outputs.
   Secrets Manager ARNs or SSM parameter names/ARNs in `secrets`.
 - **Least privilege:** the execution role writes only to the module log group, pulls only from the ECR repositories
   in the job images, reads only the referenced secrets and parameters, and decrypts only through Secrets Manager or
-  SSM. The job role has no permissions until you add them and trusts ECS tasks in this account only.
+  SSM. The job role has no permissions until EFS mounts or your statements add them and trusts ECS tasks in this
+  account only.
+- **EFS volumes:** each `efs_volumes` entry mounts a file system at `container_path` with transit encryption always
+  `ENABLED`; with `access_point_id` IAM authorization is `ENABLED` and `root_directory` is rejected (the access point
+  sets it). The job role gets `elasticfilesystem:ClientMount`, plus `ClientWrite` unless `read_only`, on the file
+  system ARN, conditioned on `elasticfilesystem:AccessPointArn` when an access point is given; a job role you bring
+  must carry the same. The file system and access point must be in this account and Region. The EFS security group
+  must allow NFS (2049) from this module's `security_group_id`. Fargate jobs run on `LATEST` (1.4.0 or later), which
+  EFS needs.
 - **Instances:** IMDSv2 with hop limit 1, so containers cannot reach the instance role; root volumes encrypted with the
   module key or the AWS managed key.
 - **Logs:** 365 days, deletion protection, encrypted with the module key when one is set.
-- **Network:** egress defaults to `0.0.0.0/0` because jobs pull images and call AWS APIs; narrow it to VPC endpoint
-  and proxy ranges where they exist. No ingress.
+- **Network:** no ingress. Egress is TCP 443 to `security_group.egress_cidr_blocks` (default `0.0.0.0/0`, so jobs
+  pull images and call AWS APIs through a NAT gateway; registered Trivy suppression `AVD-AWS-0104`); set the VPC CIDR
+  when interface endpoints serve those APIs. Other ports go to `egress_security_group_ids` and
+  `egress_prefix_list_ids`, which are reached on every port. Jobs with EFS volumes add TCP 2049 to the VPC CIDR, so
+  the EFS security group can admit this module's group without a dependency cycle.
 
 A key passed in `kms.key_id` must allow `logs.<region>.amazonaws.com` (encryption context
 `aws:logs:arn = <log group ARN>`) and, for EC2 environments, EBS use through `ec2.<region>.amazonaws.com` by the
@@ -114,6 +126,55 @@ module "batch" {
 }
 ```
 
+### EFS Volumes Example
+
+```hcl
+module "efs" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=<version>"
+
+  application    = "core"
+  environment    = "prod"
+  name           = "shared"
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  security_group = { ingress_security_group_ids = [module.batch.security_group_id] }
+  client_access  = { principal_arns = [module.batch.role_arn] }
+  access_points  = { jobs = { uid = 1000, gid = 1000, path = "/jobs" } }
+}
+
+module "batch" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/batch?ref=<version>"
+
+  application              = "core"
+  environment              = "prod"
+  name                     = "etl"
+  readonly_root_filesystem = true
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnet_ids
+
+  compute_environments = { fargate = { max_vcpus = 16 } }
+  job_queues           = { nightly = { priority = 1, compute_environments = ["fargate"] } }
+  job_definitions = {
+    nightly = {
+      image = "${module.ecr.repository_url}:1.0.0"
+      user  = "1000:1000"
+      efs_volumes = {
+        data = {
+          file_system_id  = module.efs.id
+          access_point_id = module.efs.access_point_ids["jobs"]
+          container_path  = "/mnt/data"
+        }
+      }
+    }
+  }
+}
+```
+
+`client_access.principal_arns` admits only the listed roles, so mount through an access point there: a volume
+without one mounts with IAM authorization off, has no role identity and is refused. Do not list the EFS security group
+in `security_group.egress_security_group_ids` while the EFS group admits this module's group: the two security group
+inputs would depend on each other.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -124,7 +185,7 @@ module "batch" {
 | `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
 | `vpc_id` | VPC ID for the compute environments. | `string` | `null` | No |
 | `subnet_ids` | Private subnet IDs for the compute environments. | `list(string)` | `[]` | No |
-| `security_group` | Compute environment security group: egress and extra groups. | `object({...})` | `{}` | No |
+| `security_group` | Compute environment security group: HTTPS egress CIDRs, other destinations, extra groups. | `object({...})` | `{}` | No |
 | `kms` | Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
 | `compute_environments` | Managed compute environments by key: FARGATE, FARGATE_SPOT, EC2 or SPOT. | `map(object({...}))` | `{}` | No |
 | `job_queues` | Job queues by key: priority and compute environment keys or ARNs in order. | `map(object({...}))` | `{}` | No |

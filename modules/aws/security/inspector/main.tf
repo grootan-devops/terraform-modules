@@ -27,16 +27,16 @@ resource "aws_inspector2_organization_configuration" "this" {
   region = each.key
 
   auto_enable {
-    ec2             = local.auto_enable.ec2
-    ecr             = local.auto_enable.ecr
-    lambda          = local.auto_enable.lambda
-    lambda_code     = local.auto_enable.lambda_code
-    code_repository = local.auto_enable.code_repository
+    ec2             = var.scan_types.ec2
+    ecr             = var.scan_types.ecr
+    lambda          = var.scan_types.lambda
+    lambda_code     = var.scan_types.lambda_code
+    code_repository = var.scan_types.code_repository
   }
 }
 
-resource "aws_inspector2_enabler" "admin" {
-  for_each = local.org_enabled && var.organization_configuration.activate_admin_account ? toset(local.regions) : toset([])
+resource "aws_inspector2_enabler" "this" {
+  for_each = local.account_enabled ? toset(local.regions) : toset([])
 
   region         = each.key
   account_ids    = [local.account_id]
@@ -52,7 +52,7 @@ resource "aws_inspector2_member_association" "this" {
   lifecycle {
     precondition {
       condition     = each.value.account_id != local.account_id
-      error_message = "member_account_ids: not the administrator account."
+      error_message = "organization_configuration.member_account_ids: not the administrator account."
     }
   }
 }

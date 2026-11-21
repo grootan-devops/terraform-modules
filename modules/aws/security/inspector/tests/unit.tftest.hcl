@@ -40,7 +40,7 @@ run "secure_defaults" {
   command = plan
 
   assert {
-    condition     = keys(aws_inspector2_organization_configuration.this) == ["eu-west-1"] && keys(aws_inspector2_enabler.admin) == ["eu-west-1"]
+    condition     = keys(aws_inspector2_organization_configuration.this) == ["eu-west-1"] && keys(aws_inspector2_enabler.this) == ["eu-west-1"]
     error_message = "Defaults: organization configuration and administrator activation in the provider Region."
   }
 
@@ -56,7 +56,7 @@ run "secure_defaults" {
   }
 
   assert {
-    condition     = aws_inspector2_enabler.admin["eu-west-1"].account_ids == toset(["123456789012"]) && aws_inspector2_enabler.admin["eu-west-1"].resource_types == toset(["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"])
+    condition     = aws_inspector2_enabler.this["eu-west-1"].account_ids == toset(["123456789012"]) && aws_inspector2_enabler.this["eu-west-1"].resource_types == toset(["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"])
     error_message = "The administrator scans its own resources with the auto-enabled types."
   }
 
@@ -75,15 +75,15 @@ run "regions_fan_out" {
   command = plan
 
   variables {
-    regions            = ["us-east-1", "eu-west-1", "us-east-1"]
-    member_account_ids = ["210987654321"]
+    regions                    = ["us-east-1", "eu-west-1", "us-east-1"]
+    organization_configuration = { member_account_ids = ["210987654321"] }
     filters = {
       low = { severity = [{ value = "LOW" }] }
     }
   }
 
   assert {
-    condition     = keys(aws_inspector2_organization_configuration.this) == ["eu-west-1", "us-east-1"] && keys(aws_inspector2_enabler.admin) == ["eu-west-1", "us-east-1"] && keys(aws_inspector2_enabler.members) == ["eu-west-1", "us-east-1"]
+    condition     = keys(aws_inspector2_organization_configuration.this) == ["eu-west-1", "us-east-1"] && keys(aws_inspector2_enabler.this) == ["eu-west-1", "us-east-1"] && keys(aws_inspector2_enabler.members) == ["eu-west-1", "us-east-1"]
     error_message = "Every Regional resource fans out over distinct regions."
   }
 
@@ -113,8 +113,63 @@ run "management_account_call" {
   }
 
   assert {
-    condition     = length(aws_inspector2_organization_configuration.this) + length(aws_inspector2_enabler.admin) + length(aws_inspector2_enabler.members) + length(aws_inspector2_filter.this) == 0
+    condition     = length(aws_inspector2_organization_configuration.this) + length(aws_inspector2_enabler.this) + length(aws_inspector2_enabler.members) + length(aws_inspector2_filter.this) == 0
     error_message = "The management call creates no administrator resources."
+  }
+}
+
+run "account_only_mode" {
+  command = plan
+
+  variables {
+    regions                    = ["us-east-1", "eu-west-1"]
+    organization_configuration = { enabled = false }
+    scan_types                 = { lambda_code = false }
+    filters = {
+      low = { severity = [{ value = "LOW" }] }
+    }
+  }
+
+  assert {
+    condition     = keys(aws_inspector2_enabler.this) == ["eu-west-1", "us-east-1"] && aws_inspector2_enabler.this["us-east-1"].region == "us-east-1" && aws_inspector2_enabler.this["us-east-1"].account_ids == toset(["123456789012"])
+    error_message = "Account-only mode activates this account in each Region."
+  }
+
+  assert {
+    condition     = aws_inspector2_enabler.this["eu-west-1"].resource_types == toset(["EC2", "ECR", "LAMBDA"])
+    error_message = "The enabler activates the chosen scan types."
+  }
+
+  assert {
+    condition     = length(aws_inspector2_organization_configuration.this) + length(aws_inspector2_delegated_admin_account.this) + length(aws_inspector2_member_association.this) + length(aws_inspector2_enabler.members) == 0
+    error_message = "Account-only mode creates no organization configuration and no member associations."
+  }
+
+  assert {
+    condition     = keys(aws_inspector2_filter.this) == ["low/eu-west-1", "low/us-east-1"]
+    error_message = "Suppression rules work in account-only mode."
+  }
+}
+
+run "account_only_mode_outputs" {
+  command   = apply
+  state_key = "account_only"
+
+  variables {
+    organization_configuration = { enabled = false }
+    filters = {
+      low = { severity = [{ value = "LOW" }] }
+    }
+  }
+
+  assert {
+    condition     = output.filter_arns == { low = { "eu-west-1" = "arn:aws:inspector2:eu-west-1:123456789012:owner/123456789012/filter/a1b2c3d4" } } && output.member_associations == {}
+    error_message = "Account-only mode outputs its own rules and no members."
+  }
+
+  assert {
+    condition     = aws_inspector2_enabler.this["eu-west-1"].id != null && aws_inspector2_enabler.this["eu-west-1"].resource_types == toset(["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"])
+    error_message = "The enabler is created with the default scan types."
   }
 }
 
@@ -122,18 +177,16 @@ run "scan_type_overrides" {
   command = plan
 
   variables {
-    organization_configuration = {
-      auto_enable = { ec2 = false, lambda = false, lambda_code = false, code_repository = true }
-    }
+    scan_types = { ec2 = false, lambda = false, lambda_code = false, code_repository = true }
   }
 
   assert {
     condition     = !aws_inspector2_organization_configuration.this["eu-west-1"].auto_enable[0].ec2 && aws_inspector2_organization_configuration.this["eu-west-1"].auto_enable[0].code_repository
-    error_message = "auto_enable overrides reach the organization configuration."
+    error_message = "scan_types overrides reach the organization configuration."
   }
 
   assert {
-    condition     = aws_inspector2_enabler.admin["eu-west-1"].resource_types == toset(["CODE_REPOSITORY", "ECR"])
+    condition     = aws_inspector2_enabler.this["eu-west-1"].resource_types == toset(["CODE_REPOSITORY", "ECR"])
     error_message = "The enabler activates only the selected types."
   }
 }
@@ -146,7 +199,7 @@ run "administrator_activation_off" {
   }
 
   assert {
-    condition     = length(aws_inspector2_enabler.admin) == 0 && length(aws_inspector2_organization_configuration.this) == 1
+    condition     = length(aws_inspector2_enabler.this) == 0 && length(aws_inspector2_organization_configuration.this) == 1
     error_message = "activate_admin_account = false keeps the configuration and skips the administrator enabler."
   }
 }
@@ -155,7 +208,7 @@ run "members_associated_and_activated" {
   command = apply
 
   variables {
-    member_account_ids = ["210987654321", "345678901234", "210987654321"]
+    organization_configuration = { member_account_ids = ["210987654321", "345678901234", "210987654321"] }
   }
 
   assert {
@@ -309,48 +362,47 @@ run "rejects_lambda_code_without_lambda" {
   command = plan
 
   variables {
-    organization_configuration = { auto_enable = { lambda = false } }
+    scan_types = { lambda = false }
   }
 
-  expect_failures = [var.organization_configuration]
+  expect_failures = [var.scan_types]
 }
 
 run "rejects_no_scan_type" {
   command = plan
 
   variables {
-    organization_configuration = { auto_enable = { ec2 = false, ecr = false, lambda = false, lambda_code = false } }
+    scan_types = { ec2 = false, ecr = false, lambda = false, lambda_code = false }
   }
 
-  expect_failures = [var.organization_configuration]
+  expect_failures = [var.scan_types]
 }
 
 run "rejects_malformed_member_account" {
   command = plan
 
   variables {
-    member_account_ids = ["2109876543"]
+    organization_configuration = { member_account_ids = ["2109876543"] }
   }
 
-  expect_failures = [var.member_account_ids]
+  expect_failures = [var.organization_configuration]
 }
 
 run "rejects_members_without_organization_configuration" {
   command = plan
 
   variables {
-    organization_configuration = { enabled = false }
-    member_account_ids         = ["210987654321"]
+    organization_configuration = { enabled = false, member_account_ids = ["210987654321"] }
   }
 
-  expect_failures = [var.member_account_ids]
+  expect_failures = [var.organization_configuration]
 }
 
 run "rejects_administrator_as_member" {
   command = plan
 
   variables {
-    member_account_ids = ["123456789012"]
+    organization_configuration = { member_account_ids = ["123456789012"] }
   }
 
   expect_failures = [aws_inspector2_member_association.this]
@@ -440,10 +492,11 @@ run "rejects_too_many_entries" {
   expect_failures = [var.filters]
 }
 
-run "rejects_filters_without_organization_configuration" {
+run "rejects_filters_in_management_account_call" {
   command = plan
 
   variables {
+    organization_admin         = { enabled = true, account_id = "210987654321" }
     organization_configuration = { enabled = false }
     filters = {
       low = { severity = [{ value = "LOW" }] }

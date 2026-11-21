@@ -319,5 +319,35 @@ class AwsStandardTests(unittest.TestCase):
         self.assertEqual(verify_modules.contract_checks(module), [])
 
 
+
+class RolePurposeContractTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        original_root = verify_modules.ROOT
+        verify_modules.ROOT = Path(self.temp.name)
+        self.addCleanup(setattr, verify_modules, "ROOT", original_root)
+
+    def write(self, rel, purpose):
+        module = verify_modules.ROOT / rel
+        module.mkdir(parents=True)
+        (module / "main.tf").write_text(
+            f'module "role" {{\n  source  = "../../security/iam-role"\n  purpose = "{purpose}"\n}}\n'
+        )
+
+    def test_role_purpose_shared_by_two_modules_fails(self):
+        self.write("modules/aws/compute/lambda", "exec")
+        self.write("modules/aws/integration/step-functions", "exec")
+        errors = verify_modules.role_purpose_checks()
+        self.assertEqual(len(errors), 1)
+        self.assertIn('IAM role purpose "exec"', errors[0])
+        self.assertIn("compute/lambda", errors[0])
+
+    def test_distinct_role_purposes_pass(self):
+        self.write("modules/aws/compute/lambda", "lambda")
+        self.write("modules/aws/integration/step-functions", "sfn")
+        self.assertEqual(verify_modules.role_purpose_checks(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

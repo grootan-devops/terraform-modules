@@ -18,6 +18,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_vpc" {
+    defaults = {
+      cidr_block = "10.0.0.0/16"
+    }
+  }
+
   mock_resource "aws_iam_role" {
     defaults = {
       arn = "arn:aws:iam::123456789012:role/core-prod-etl-job-eu-west-1"
@@ -141,8 +147,13 @@ run "fargate_stack" {
   }
 
   assert {
-    condition     = aws_batch_compute_environment.this["fargate"].compute_resources[0].security_group_ids == toset(["sg-0bbbbbbbbbbbbbbbb"]) && keys(module.security_group[0].egress_rule_ids) == ["cidr-0"] && length(module.security_group[0].ingress_rule_ids) == 0
+    condition     = aws_batch_compute_environment.this["fargate"].compute_resources[0].security_group_ids == toset(["sg-0bbbbbbbbbbbbbbbb"]) && keys(module.security_group[0].egress_rule_ids) == ["https-0"] && length(module.security_group[0].ingress_rule_ids) == 0
     error_message = "The module security group has egress only."
+  }
+
+  assert {
+    condition     = local.egress_rules["https-0"].ip_protocol == "tcp" && local.egress_rules["https-0"].from_port == 443 && local.egress_rules["https-0"].to_port == 443 && local.egress_rules["https-0"].cidr_ipv4 == "0.0.0.0/0"
+    error_message = "Default egress is TCP 443 only, for image pulls and AWS APIs."
   }
 
   assert {
@@ -229,7 +240,7 @@ run "execution_and_job_roles" {
   }
 
   assert {
-    condition     = module.execution_role[0].name == "core-prod-etl-exec-eu-west-1" && module.job_role[0].name == "core-prod-etl-job-eu-west-1" && module.job_role[0].policy_json == null
+    condition     = module.execution_role[0].name == "core-prod-etl-batch-exec-eu-west-1" && module.job_role[0].name == "core-prod-etl-job-eu-west-1" && module.job_role[0].policy_json == null
     error_message = "Roles named <base>-<purpose>-<region>; the job role has no permissions by default."
   }
 
@@ -404,6 +415,124 @@ run "scheduling_policy_and_queue_order" {
   assert {
     condition     = [for o in aws_batch_job_queue.this["default"].compute_environment_order : o.order] == [0, 1] && aws_batch_job_queue.this["default"].compute_environment_order[1].compute_environment == "arn:aws:batch:eu-west-1:123456789012:compute-environment/shared"
     error_message = "Compute environments keep their order; ARNs pass through."
+  }
+}
+
+run "egress_override" {
+  command   = apply
+  state_key = "egress"
+
+  variables {
+    vpc_id     = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    security_group = {
+      egress_cidr_blocks        = ["10.0.0.0/16", "2001:db8::/56"]
+      egress_prefix_list_ids    = ["pl-0123456789abcdef0"]
+      egress_security_group_ids = ["sg-0eeeeeeeeeeeeeeee"]
+    }
+    compute_environments = { fargate = { max_vcpus = 4 } }
+  }
+
+  assert {
+    condition     = keys(module.security_group[0].egress_rule_ids) == ["https-0", "https-1", "pl-0", "sg-0"]
+    error_message = "egress_cidr_blocks replace the HTTPS destinations; prefix lists and groups add destinations."
+  }
+
+  assert {
+    condition     = local.egress_rules["https-0"].cidr_ipv4 == "10.0.0.0/16" && local.egress_rules["https-0"].from_port == 443 && local.egress_rules["https-1"].cidr_ipv6 == "2001:db8::/56" && local.egress_rules["https-1"].cidr_ipv4 == null
+    error_message = "CIDR destinations get HTTPS only, IPv4 or IPv6."
+  }
+
+  assert {
+    condition     = local.egress_rules["sg-0"].ip_protocol == "-1" && local.egress_rules["sg-0"].referenced_security_group_id == "sg-0eeeeeeeeeeeeeeee" && local.egress_rules["pl-0"].prefix_list_id == "pl-0123456789abcdef0"
+    error_message = "Listed groups and prefix lists are reached on every port."
+  }
+}
+
+run "efs_volumes" {
+  command   = apply
+  state_key = "efs"
+
+  variables {
+    job_definitions = {
+      nightly = {
+        image          = "busybox:1.37"
+        writable_paths = ["/tmp"]
+        efs_volumes = {
+          shared  = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", container_path = "/mnt/shared" }
+          reports = { file_system_id = "fs-0fedcba9876543210", root_directory = "/reports", container_path = "/mnt/reports", read_only = true }
+        }
+      }
+      export = {
+        image       = "busybox:1.37"
+        efs_volumes = { shared = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-0aaaaaaaaaaaaaaaa", container_path = "/mnt/shared", read_only = true } }
+      }
+      cleanup = { image = "busybox:1.37" }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).volumes == [{ name = "scratch-0" }, { name = "reports", efsVolumeConfiguration = { fileSystemId = "fs-0fedcba9876543210", rootDirectory = "/reports", transitEncryption = "ENABLED", authorizationConfig = { iam = "DISABLED" } } }, { name = "shared", efsVolumeConfiguration = { fileSystemId = "fs-0123456789abcdef0", transitEncryption = "ENABLED", authorizationConfig = { iam = "ENABLED", accessPointId = "fsap-00000000000000001" } } }]
+    error_message = "EFS volumes always use TLS; IAM authorization with an access point."
+  }
+
+  assert {
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).mountPoints == [{ sourceVolume = "scratch-0", containerPath = "/tmp", readOnly = false }, { sourceVolume = "reports", containerPath = "/mnt/reports", readOnly = true }, { sourceVolume = "shared", containerPath = "/mnt/shared", readOnly = false }]
+    error_message = "Each EFS volume is mounted at container_path, read-only when asked."
+  }
+
+  assert {
+    condition     = !can(jsondecode(aws_batch_job_definition.this["cleanup"].container_properties).volumes) && !can(jsondecode(aws_batch_job_definition.this["cleanup"].container_properties).mountPoints)
+    error_message = "Jobs without volumes render none."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.job_role[0].policy_json).Statement : s.Sid] == ["MountEfs0", "MountEfs1", "MountEfs2"]
+    error_message = "The job role gets one mount statement per EFS volume of every job."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].policy_json).Statement[0].Action == ["elasticfilesystem:ClientMount"] && jsondecode(module.job_role[0].policy_json).Statement[0].Resource == ["arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-0123456789abcdef0"] && jsondecode(module.job_role[0].policy_json).Statement[0].Condition.StringEquals["elasticfilesystem:AccessPointArn"] == "arn:aws:elasticfilesystem:eu-west-1:123456789012:access-point/fsap-0aaaaaaaaaaaaaaaa"
+    error_message = "A read-only access point mount gets ClientMount on that access point only."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].policy_json).Statement[1].Action == ["elasticfilesystem:ClientMount"] && jsondecode(module.job_role[0].policy_json).Statement[1].Resource == ["arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-0fedcba9876543210"] && !can(jsondecode(module.job_role[0].policy_json).Statement[1].Condition)
+    error_message = "A read-only mount without an access point gets ClientMount on the file system."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].policy_json).Statement[2].Action == ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"] && jsondecode(module.job_role[0].policy_json).Statement[2].Condition.StringEquals["elasticfilesystem:AccessPointArn"] == "arn:aws:elasticfilesystem:eu-west-1:123456789012:access-point/fsap-00000000000000001"
+    error_message = "A writable access point mount adds ClientWrite."
+  }
+
+  assert {
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).jobRoleArn == output.role_arn && output.role_arn == "arn:aws:iam::123456789012:role/core-prod-etl-job-eu-west-1"
+    error_message = "Jobs run as the role that carries the mount permissions."
+  }
+}
+
+run "efs_with_module_key_is_planned_safely" {
+  command = plan
+
+  variables {
+    vpc_id               = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids           = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    kms                  = { create = true }
+    compute_environments = { fargate = { max_vcpus = 4 } }
+    job_definitions = {
+      nightly = { image = "busybox:1.37", efs_volumes = { shared = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", container_path = "/mnt/shared" } } }
+    }
+  }
+
+  assert {
+    condition     = module.encryption.created && length(module.job_role) == 1 && length(aws_batch_job_definition.this) == 1
+    error_message = "EFS volumes and mount permissions must plan without knowing the key ARN."
+  }
+
+  assert {
+    condition     = keys(local.egress_rules) == ["https-0", "nfs"] && local.egress_rules["nfs"].ip_protocol == "tcp" && local.egress_rules["nfs"].from_port == 2049 && local.egress_rules["nfs"].to_port == 2049 && local.egress_rules["nfs"].cidr_ipv4 == "10.0.0.0/16" && length(data.aws_vpc.this) == 1
+    error_message = "EFS volumes add NFS egress to the VPC CIDR only."
   }
 }
 
@@ -656,6 +785,36 @@ run "rejects_invalid_retry_and_timeout" {
 
   variables {
     job_definitions = { nightly = { image = "busybox:1.37", timeout_seconds = 30 } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_efs_volume_named_like_scratch" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", efs_volumes = { scratch-0 = { file_system_id = "fs-0123456789abcdef0", container_path = "/mnt/data" } } } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_invalid_efs_ids_and_path" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", efs_volumes = { data = { file_system_id = "fs-0123456789abcdef0", access_point_id = "ap-1", container_path = "mnt/data" } } } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_root_directory_with_access_point" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", efs_volumes = { data = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", root_directory = "/data", container_path = "/mnt/data" } } } }
   }
 
   expect_failures = [var.job_definitions]

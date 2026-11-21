@@ -36,8 +36,8 @@ locals {
   )
 
   egress_rules = merge(
-    { for i, sg in var.target.security_group_ids : "db-${i}" => { description = "Target database", from_port = local.target_port, to_port = local.target_port, referenced_security_group_id = sg } },
-    { for i, cidr in var.security_group.egress_cidr_blocks : "https-${i}" => { description = "AWS APIs over HTTPS to ${cidr}", from_port = 443, to_port = 443, cidr_ipv4 = strcontains(cidr, ":") ? null : cidr, cidr_ipv6 = strcontains(cidr, ":") ? cidr : null } }
+    { for i, sg in var.target.security_group_ids : "db-${i}" => { description = "Target database", ip_protocol = "tcp", from_port = local.target_port, to_port = local.target_port, referenced_security_group_id = sg } },
+    { for i, cidr in var.security_group.egress_cidr_blocks : "https-${i}" => { description = "AWS APIs over HTTPS to ${cidr}", ip_protocol = "tcp", from_port = 443, to_port = 443, cidr_ipv4 = strcontains(cidr, ":") ? null : cidr, cidr_ipv6 = strcontains(cidr, ":") ? cidr : null } }
   )
 
   security_group_ids = concat(var.security_group.create ? [module.security_group[0].id] : [], var.security_group.additional_security_group_ids)

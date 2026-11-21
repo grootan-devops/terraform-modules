@@ -24,13 +24,13 @@ output "rule_metric_names" {
 }
 
 output "log_group_name" {
-  description = "Log group name."
-  value       = module.log_group.name
+  description = "Log group name; null unless cloudwatch."
+  value       = one(module.log_group[*].name)
 }
 
 output "log_group_arn" {
-  description = "Log group ARN."
-  value       = module.log_group.arn
+  description = "Log group ARN; null unless cloudwatch."
+  value       = one(module.log_group[*].arn)
 }
 
 output "kms_key_arn" {
