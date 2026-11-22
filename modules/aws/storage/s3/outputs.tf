@@ -37,3 +37,13 @@ output "policy_json" {
   description = "Bucket policy JSON."
   value       = module.policy.json
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}

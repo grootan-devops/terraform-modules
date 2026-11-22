@@ -606,3 +606,95 @@ run "rejects_invalid_runtime_update_mode" {
 
   expect_failures = [var.runtime_update_mode]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["lambda-function-duration-p99", "lambda-function-error-rate", "lambda-function-throttles"])
+    error_message = "Default alarms: error rate, throttles and p99 duration."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-orders-lambda-function-")]) && module.alarms[0].alarm_settings["lambda-function-duration-p99"].threshold == 24000
+    error_message = "Alarm names start with the module base name; p99 duration alarms at 80 % of the timeout."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command = apply
+
+  variables {
+    timeout = 60
+    event_sources = {
+      clicks = { type = "kinesis", arn = "arn:aws:kinesis:eu-west-1:123456789012:stream/clicks" }
+    }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        error_rate = { threshold = 10 }
+        throttles  = { enabled = false }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["lambda-function-duration-p99", "lambda-function-error-rate", "lambda-function-iterator-age"])
+    error_message = "A disabled alarm is dropped; a stream source adds the iterator age alarm."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["lambda-function-error-rate"].threshold == 10 && module.alarms[0].alarm_settings["lambda-function-error-rate"].evaluation_periods == 3 && module.alarms[0].alarm_settings["lambda-function-duration-p99"].threshold == 48000
+    error_message = "Overrides change one setting; the rest keep the preset defaults and follow the timeout."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["lambda-function-error-rate"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["lambda-function-duration-p99"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 3
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

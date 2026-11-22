@@ -25,6 +25,8 @@ A caller only needs `name`, `engine_version`, `vpc_id` and `subnet_ids`.
 - `aws_db_instance_automated_backups_replication.this`: `backup_replication.enabled`, through the resource `region`.
 - `aws_db_event_subscription.this`: `event_subscription.enabled`, instance events and parameter group changes.
 - `module.encryption` ([`core/encryption`](../../../core/encryption)): AWS managed key, module key or your key.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../../observability/cloudwatch-alarms)): built-in alarms, on
+  by default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -50,7 +52,8 @@ A caller only needs `name`, `engine_version`, `vpc_id` and `subnet_ids`.
 
 The module key (`kms.create = true`) lets principals of this account use it through RDS and Secrets Manager in this
 Region (`kms:CallerAccount`, `kms:ViaService`) and lets CloudWatch Logs use it for this instance's log groups. A key
-passed in `kms.key_id` needs the same grants. Metric filters and alarms on the logs belong to
+passed in `kms.key_id` needs the same grants. The instance metric alarms are built in
+([Built-in Alarms](#built-in-alarms)); metric filters on the logs belong to
 [`observability/cloudwatch-alarms`](../../../observability/cloudwatch-alarms) (`log_metric_filters` with the
 `log_group_names` output). The default port is the engine default (RDS.23); set `port` to change it.
 
@@ -129,6 +132,44 @@ With `extended_support = false`, RDS upgrades an instance whose major version le
 `engine_version` to the version RDS moved it to; the next plan creates the matching `postgres<major>` parameter group
 and moves the instance to it.
 
+### Built-in Alarms
+
+The `rds_instances` preset of [`observability/cloudwatch-alarms`](../../../observability/cloudwatch-alarms) is on by
+default: `rds-instance-cpu` (80 %), `rds-instance-free-storage` (below 20 % of `storage.allocated_storage`; storage
+autoscaling does not move it), `rds-instance-read-latency-p99` and `rds-instance-write-latency-p99` (20 ms).
+`rds-instance-freeable-memory` and `rds-instance-connections` (`database_connections`) are opt-in and need a
+`threshold`. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "db" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=<version>"
+
+  application    = "core"
+  environment    = "prod"
+  name           = "orders"
+  engine_version = "18"
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      cpu              = { threshold = 90 }
+      read_latency_p99 = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -161,6 +202,7 @@ and moves the instance to it.
 | `performance_insights_retention_period` | Performance Insights retention in days: 7, 731 or a multiple of 31. | `number` | `7` | No |
 | `cloudwatch_logs` | Log exports and their log groups. | `object({...})` | `{}` | No |
 | `event_subscription` | RDS event notifications to an SNS topic. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -177,3 +219,5 @@ and moves the instance to it.
 | `monitoring_role_arn` | Enhanced Monitoring role ARN. | No |
 | `log_group_names` | Log group names by export. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

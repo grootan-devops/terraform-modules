@@ -22,6 +22,8 @@ module "vpc" {
   application = var.application
   environment = var.environment
   cidr_block  = "10.20.0.0/16"
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "key" {
@@ -131,6 +133,8 @@ module "alb" {
   default_target_group = "web"
   access_logs          = { enabled = true, bucket = module.logs.name }
   waf                  = { enabled = true, web_acl_arn = module.waf.arn }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "private_link" {
@@ -147,6 +151,8 @@ module "private_link" {
   }
   security_group   = { egress_security_group_ids = [module.alb.security_group_id] }
   endpoint_service = { enabled = true, allowed_principals = [var.partner_principal_arn] }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "db" {
@@ -160,6 +166,8 @@ module "db" {
   subnet_ids     = module.vpc.private_subnet_ids
   security_group = { ingress_security_group_ids = [module.proxy.security_group_id] }
   kms            = { key_id = module.key.arn }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "db_clients" {
@@ -198,6 +206,8 @@ module "proxy" {
     }]
   }
   cloudwatch_logs = { enabled = true, kms_key_arn = module.key.arn }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 ephemeral "aws_secretsmanager_random_password" "cache_token" {
@@ -245,6 +255,8 @@ module "shared" {
   access_points = {
     reports = { uid = 1000, gid = 1000, path = "/reports" }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "app" {
@@ -287,6 +299,8 @@ module "app" {
       }
     }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "reports" {
@@ -356,4 +370,6 @@ module "schedules" {
       }
     }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }

@@ -17,6 +17,8 @@ POSIX identity. Backups belong to [`storage/backup`](../backup).
 - `aws_efs_access_point.this`: one per `access_points` key.
 - `aws_efs_backup_policy.this`: EFS automatic backups, `DISABLED` unless `backup.enabled`.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): AWS managed key, module key or your key.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -80,6 +82,45 @@ module "efs" {
 }
 ```
 
+### Built-in Alarms
+
+The `efs_file_systems` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default: `efs-file-system-percent-io-limit` (95 %) in `generalPurpose` mode, none in `maxIO` mode, plus
+`efs-file-system-burst-credit-balance` with `bursting` throughput. `performance_mode` and `throughput.mode` choose
+them. `client_connections` is opt-in and needs a threshold. Without `topic_arns` the alarms have no actions;
+`alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "efs" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/storage/efs?ref=<version>"
+
+  application    = "core"
+  environment    = "prod"
+  name           = "shared"
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  throughput     = { mode = "bursting" }
+  security_group = { ingress_security_group_ids = [module.ecs.security_group_id] }
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      percent_io_limit     = { threshold = 90 }
+      burst_credit_balance = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -99,6 +140,7 @@ module "efs" {
 | `client_access` | Mount target clients: principals, read only, root access. | `object({...})` | `{}` | No |
 | `policy_statements` | Extra file system policy statements; resources default to the file system. | `list(object({...}))` | `[]` | No |
 | `access_points` | Access points by key with an enforced POSIX user and root directory (EFS.3, EFS.4). | `map(object({...}))` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -112,3 +154,5 @@ module "efs" {
 | `access_point_ids` | Access point IDs by key. | No |
 | `access_point_arns` | Access point ARNs by key. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

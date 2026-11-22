@@ -423,7 +423,7 @@ variable "sqs_queues" {
     dlq_name   = optional(string)
     region     = optional(string)
     alarms = optional(object({
-      age_of_oldest_message = optional(object({ enabled = optional(bool, true), threshold = optional(number), evaluation_periods = optional(number, 15), datapoints_to_alarm = optional(number, 15), period = optional(number, 60), severity = optional(string, "warning") }), {})
+      age_of_oldest_message = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number, 15), datapoints_to_alarm = optional(number, 15), period = optional(number, 60), severity = optional(string, "warning") }), {})
       messages_visible      = optional(object({ enabled = optional(bool, false), threshold = optional(number), evaluation_periods = optional(number, 15), datapoints_to_alarm = optional(number, 15), period = optional(number, 60), severity = optional(string, "warning") }), {})
       dlq_messages_visible  = optional(object({ enabled = optional(bool, true), threshold = optional(number, 0), evaluation_periods = optional(number, 1), datapoints_to_alarm = optional(number, 1), period = optional(number, 60), severity = optional(string, "critical") }), {})
     }), {})
@@ -433,7 +433,7 @@ variable "sqs_queues" {
 
   validation {
     condition = alltrue([
-      for k, q in var.sqs_queues : q.alarms.age_of_oldest_message.enabled ? (q.alarms.age_of_oldest_message.threshold == null ? false : q.alarms.age_of_oldest_message.threshold > 0) : true
+      for k, q in var.sqs_queues : coalesce(q.alarms.age_of_oldest_message.enabled, q.alarms.age_of_oldest_message.threshold != null) ? (q.alarms.age_of_oldest_message.threshold == null ? false : q.alarms.age_of_oldest_message.threshold > 0) : true
     ])
     error_message = "sqs_queues: age_of_oldest_message threshold > 0."
   }
@@ -486,11 +486,12 @@ variable "cloudfront_distributions" {
 }
 
 variable "efs_file_systems" {
-  description = "EFS file systems by key."
+  description = "EFS file systems by key: ID and modes."
   type = map(object({
-    file_system_id  = string
-    throughput_mode = optional(string, "elastic")
-    region          = optional(string)
+    file_system_id   = string
+    throughput_mode  = optional(string, "elastic")
+    performance_mode = optional(string, "generalPurpose")
+    region           = optional(string)
     alarms = optional(object({
       percent_io_limit     = optional(object({ enabled = optional(bool, true), threshold = optional(number, 95), evaluation_periods = optional(number, 15), datapoints_to_alarm = optional(number, 15), period = optional(number, 60), severity = optional(string, "warning") }), {})
       burst_credit_balance = optional(object({ enabled = optional(bool, true), threshold = optional(number, 0), evaluation_periods = optional(number, 15), datapoints_to_alarm = optional(number, 15), period = optional(number, 60), severity = optional(string, "warning") }), {})
@@ -504,6 +505,11 @@ variable "efs_file_systems" {
     condition     = alltrue([for k, f in var.efs_file_systems : contains(["elastic", "bursting", "provisioned"], f.throughput_mode)])
     error_message = "efs_file_systems: throughput_mode elastic, bursting or provisioned."
   }
+
+  validation {
+    condition     = alltrue([for k, f in var.efs_file_systems : contains(["generalPurpose", "maxIO"], f.performance_mode)])
+    error_message = "efs_file_systems: performance_mode generalPurpose or maxIO."
+  }
 }
 
 variable "waf_web_acls" {
@@ -514,7 +520,7 @@ variable "waf_web_acls" {
     scope               = optional(string, "REGIONAL")
     region              = optional(string)
     alarms = optional(object({
-      blocked_requests = optional(object({ enabled = optional(bool, true), threshold = optional(number), evaluation_periods = optional(number, 1), datapoints_to_alarm = optional(number, 1), period = optional(number, 300), severity = optional(string, "warning") }), {})
+      blocked_requests = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number, 1), datapoints_to_alarm = optional(number, 1), period = optional(number, 300), severity = optional(string, "warning") }), {})
     }), {})
   }))
   default  = {}
@@ -526,7 +532,7 @@ variable "waf_web_acls" {
   }
 
   validation {
-    condition     = alltrue([for k, w in var.waf_web_acls : w.alarms.blocked_requests.enabled ? (w.alarms.blocked_requests.threshold == null ? false : w.alarms.blocked_requests.threshold >= 0) : true])
+    condition     = alltrue([for k, w in var.waf_web_acls : coalesce(w.alarms.blocked_requests.enabled, w.alarms.blocked_requests.threshold != null) ? (w.alarms.blocked_requests.threshold == null ? false : w.alarms.blocked_requests.threshold >= 0) : true])
     error_message = "waf_web_acls: blocked_requests threshold >= 0."
   }
 }
@@ -537,14 +543,14 @@ variable "s3_buckets" {
     bucket_name = string
     region      = optional(string)
     alarms = optional(object({
-      bucket_size = optional(object({ enabled = optional(bool, true), threshold = optional(number), evaluation_periods = optional(number, 1), datapoints_to_alarm = optional(number, 1), period = optional(number, 86400), severity = optional(string, "info") }), {})
+      bucket_size = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number, 1), datapoints_to_alarm = optional(number, 1), period = optional(number, 86400), severity = optional(string, "info") }), {})
     }), {})
   }))
   default  = {}
   nullable = false
 
   validation {
-    condition     = alltrue([for k, b in var.s3_buckets : b.alarms.bucket_size.enabled ? (b.alarms.bucket_size.threshold == null ? false : b.alarms.bucket_size.threshold > 0) : true])
+    condition     = alltrue([for k, b in var.s3_buckets : coalesce(b.alarms.bucket_size.enabled, b.alarms.bucket_size.threshold != null) ? (b.alarms.bucket_size.threshold == null ? false : b.alarms.bucket_size.threshold > 0) : true])
     error_message = "s3_buckets: bucket_size threshold > 0."
   }
 }

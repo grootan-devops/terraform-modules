@@ -8,6 +8,11 @@ metrics and overridable thresholds; the CIS CloudWatch.1-14 metric filters are o
 default: actions stay off until `notifications.enabled` routes them to the SNS topics of
 [`alarm-routing`](../alarm-routing). The module never creates a notification destination.
 
+The AWS service modules build these presets in: each composes this module behind its `alarms` input
+(`enabled`, `topic_arns` by severity, `overrides` per alarm), so a caller gets the alarms below without wiring IDs.
+Call this module directly for custom alarms, log metric filters, the CIS filters, alarms across modules and
+ElastiCache Valkey, whose member cluster IDs are only known after apply.
+
 ## Architecture & Managed Resources
 
 - `aws_cloudwatch_metric_alarm.this`: one per enabled generic alarm, preset alarm, log metric filter and CIS filter,
@@ -21,8 +26,9 @@ default: actions stay off until `notifications.enabled` routes them to the SNS t
 exists, or pass `"${module.valkey.id}-001"`-style IDs on the first apply. Every entry accepts `region`
 (resource-level `region` argument). CloudFront and CLOUDFRONT-scope WAF alarms are always
 created in `us-east-1`, the only Region with CloudFront metrics. Each preset entry has an `alarms` object with
-`{ enabled, threshold, evaluation_periods, datapoints_to_alarm, period, severity }` per alarm; opt-in alarms need a
-threshold when enabled. Rate alarms use `IF(denominator > 0, 100 * numerator / denominator, 0)`.
+`{ enabled, threshold, evaluation_periods, datapoints_to_alarm, period, severity }` per alarm; a field set to null
+takes the preset default, and opt-in alarms need a threshold when enabled. Alarms with no default threshold (SQS
+message age, WAF blocked requests, S3 bucket size) are on once a threshold is set. Rate alarms use `IF(denominator > 0, 100 * numerator / denominator, 0)`.
 
 | Input | Alarms (key suffixes) |
 | --- | --- |
@@ -38,14 +44,14 @@ threshold when enabled. Rate alarms use `IF(denominator > 0, 100 * numerator / d
 | `rds_proxies` | `connection-setup-failures`, `client-auth-failures`, `borrowed-connections`, `client-connections` (opt-in) |
 | `dynamodb_tables` | `read-throttles`, `write-throttles` (table and each GSI), `system-errors`, `consumed-rcu`/`consumed-wcu` (opt-in) |
 | `elasticache_clusters` | per member: `cpu`, `engine-cpu`, `memory`, `evictions`, `replication-lag`, `curr-connections` (opt-in) |
-| `sqs_queues` | `age-of-oldest-message` (threshold required), `dlq-messages-visible`, `messages-visible` (opt-in) |
+| `sqs_queues` | `age-of-oldest-message` (on with a threshold), `dlq-messages-visible`, `messages-visible` (opt-in) |
 | `eventbridge_rules` | `failed-invocations`, `throttled-rules`, `dlq-send-failures` |
 | `schedule_groups` | `target-errors`, `invocations-dropped`, `dlq-send-failures` |
 | `step_functions` | `executions-failed`, `executions-timed-out`, `executions-aborted`, `execution-throttled` |
 | `cloudfront_distributions` | `5xx-error-rate`, `4xx-error-rate` and `requests` (opt-in) |
-| `efs_file_systems` | `percent-io-limit`, `burst-credit-balance` (bursting), `client-connections` (opt-in) |
-| `waf_web_acls` | `blocked-requests` (threshold required) |
-| `s3_buckets` | `bucket-size` (threshold required) |
+| `efs_file_systems` | `percent-io-limit` (`generalPurpose`), `burst-credit-balance` (bursting), `client-connections` (opt-in) |
+| `waf_web_acls` | `blocked-requests` (on with a threshold) |
+| `s3_buckets` | `bucket-size` (on with a threshold) |
 | `nat_gateways` | `error-port-allocation`, `packets-drop-rate` (per AZ for regional gateways) |
 
 Severity picks the topic: errors, unhealthy capacity, dead-letter queues and CIS alarms are `critical`; latency,
@@ -165,7 +171,7 @@ module "alarms" {
 | `eventbridge_rules` | EventBridge rules by key: rule and bus names. | `map(object({...}))` | `{}` | No |
 | `step_functions` | Step Functions state machines by key. | `map(object({...}))` | `{}` | No |
 | `cloudfront_distributions` | CloudFront distributions by key; alarms in us-east-1. | `map(object({...}))` | `{}` | No |
-| `efs_file_systems` | EFS file systems by key. | `map(object({...}))` | `{}` | No |
+| `efs_file_systems` | EFS file systems by key: ID and modes. | `map(object({...}))` | `{}` | No |
 | `waf_web_acls` | WAF web ACLs by key: metric names and scope. | `map(object({...}))` | `{}` | No |
 | `s3_buckets` | S3 buckets by key: bucket name and size threshold. | `map(object({...}))` | `{}` | No |
 | `nat_gateways` | NAT gateways by key. | `map(object({...}))` | `{}` | No |
@@ -181,3 +187,4 @@ module "alarms" {
 | `metric_filter_names` | Metric filter name by key. | No |
 | `presets` | Alarm keys created by each input. | No |
 | `alarm_routes` | Region, severity and topic ARN by alarm key. | No |
+| `alarm_settings` | Threshold, periods and datapoints by alarm key. | No |

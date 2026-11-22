@@ -31,3 +31,15 @@ output "alarm_routes" {
     }
   }
 }
+
+output "alarm_settings" {
+  description = "Threshold, periods and datapoints by alarm key."
+  value = {
+    for k, s in local.enabled_alarms : k => {
+      threshold           = s.threshold
+      evaluation_periods  = s.evaluation_periods
+      datapoints_to_alarm = s.datapoints_to_alarm
+      period              = s.period
+    }
+  }
+}

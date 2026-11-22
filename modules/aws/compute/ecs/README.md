@@ -23,6 +23,8 @@ and ECS Exec. Load balancers, target groups and repositories are other modules; 
   services with `service_discovery` or `service_connect`; Cloud Map services only for `service_discovery`.
 - `aws_appautoscaling_target.this`, `aws_appautoscaling_policy.cpu` / `.memory`: per service, when enabled.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): AWS managed key, module key or your key.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -175,6 +177,48 @@ module "ecs" {
 `client_access.principal_arns` admits only the listed roles, so mount through an access point there: a volume
 without one mounts with IAM authorization off, has no role identity and is refused.
 
+### Built-in Alarms
+
+The `ecs_services` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default, one set per `services` key: `ecs-<service>-cpu` and `ecs-<service>-memory` (80 %), plus
+`ecs-<service>-running-tasks` (critical, running below desired) while `container_insights` is not `disabled`. No alarm
+is opt-in; a cluster without services has none. Without `topic_arns` the alarms have no actions;
+`alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "ecs" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/ecs?ref=<version>"
+
+  application              = "core"
+  environment              = "prod"
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnet_ids
+  readonly_root_filesystem = true
+
+  services = {
+    api = { image = "${module.ecr.repository_url}:1.0.0", container_port = 8080, user = "1000:1000" }
+  }
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      cpu    = { threshold = 90 }
+      memory = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`) and applies them to every service; a field left out keeps the preset
+default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -194,6 +238,7 @@ without one mounts with IAM authorization off, has no role identity and is refus
 | `service_discovery_namespace` | Private DNS namespace name. Null: `<application>-<environment>.local.` | `string` | `null` | No |
 | `readonly_root_filesystem` | Read-only root filesystem for containers. | `bool` | **Required** | Yes |
 | `services` | Fargate services by key. | `map(object({...}))` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -213,3 +258,5 @@ without one mounts with IAM authorization off, has no role identity and is refus
 | `exec_log_group_name` | ECS Exec log group name; null without ECS Exec. | No |
 | `service_discovery_namespace_arn` | Cloud Map namespace ARN; null without discovery. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

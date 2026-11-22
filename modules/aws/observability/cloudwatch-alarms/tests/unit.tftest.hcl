@@ -1228,11 +1228,86 @@ run "sqs_age_threshold_required" {
 
   variables {
     sqs_queues = {
-      bad = { queue_name = "core-prod-jobs" }
+      bad = { queue_name = "core-prod-jobs", alarms = { age_of_oldest_message = { enabled = true } } }
     }
   }
 
   expect_failures = [var.sqs_queues]
+}
+
+run "thresholdless_alarms_need_a_threshold" {
+  command = plan
+
+  variables {
+    sqs_queues = {
+      jobs = { queue_name = "core-prod-jobs" }
+    }
+    waf_web_acls = {
+      regional = { web_acl_metric_name = "core-prod-waf-acl-metric" }
+    }
+    s3_buckets = {
+      assets = { bucket_name = "core-prod-assets" }
+    }
+  }
+
+  assert {
+    condition     = length([for k in keys(aws_cloudwatch_metric_alarm.this) : k if startswith(k, "sqs-jobs-") || startswith(k, "waf-regional-") || startswith(k, "s3-assets-")]) == 0
+    error_message = "SQS age, WAF blocked requests and S3 size alarms stay off without a threshold."
+  }
+}
+
+run "null_settings_take_preset_defaults" {
+  command = plan
+
+  variables {
+    lambda_functions = {
+      orders = {
+        function_name   = "core-prod-orders"
+        timeout_seconds = 30
+        alarms = {
+          error_rate = { enabled = null, threshold = null, evaluation_periods = null, datapoints_to_alarm = null, period = null, severity = null }
+          throttles  = { threshold = 2 }
+        }
+      }
+    }
+  }
+
+  assert {
+    condition     = output.alarm_settings["lambda-orders-error-rate"].threshold == 5 && output.alarm_settings["lambda-orders-error-rate"].evaluation_periods == 3 && output.alarm_routes["lambda-orders-error-rate"].severity == "critical"
+    error_message = "Null alarm settings must fall back to the preset defaults."
+  }
+
+  assert {
+    condition     = output.alarm_settings["lambda-orders-throttles"].threshold == 2 && output.alarm_settings["lambda-orders-throttles"].period == 60 && output.alarm_settings["lambda-orders-duration-p99"].threshold == 24000
+    error_message = "alarm_settings must report the effective threshold and period."
+  }
+}
+
+run "efs_max_io_has_no_io_limit_alarm" {
+  command = plan
+
+  variables {
+    efs_file_systems = {
+      shared = { file_system_id = "fs-0123456789abcdef0", performance_mode = "maxIO" }
+    }
+  }
+
+  assert {
+    condition     = !contains(keys(aws_cloudwatch_metric_alarm.this), "efs-shared-percent-io-limit")
+    error_message = "PercentIOLimit is a General Purpose metric; maxIO file systems get no IO limit alarm."
+  }
+}
+
+run "efs_invalid_performance_mode_fails" {
+  command = plan
+
+  variables {
+    efs_file_systems = {
+      bad = { file_system_id = "fs-0123456789abcdef0", performance_mode = "fast" }
+    }
+  }
+
+  expect_failures = [var.efs_file_systems]
 }
 
 run "efs_invalid_throughput_mode_fails" {
@@ -1264,7 +1339,7 @@ run "waf_threshold_required" {
 
   variables {
     waf_web_acls = {
-      bad = { web_acl_metric_name = "core-prod-waf-acl-metric" }
+      bad = { web_acl_metric_name = "core-prod-waf-acl-metric", alarms = { blocked_requests = { enabled = true } } }
     }
   }
 
@@ -1276,7 +1351,7 @@ run "s3_threshold_required" {
 
   variables {
     s3_buckets = {
-      bad = { bucket_name = "core-prod-assets" }
+      bad = { bucket_name = "core-prod-assets", alarms = { bucket_size = { enabled = true } } }
     }
   }
 

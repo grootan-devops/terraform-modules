@@ -25,6 +25,8 @@ their ARNs in.
 - `aws_apigatewayv2_domain_name.this`, `aws_apigatewayv2_api_mapping.this`: optional Regional custom domain.
 - `module.encryption` ([`core/encryption`](../../core/encryption)): service encryption, module key or your key for the
   logs.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -143,6 +145,39 @@ module "zone" {
 }
 ```
 
+### Built-in Alarms
+
+The `http_apis` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by default,
+on the API ID and the `$default` stage: `httpapi-api-5xx-rate` (critical, above 5 %) and `httpapi-api-latency-p99`
+(above 2500 ms). None is opt-in. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }`
+creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "api" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/http-api?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      server_error_rate = { threshold = 2 }
+      latency_p99       = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -163,6 +198,7 @@ module "zone" {
 | `cloudwatch_logs` | Access log group and format. | `object({...})` | `{}` | No |
 | `vpc_link` | VPC link for private integrations. | `object({...})` | `{}` | No |
 | `domain` | Regional custom domain mapped to the stage. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -183,3 +219,5 @@ module "zone" {
 | `security_group_id` | VPC link security group ID; null without one. | No |
 | `domain_target_name` | Custom domain target for Route 53 aliases; null without a domain. | No |
 | `domain_zone_id` | Custom domain hosted zone ID for Route 53 aliases; null without a domain. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

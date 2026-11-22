@@ -18,6 +18,8 @@ module "orders_table" {
   hash_key    = "order_id"
   stream      = { enabled = true }
   kms         = { create = true }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "orders_queue" {
@@ -35,6 +37,8 @@ module "orders_queue" {
       events = { principal = "events.amazonaws.com", source_arn = module.events.rule_arns["order-created"] }
     }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "api_fn" {
@@ -51,6 +55,8 @@ module "api_fn" {
       { sid = "StartFulfilment", actions = ["states:StartExecution"], resources = [module.fulfilment.arn] }
     ]
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "worker_fn" {
@@ -63,6 +69,8 @@ module "worker_fn" {
     orders = { type = "sqs", arn = module.orders_queue.arn, batch_size = 10, maximum_concurrency = 5 }
     audit  = { type = "dynamodb", arn = module.orders_table.stream_arn }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "events" {
@@ -90,6 +98,8 @@ module "events" {
       }
     }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "api" {
@@ -108,6 +118,8 @@ module "api" {
       }
     }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "http_api" {
@@ -126,6 +138,8 @@ module "http_api" {
     "GET /orders"  = { integration = "orders", authorizer = "users" }
     "POST /orders" = { integration = "orders", authorizer = "users" }
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }
 
 module "fulfilment" {
@@ -159,4 +173,6 @@ module "fulfilment" {
   iam_role = {
     policy_statements = [{ sid = "PublishEvents", actions = ["events:PutEvents"], resources = [module.events.bus_arn] }]
   }
+
+  alarms = { topic_arns = local.alarm_topics }
 }

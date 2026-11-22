@@ -1079,3 +1079,144 @@ run "rejects_fargate_schedule_without_subnets" {
 
   expect_failures = [var.scheduler]
 }
+
+run "alarms_by_default" {
+  command = plan
+
+  variables {
+    rules = {
+      orders = { event_pattern = "{\"source\":[\"core.orders\"]}" }
+      jobs   = { event_pattern = "{\"source\":[\"core.jobs\"]}" }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["eventbridge-jobs-dlq-send-failures", "eventbridge-jobs-failed-invocations", "eventbridge-jobs-throttled-rules", "eventbridge-orders-dlq-send-failures", "eventbridge-orders-failed-invocations", "eventbridge-orders-throttled-rules"])
+    error_message = "Default alarms per rule: failed invocations, throttled rules and DLQ send failures."
+  }
+
+  assert {
+    condition     = alltrue([for n in values(output.alarm_names) : startswith(n, "core-prod-eventbridge-")]) && module.alarms[0].alarm_routes["eventbridge-orders-failed-invocations"].severity == "critical"
+    error_message = "Alarm names start with the module base name; failed invocations are critical."
+  }
+
+  assert {
+    condition     = alltrue([for k, r in module.alarms[0].alarm_routes : r.topic_arn == null])
+    error_message = "Without topic_arns, alarms have no actions."
+  }
+}
+
+run "alarms_none_without_rules_or_scheduler" {
+  command = plan
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 0
+    error_message = "A bus without rules or scheduler has nothing to alarm on."
+  }
+}
+
+run "alarms_for_schedule_group" {
+  command   = plan
+  state_key = "alarmsgroup"
+
+  variables {
+    bus       = { enabled = false }
+    rules     = { orders = { event_pattern = "{\"source\":[\"core.orders\"]}" } }
+    scheduler = { enabled = true }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_names)) == tolist(["eventbridge-orders-dlq-send-failures", "eventbridge-orders-failed-invocations", "eventbridge-orders-throttled-rules", "scheduler-schedules-dlq-send-failures", "scheduler-schedules-invocations-dropped", "scheduler-schedules-target-errors"])
+    error_message = "scheduler.enabled adds the schedule group alarms; rules on the default bus keep theirs."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["scheduler-schedules-target-errors"].severity == "warning" && module.alarms[0].alarm_routes["scheduler-schedules-invocations-dropped"].severity == "critical" && output.alarm_names["scheduler-schedules-target-errors"] == "core-prod-scheduler-schedules-target-errors"
+    error_message = "Target errors warn; dropped invocations are critical."
+  }
+}
+
+run "alarms_off" {
+  command = plan
+
+  variables {
+    rules  = { orders = { event_pattern = "{\"source\":[\"core.orders\"]}" } }
+    alarms = { enabled = false }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 0 && length(output.alarm_names) == 0 && length(output.alarm_arns) == 0
+    error_message = "alarms.enabled = false creates no alarms."
+  }
+}
+
+run "alarms_tuned_and_routed" {
+  command   = apply
+  state_key = "alarms"
+
+  variables {
+    rules     = { orders = { event_pattern = "{\"source\":[\"core.orders\"]}" } }
+    scheduler = { enabled = true }
+    alarms = {
+      topic_arns = {
+        critical = "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+        warning  = "arn:aws:sns:eu-west-1:123456789012:platform-prod-warning"
+        info     = "arn:aws:sns:eu-west-1:123456789012:platform-prod-info"
+      }
+      overrides = {
+        rules = {
+          failed_invocations = { threshold = 2 }
+          throttled_rules    = { enabled = false }
+        }
+        schedules = {
+          target_errors       = { severity = "critical" }
+          invocations_dropped = { enabled = false }
+        }
+      }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(output.alarm_arns)) == tolist(["eventbridge-orders-dlq-send-failures", "eventbridge-orders-failed-invocations", "scheduler-schedules-dlq-send-failures", "scheduler-schedules-target-errors"])
+    error_message = "Disabled alarms are dropped from each preset."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_settings["eventbridge-orders-failed-invocations"].threshold == 2 && module.alarms[0].alarm_settings["eventbridge-orders-failed-invocations"].evaluation_periods == 1 && module.alarms[0].alarm_settings["scheduler-schedules-target-errors"].evaluation_periods == 3
+    error_message = "Overrides change one setting; the rest keep the preset defaults."
+  }
+
+  assert {
+    condition     = module.alarms[0].alarm_routes["eventbridge-orders-failed-invocations"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical" && module.alarms[0].alarm_routes["scheduler-schedules-target-errors"].topic_arn == "arn:aws:sns:eu-west-1:123456789012:platform-prod-critical"
+    error_message = "Each alarm notifies the topic for its severity."
+  }
+}
+
+run "alarms_plan_with_unknown_arns" {
+  command   = plan
+  state_key = "alarmsplan"
+
+  variables {
+    kms   = { create = true }
+    rules = { orders = { event_pattern = "{\"source\":[\"core.orders\"]}" } }
+    scheduler = {
+      enabled   = true
+      schedules = { nightly = { expression = "cron(0 2 * * ? *)", target = { type = "lambda", arn = "arn:aws:lambda:eu-west-1:123456789012:function:core-prod-report:live", dead_letter_queue = { enabled = false } } } }
+    }
+  }
+
+  assert {
+    condition     = length(module.alarms) == 1 && length(output.alarm_names) == 6
+    error_message = "Alarm keys and names must be known at plan with a module key."
+  }
+}
+
+run "rejects_invalid_alarm_topic" {
+  command = plan
+
+  variables {
+    alarms = { topic_arns = { critical = "arn:aws:sqs:eu-west-1:123456789012:core-prod-critical" } }
+  }
+
+  expect_failures = [var.alarms]
+}

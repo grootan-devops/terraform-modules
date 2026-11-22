@@ -313,13 +313,27 @@ variable "addons" {
   nullable = false
 
   validation {
-    condition     = alltrue([for k in concat(keys(var.addons.versions), keys(var.addons.configuration_values)) : contains(["vpc-cni", "kube-proxy", "eks-pod-identity-agent", "coredns", "aws-ebs-csi-driver", "aws-efs-csi-driver", "snapshot-controller", "aws-mountpoint-s3-csi-driver"], k)])
-    error_message = "addons: keys must be default add-on names."
+    condition     = alltrue([for k in concat(keys(var.addons.versions), keys(var.addons.configuration_values)) : contains(["vpc-cni", "kube-proxy", "eks-pod-identity-agent", "coredns", "aws-ebs-csi-driver", "aws-efs-csi-driver", "snapshot-controller", "aws-mountpoint-s3-csi-driver", "amazon-cloudwatch-observability"], k)])
+    error_message = "addons: keys must be module add-on names."
   }
 
   validation {
     condition     = alltrue([for arn in var.addons.s3_csi_bucket_arns : can(regex("^arn:aws[a-z-]*:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", arn))])
     error_message = "addons.s3_csi_bucket_arns: bucket ARNs."
+  }
+}
+
+variable "container_insights" {
+  description = "Container Insights through the CloudWatch Observability add-on."
+  type = object({
+    enabled = optional(bool, false)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !var.container_insights.enabled || var.addons.enabled
+    error_message = "container_insights: needs addons.enabled."
   }
 }
 
@@ -354,5 +368,31 @@ variable "pod_identities" {
   validation {
     condition     = alltrue([for p in values(var.pod_identities) : (p.role_arn == null) == (length(p.policy_statements) + length(p.managed_policy_arns) > 0)])
     error_message = "pod_identities: set role_arn or policy statements, not both."
+  }
+}
+
+variable "alarms" {
+  description = "Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides."
+  type = object({
+    enabled    = optional(bool, true)
+    topic_arns = optional(map(string), {})
+    overrides = optional(object({
+      cluster = optional(object({
+        node_cpu     = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+        node_memory  = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+        failed_nodes = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+      }), {})
+      node_groups = optional(object({
+        cpu                 = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+        status_check_failed = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+      }), {})
+    }), {})
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for s, arn in var.alarms.topic_arns : can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", arn))])
+    error_message = "alarms.topic_arns: SNS topic ARNs by severity."
   }
 }

@@ -59,3 +59,13 @@ output "endpoint_service_id" {
   description = "PrivateLink endpoint service ID; null when disabled."
   value       = one(aws_vpc_endpoint_service.this[*].id)
 }
+
+output "alarm_arns" {
+  description = "Alarm ARN by key."
+  value       = try(module.alarms[0].alarm_arns, {})
+}
+
+output "alarm_names" {
+  description = "Alarm name by key."
+  value       = try(module.alarms[0].alarm_names, {})
+}

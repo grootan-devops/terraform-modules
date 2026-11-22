@@ -19,6 +19,8 @@ Queues, streams, topics and buses are other modules; pass their ARNs in.
 - `aws_lambda_event_source_mapping.this`, `aws_lambda_permission.this`, `aws_lambda_function_url.this`,
   `aws_lambda_function_event_invoke_config.this`, `aws_lambda_provisioned_concurrency_config.this`,
   `aws_lambda_function_recursion_config.this`, `aws_lambda_runtime_management_config.this`.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -92,6 +94,40 @@ module "lambda" {
 }
 ```
 
+### Built-in Alarms
+
+The `lambda_functions` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by
+default: `lambda-function-error-rate` (critical), `lambda-function-throttles` and `lambda-function-duration-p99` (80 %
+of `timeout`), plus `lambda-function-iterator-age` with a Kinesis or DynamoDB source. `concurrent_executions` is
+opt-in. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "lambda" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/lambda?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      error_rate = { threshold = 2 }
+      throttles  = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -127,6 +163,7 @@ module "lambda" {
 | `code_signing_config_arn` | Code signing config ARN (Lambda.6). | `string` | `null` | No |
 | `runtime_update_mode` | Runtime updates: Auto, FunctionUpdate or Manual. | `string` | `"Auto"` | No |
 | `durable_execution` | Durable execution: execution timeout and retention in seconds. | `object({...})` | `{}` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -144,3 +181,5 @@ module "lambda" {
 | `security_group_id` | Function security group ID; null outside a VPC. | No |
 | `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |
 | `function_url` | Function URL; null when disabled. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

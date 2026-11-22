@@ -26,8 +26,9 @@ detector, an account password policy, EBS encryption by default, the API Gateway
 
 A module is one service plus the private resources that service needs to work: its IAM role and policies, security
 group, log groups, an optional customer managed key, its resource policy, invoke permissions and event source
-mappings. It never creates another first-class service: queues, topics, buses, buckets, tables, functions, alarms and
-certificates are separate modules and come in as ARNs or IDs. The side that depends on a resource owns the link:
+mappings, and the CloudWatch alarms for its own metrics (see [Alarms](#alarms)). It never creates another
+first-class service: queues, topics, buses, buckets, tables, functions and certificates are separate modules and come
+in as ARNs or IDs. The side that depends on a resource owns the link:
 `alb`, `api-gateway` and `cloudfront` take `web_acl_arn`; `lambda` takes queue and stream ARNs for its event source
 mappings; `eventbridge` takes target ARNs and creates the role that invokes them.
 
@@ -42,6 +43,7 @@ Shared building blocks are composed with relative sources inside the repository:
 | [`security/iam-role`](../modules/aws/security/iam-role) | Every IAM role a module creates; its policies are exclusive |
 | [`network/security-group`](../modules/aws/network/security-group) | Every security group a module creates; its rules are exclusive (`self = true` for intra-group rules) |
 | [`observability/log-group`](../modules/aws/observability/log-group) | Every CloudWatch log group a module creates |
+| [`observability/cloudwatch-alarms`](../modules/aws/observability/cloudwatch-alarms) | Built-in alarms: the module's own preset behind the `alarms` input |
 
 ## Standard inputs
 
@@ -193,6 +195,47 @@ variable "cloudwatch_logs" {
 `kms_key_arn` falls back to the module key. 365 days meets PCI DSS 10.5.1 and Security Hub CloudWatch.16. Logs that
 go to S3 use `access_logs = { enabled, bucket, prefix }`. Outputs: `log_group_name`, `log_group_arn`.
 
+### Alarms
+
+A module whose service publishes CloudWatch metrics builds in the matching preset of
+[`observability/cloudwatch-alarms`](../modules/aws/observability/cloudwatch-alarms):
+
+```hcl
+variable "alarms" {
+  description = "Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides."
+  type = object({
+    enabled    = optional(bool, true)
+    topic_arns = optional(map(string), {})
+    overrides = optional(object({
+      error_rate = optional(object({ enabled = optional(bool), threshold = optional(number), evaluation_periods = optional(number), datapoints_to_alarm = optional(number), period = optional(number), severity = optional(string) }), {})
+    }), {})
+  })
+  default  = {}
+  nullable = false
+}
+```
+
+- **On by default.** `enabled = false` creates no alarms. The module calls `cloudwatch-alarms` with
+  `count = var.alarms.enabled ? 1 : 0` and the same `application`, `environment`, `name` and `tags`, so alarm names
+  are `<base name>-<preset>-<key>-<alarm>`.
+- **Routing.** `topic_arns` maps a severity to an SNS topic, normally
+  `module.alarm_routing.topic_arns["<region>"]` from
+  [`observability/alarm-routing`](../modules/aws/observability/alarm-routing). Topics are in the module's Region
+  (us-east-1 for CloudFront and `CLOUDFRONT`-scope WAF). With no topics, the alarms have no actions.
+- **Tuning.** `overrides` has one entry per alarm of the preset, with the same keys and fields as the preset's
+  `alarms` object but no defaults: a field left out keeps the preset default, so thresholds, severities and opt-in
+  alarms are defined once, in `cloudwatch-alarms`. Modules with two presets nest them (`eventbridge`:
+  `rules`/`schedules`; `eks`: `cluster`/`node_groups`).
+- **Settings.** The module maps its own settings into the preset where a threshold depends on them (Lambda `timeout`,
+  ALB `idle_timeout`, RDS `storage.allocated_storage`, EFS throughput and performance modes, ECS and EKS Container
+  Insights).
+- **Plan-time keys.** Preset entries are keyed by constants or input map keys; IDs and ARN suffixes are only dimension
+  values. A module whose preset would need a key known only after apply (ElastiCache member clusters) has no built-in
+  alarms and documents the standalone `cloudwatch-alarms` call instead.
+- **Outputs.** `alarm_arns` and `alarm_names`, by alarm key.
+
+`cloudwatch-alarms` stays public for custom alarms, log metric filters, the CIS filters and alarms that span modules.
+
 ### Policy statements
 
 Every input that adds to a policy uses one typed shape, rendered by `core/policy-document`:
@@ -255,8 +298,10 @@ resource, `count`/`for_each`, arguments, `tags`, `depends_on`, `lifecycle`.
   `log_group_name`, `log_group_arn`, `kms_key_arn`, `endpoint`, `port`, `dns_name`, `zone_id`, subnet IDs and CIDRs, and
   the IDs alarms need.
 - No output echoes an input, duplicates another output, or exports a whole resource.
-- Building blocks (`security/iam-role`, `network/security-group`, `observability/log-group`) also output their
-  rendered documents, rule IDs and effective settings, so the modules that compose them can test the wiring.
+- Modules with built-in alarms export `alarm_arns` and `alarm_names`.
+- Building blocks (`security/iam-role`, `network/security-group`, `observability/log-group`,
+  `observability/cloudwatch-alarms`) also output their rendered documents, rule IDs and effective settings, so the
+  modules that compose them can test the wiring.
 - `sensitive = true` only for secrets.
 
 ## Providers and versions

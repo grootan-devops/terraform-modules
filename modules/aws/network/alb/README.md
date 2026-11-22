@@ -19,6 +19,8 @@ log buckets are other modules; pass their ARNs and names in.
 - `aws_lb_target_group.this` (`target_groups`, named `<base>-<key>`), `aws_lb_listener_rule.this` (`listener_rules`,
   on every forwarding listener). Listeners forward to `default_target_group`, or answer 404 without one.
 - `aws_wafv2_web_acl_association.this`: with `waf = { enabled = true, web_acl_arn = ... }`.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -97,6 +99,45 @@ module "alb" {
 }
 ```
 
+### Built-in Alarms
+
+The `albs` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by default:
+`alb-lb-target-5xx-rate`, `alb-lb-elb-5xx-count` and `alb-lb-rejected-connections` (critical),
+`alb-lb-target-response-time-p99` (80 % of `idle_timeout`) and `alb-lb-<target group>-unhealthy-hosts` for each
+`target_groups` key. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "alb" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=<version>"
+
+  application          = "core"
+  environment          = "prod"
+  internal             = true
+  vpc_id               = module.vpc.vpc_id
+  subnet_ids           = module.vpc.private_subnet_ids
+  https_listener       = { certificate_arn = module.certificate.arn }
+  target_groups        = { app = { port = 8080 } }
+  default_target_group = "app"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      target_5xx_rate      = { threshold = 2 }
+      rejected_connections = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -119,6 +160,7 @@ module "alb" {
 | `idle_timeout` | Idle timeout in seconds (1-4000). | `number` | `60` | No |
 | `desync_mitigation_mode` | Desync mitigation: defensive or strictest. | `string` | `"defensive"` | No |
 | `deletion_protection` | Block deletion of the load balancer. | `bool` | `true` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -135,3 +177,5 @@ module "alb" {
 | `http_listener_arn` | HTTP listener ARN; null when disabled. | No |
 | `target_group_arns` | Target group ARNs by key, once a listener uses them. | No |
 | `target_group_arn_suffixes` | Target group ARN suffixes by key, for CloudWatch metrics. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |

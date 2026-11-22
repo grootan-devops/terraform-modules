@@ -59,4 +59,9 @@ run "plans_with_unknown_ids" {
     condition     = keys(module.zone.record_fqdns) == ["admin", "apex", "apex-ipv6", "www", "www-ipv6"] && module.admin.branch_names == ["main"]
     error_message = "Apex and www alias the distribution; admin points at the Amplify branch."
   }
+
+  assert {
+    condition     = keys(module.cdn.alarm_names) == ["cloudfront-distribution-5xx-error-rate"] && keys(module.alarm_routing.topic_arns) == ["us-east-1"]
+    error_message = "The distribution's alarm routes to us-east-1 topics, where CloudFront metrics live."
+  }
 }

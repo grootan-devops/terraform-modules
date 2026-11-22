@@ -14,6 +14,8 @@ and an optional customer managed key. Producers and consumers are other modules;
 - `aws_sqs_queue_policy.this`, `aws_sqs_queue_policy.dlq`: rendered by
   [`core/policy-document`](../../core/policy-document).
 - `module.encryption` ([`core/encryption`](../../core/encryption)): SSE-SQS, module key or your key.
+- `module.alarms` ([`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms)): built-in alarms, on by
+  default; see [Built-in Alarms](#built-in-alarms).
 
 ## Security & Compliance Guardrails
 
@@ -83,6 +85,41 @@ module "worker" {
 }
 ```
 
+### Built-in Alarms
+
+The `sqs_queues` preset of [`observability/cloudwatch-alarms`](../../observability/cloudwatch-alarms) is on by default:
+`sqs-queue-dlq-messages-visible` (critical, any message in the dead-letter queue) while `dead_letter_queue.enabled`.
+`sqs-queue-age-of-oldest-message` is on once `age_of_oldest_message.threshold` is set (seconds); `messages_visible` is
+opt-in and needs a threshold. Without `topic_arns` the alarms have no actions; `alarms = { enabled = false }` creates
+none.
+
+```hcl
+module "alarm_routing" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/observability/alarm-routing?ref=<version>"
+
+  environment = "prod"
+}
+
+module "sqs" {
+  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/sqs?ref=<version>"
+
+  application = "core"
+  environment = "prod"
+  name        = "orders"
+
+  alarms = {
+    topic_arns = module.alarm_routing.topic_arns["eu-west-1"]
+    overrides = {
+      age_of_oldest_message = { threshold = 900 }
+      dlq_messages_visible  = { enabled = false }
+    }
+  }
+}
+```
+
+`overrides` takes the preset's alarm keys and fields (`enabled`, `threshold`, `evaluation_periods`,
+`datapoints_to_alarm`, `period`, `severity`); a field left out keeps the preset default.
+
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
@@ -102,6 +139,7 @@ module "worker" {
 | `dead_letter_queue` | Dead-letter queue and redrive. | `object({...})` | `{}` | No |
 | `allowed_publishers` | Services allowed to send, by key: principal and source ARN. | `map(object({...}))` | `{}` | No |
 | `policy_statements` | Extra queue policy statements; resources default to the queue. | `list(object({...}))` | `[]` | No |
+| `alarms` | Built-in CloudWatch alarms: switch, topics by severity, per-alarm overrides. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
@@ -115,3 +153,5 @@ module "worker" {
 | `dlq_url` | Dead-letter queue URL; null when disabled. | No |
 | `dlq_name` | Dead-letter queue name; null when disabled. | No |
 | `kms_key_arn` | Key ARN in use; null for SSE-SQS. | No |
+| `alarm_arns` | Alarm ARN by key. | No |
+| `alarm_names` | Alarm name by key. | No |
