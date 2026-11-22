@@ -47,7 +47,7 @@ queues this module outputs.
   module key or the AWS managed key.
 - **Logs:** 365 days, deletion protection, encrypted with the module key when one is set.
 - **Network:** no ingress. Egress is TCP 443 to `security_group.egress_cidr_blocks` (default `0.0.0.0/0`, so jobs
-  pull images and call AWS APIs through a NAT gateway; registered Trivy suppression `AVD-AWS-0104`); set the VPC CIDR
+  pull images and call AWS APIs through a NAT gateway; Trivy suppression `AVD-AWS-0104`); set the VPC CIDR
   when interface endpoints serve those APIs. Other ports go to `egress_security_group_ids` and
   `egress_prefix_list_ids`, which are reached on every port. Jobs with EFS volumes add TCP 2049 to the VPC CIDR, so
   the EFS security group can admit this module's group without a dependency cycle.

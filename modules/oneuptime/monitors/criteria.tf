@@ -409,14 +409,12 @@ locals {
     )
   }
 
-  // Hand-written criteria, evaluated after the offline/degraded presets and
-  // before operational, in the order the monitor listed them.
   criteria_rendered_extra = {
     for entry in flatten([
       for key, spec in local.monitor_specs : [
         for index, criterion in spec.extra_criteria : {
-          id        = format("%s~%03d~%03d", key, 50, index)
-          criterion = criterion
+          id        = format("%s~%03d~%03d", key, coalesce(try(criterion.order, null), 50), index)
+          criterion = { for attribute, value in criterion : attribute => value if attribute != "order" }
         }
       ]
     ]) : entry.id => merge(local.monitor_criteria_defaults, entry.criterion)

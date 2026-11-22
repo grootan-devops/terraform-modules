@@ -276,6 +276,6 @@ resource, `count`/`for_each`, arguments, `tags`, `depends_on`, `lifecycle`.
 
 `versions.tf`, `variables.tf`, `locals.tf`, `main.tf` (plus one file per feature), `outputs.tf`, `README.md`
 ([README standard](module-readme.md)) and `tests/unit.tftest.hcl` ([Testing](testing.md)). No prose comments in `.tf`
-files; only scanner directives, each registered in [scanner suppressions](compliance/scanner-suppressions.md).
+files; only scanner directives, each explained in the module README's Security & Compliance Guardrails section.
 
 [Documentation index](../README.md#documentation)

@@ -38,7 +38,7 @@ resource "oneuptime_monitor" "this" {
   depends_on_monitors                          = try(each.value.config.depends_on_monitors, null)
   suppress_alerts_when_parent_monitor_statuses = try(each.value.config.suppress_alerts_when_parent_monitor_statuses, null)
 
-  custom_fields = try(each.value.config.custom_fields, null)
+  custom_fields = local.monitor_custom_fields[each.key]
 
   labels = toset([
     for label_name in each.value.label_names : var.label_ids[label_name]
@@ -54,6 +54,12 @@ resource "oneuptime_monitor_group" "this" {
   labels = toset([
     for label_name in each.value.label_names : var.label_ids[label_name]
   ])
+}
+
+resource "oneuptime_monitor_group_resource" "this" {
+  for_each         = local.monitor_group_members
+  monitor_group_id = oneuptime_monitor_group.this[each.value].id
+  monitor_id       = oneuptime_monitor.this[each.key].id
 }
 
 resource "oneuptime_monitor_owner_rule" "this" {

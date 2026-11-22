@@ -151,6 +151,41 @@ run "publishers_and_statements" {
   }
 }
 
+run "dead_letter_publishers" {
+  command = plan
+
+  variables {
+    kms = { create = true }
+    dead_letter_queue = {
+      allowed_publishers = {
+        orders-rule = { principal = "events.amazonaws.com", source_arn = "arn:aws:events:eu-west-1:123456789012:rule/core-prod-orders" }
+      }
+    }
+  }
+
+  assert {
+    condition     = [for s in jsondecode(aws_sqs_queue_policy.dlq[0].policy).Statement : s.Sid] == ["DenyInsecureTransport", "AllowDeadLetterordersrule"]
+    error_message = "Dead-letter publishers get their own statement after the TLS guard."
+  }
+
+  assert {
+    condition     = jsondecode(aws_sqs_queue_policy.dlq[0].policy).Statement[1].Principal.Service == ["events.amazonaws.com"] && jsondecode(aws_sqs_queue_policy.dlq[0].policy).Statement[1].Condition.ArnEquals["aws:SourceArn"] == ["arn:aws:events:eu-west-1:123456789012:rule/core-prod-orders"]
+    error_message = "Only the named rule may send failed events."
+  }
+}
+
+run "rejects_lambda_dead_letter_publisher" {
+  command = plan
+
+  variables {
+    dead_letter_queue = {
+      allowed_publishers = { fn = { principal = "lambda.amazonaws.com", source_arn = "arn:aws:lambda:eu-west-1:123456789012:function:x" } }
+    }
+  }
+
+  expect_failures = [var.dead_letter_queue]
+}
+
 run "caller_resource_is_kept" {
   command = apply
 

@@ -61,10 +61,9 @@ off and reports drift:
 
 - **Preventive:** SCPs, RCPs and declarative policies from
   [`modules/aws/governance/organizations`](../modules/aws/governance/organizations). They are created without
-  attachments and rolled out from a sandbox OU ([AWS Organizations governance](compliance/aws-organizations-governance.md)).
+  attachments and rolled out from a sandbox OU ([AWS Organizations governance](organizations-governance.md)).
 - **Detective:** AWS Config recording and rules, Security Hub CSPM standards, Inspector and IAM Access Analyzer from
   the modules under `modules/aws/security/`.
-- **Evidence:** the [compliance documentation](compliance/README.md) maps every enforced control to its code.
 
 ## Credential handling
 

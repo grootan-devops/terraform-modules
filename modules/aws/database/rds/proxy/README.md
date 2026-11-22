@@ -25,12 +25,13 @@ extra read/write endpoints and a pre-created log group.
 - **TLS (RDS.43):** `require_tls = true`, not configurable.
 - **Client authentication:** `auth[*].iam_auth = "REQUIRED"` by default; `DISABLED` allows database passwords,
   `ENABLED` is accepted for SQL Server only. `default_auth_scheme = "IAM_AUTH"` uses IAM end to end; add the
-  `rds-db:connect` statement to `iam_role.policy_statements`.
+  `rds-db:connect` statement to `iam_role.policy_statements`. Clients grant themselves `rds-db:connect` on
+  `"${db_user_arn_prefix}/<db user>"` and connect on `port`.
 - **Least privilege:** the role reads only the `auth` secrets and decrypts them only through Secrets Manager in this
   Region (`kms:ViaService`).
 - **Network:** `/0` ingress rejected. Egress reaches `target.security_group_ids` on the target port (at least one
   group is required while the module creates its security group) and AWS APIs (Secrets Manager, KMS, STS) on TCP 443
-  only. The default HTTPS destination `0.0.0.0/0` covers NAT gateways (registered Trivy suppression `AVD-AWS-0104`);
+  only. The default HTTPS destination `0.0.0.0/0` covers NAT gateways (Trivy suppression `AVD-AWS-0104`);
   set `security_group.egress_cidr_blocks` to the VPC CIDR when interface endpoints serve those APIs.
 - **Logs:** RDS Proxy otherwise creates its own log group without retention or a key. The `/aws/rds/proxy/<proxy>`
   name is observed service behaviour, not documented, so the group is opt-in (`cloudwatch_logs.enabled`); on an
@@ -138,6 +139,9 @@ module "proxy" {
 | `arn` | Proxy ARN. | No |
 | `name` | Proxy name (ProxyName dimension). | No |
 | `endpoint` | Default endpoint. | No |
+| `port` | Port the proxy listens on. | No |
+| `resource_id` | Proxy resource ID (prx-...). | No |
+| `db_user_arn_prefix` | rds-db:connect ARN prefix, without the user name. | No |
 | `endpoints` | Extra endpoint hostnames by key. | No |
 | `security_group_id` | Module security group ID; null when not created. | No |
 | `role_arn` | Proxy role ARN. | No |

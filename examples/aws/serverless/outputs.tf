@@ -27,3 +27,8 @@ output "rule_arns" {
   description = "Rule ARNs."
   value       = module.events.rule_arns
 }
+
+output "state_machine_name" {
+  description = "Fulfilment state machine name."
+  value       = module.fulfilment.name
+}

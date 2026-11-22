@@ -15,10 +15,10 @@ and the OneUptime monitoring that watches it.
 | Design a module's public API | [Module contract](docs/module-contract.md), [Provider schema](docs/provider-schema.md) |
 | Name resources and emit tags | [Naming and tagging](docs/naming-and-tagging.md), [Other providers](docs/other-providers.md) |
 | Choose security controls | [Security baselines](docs/security-baselines.md), [AWS catalog](docs/AWS.md), [OneUptime catalog](docs/ONEUPTIME.md), [Other providers](docs/other-providers.md) |
-| Govern an AWS organization and assess compliance | [Compliance documentation](docs/compliance/README.md), [AWS Organizations governance](docs/compliance/aws-organizations-governance.md), [Security baseline and roadmap](docs/compliance/aws-security-baseline.md) |
+| Govern an AWS organization | [AWS Organizations governance](docs/organizations-governance.md), [AWS catalog](docs/AWS.md) |
 | Write a module README | [Module README standard](docs/module-readme.md) |
 | Classify a change and release it | [Versioning and releases](docs/versioning.md), [MIGRATION.md](MIGRATION.md) |
-| Test, scan and verify a module | [Development and testing](docs/testing.md), [Scanner suppressions](docs/compliance/scanner-suppressions.md) |
+| Test, scan and verify a module | [Development and testing](docs/testing.md) |
 | Monitor a stack with OneUptime | [OneUptime catalog](docs/ONEUPTIME.md), [OneUptime module](modules/oneuptime/README.md), [Other providers](docs/other-providers.md#oneuptime) |
 
 ## Requirements

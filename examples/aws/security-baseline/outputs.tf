@@ -17,3 +17,18 @@ output "budget_names" {
   description = "Budget names by key."
   value       = module.costs.budget_names
 }
+
+output "backup_vault_name" {
+  description = "Backup vault name."
+  value       = module.backup.vault_name
+}
+
+output "backup_role_name" {
+  description = "Backup service role name."
+  value       = module.backup.role_name
+}
+
+output "scp_names" {
+  description = "Organization policy names by key."
+  value       = { for k, p in module.organization.policies : k => p.name }
+}

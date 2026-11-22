@@ -25,6 +25,7 @@ make verify MODULES="modules/aws/compute/lambda modules/aws/security/kms"   # a 
   examples from the parent.
 - No Markdown anywhere in the repository points a module `source` at a relative path.
 - A native test suite exists under `tests/*.tftest.hcl`.
+- Every `#trivy:ignore:<check>` in the module names a check its README explains.
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, and
   `terraform validate` all pass, and `terraform test` passes.
 
@@ -39,15 +40,8 @@ terraform test          # tests/*.tftest.hcl; the suites need Terraform >= 1.10 
 
 ## Repository checks beside the module gate
 
-`make contracts` also runs these unit tests:
+`make contracts` also runs this unit test:
 
-- `tests/test_compliance_inventory.py`: every entry in `docs/compliance/aws-compliance-inventory.json` has the
-  schema, cites Security Hub control IDs that exist in the catalog, names a module and resource type that exist,
-  and carries evidence patterns that still match the code. The generated matrix, CSV and standards page must be
-  current (`python3 scripts/compliance/render_compliance.py`).
-- `tests/test_scanner_suppressions.py`: every inline `#trivy:ignore:` or `# tflint-ignore:` is listed with a reason,
-  justification and remediation reference in `docs/compliance/scanner-suppressions.md`, no listed row is stale,
-  and no repository-wide skip file exists.
 - `tests/test_cloudwatch_alarms_contract.py`: the alarms module creates no destination resources and turns actions on
   only through `var.notifications` (off by default, caller-supplied topic ARNs only); the alarm-routing module creates
   only KMS-encrypted SNS topics, topic policies and email/HTTPS subscriptions; no example or test names a real endpoint.
@@ -62,8 +56,8 @@ terraform test          # tests/*.tftest.hcl; the suites need Terraform >= 1.10 
 
 and, in the repository, `verify` (`make verify` in `grootantech/toolkit:2.1.0`): the Python unit tests, the contract
 checks and every module's `terraform test`. A scanner finding is fixed in the module; when the provider or the
-service leaves no fix, it is suppressed inline on that one resource and registered in
-[scanner suppressions](compliance/scanner-suppressions.md). There is no repository-wide skip list.
+service leaves no fix, it is suppressed inline on that one resource and the module README's Security & Compliance
+Guardrails section says why. There is no repository-wide skip list.
 
 ## Test levels
 

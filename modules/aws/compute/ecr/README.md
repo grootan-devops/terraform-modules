@@ -20,8 +20,8 @@ belong to the account baseline, not here.
 - **Immutable tags (ECR.2):** `IMMUTABLE` by default; `*_WITH_EXCLUSION` modes take up to 5 wildcard filters.
 - **Scan on push (ECR.1):** on by default. A registry scanning configuration (enhanced scanning) overrides it.
 - **Lifecycle policy (ECR.3):** on by default.
-- **Encryption:** AES256 (ECR's default encryption) with no `kms` input; `kms.create` or `kms.key_id` switches to
-  SSE-KMS. ECR uses KMS grants created by the deploying principal, which needs `kms:CreateGrant`, `kms:DescribeKey`
+- **Encryption:** AES256 (ECR's default encryption) with no `kms` input, the reason for the Trivy suppression
+  `AVD-AWS-0033`; `kms.create` or `kms.key_id` switches to SSE-KMS. ECR uses KMS grants created by the deploying principal, which needs `kms:CreateGrant`, `kms:DescribeKey`
   and `kms:Decrypt` on the key.
 - **No public access:** `pull_principal_arns` rejects `*`; caller statements need principals, and an `Allow` to `*`
   needs a condition. Cross-account principals get `BatchGetImage`, `GetDownloadUrlForLayer` and

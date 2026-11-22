@@ -29,6 +29,8 @@ log buckets are other modules; pass their ARNs and names in.
   `strictest`.
 - **Deletion protection (ELB.6), multi-AZ (ELB.13):** on by default; at least two subnets.
 - **Exposure:** no ingress until sources are listed; `0.0.0.0/0` and `::/0` are rejected unless `internal = false`.
+  `internal` has no default, so an internet-facing load balancer is always an explicit choice (Trivy suppression
+  `AVD-AWS-0053`).
 - **WAF (ELB.16):** the module owns the association; `waf.fail_open = false` keeps requests blocked when WAF is
   unreachable.
 - **Logs (ELB.5):** `access_logs` writes access and connection logs to a bucket in the load balancer's Region. ALB log

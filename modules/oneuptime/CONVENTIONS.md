@@ -269,7 +269,7 @@ Terraform maps are unordered and their keys sort alphabetically, so anything
 order-sensitive gets an explicit sort key at layer 4.
 
 * **`order` attributes** fall back to position: `coalesce(group.order, index(keys(page.groups), name) + 1)`. Keys are sorted, so this is stable across plans.
-* **Monitor criteria** are first-match-wins server-side, so the preset carries an `order` (offline `10`, extras `50`, operational `90`), the rendered map is keyed `"<monitor>~<order>~<preset>"`, and `sort()` on those keys produces evaluation order. Listing presets in a different order in the stack's config cannot break it.
+* **Monitor criteria** are first-match-wins server-side, so the preset carries an `order` (offline `10`, degraded `20`, operational `90`; an extra criterion its own `order`, default `50`), the rendered map is keyed `"<monitor>~<order>~<preset or index>"`, and `sort()` on those keys produces evaluation order. Listing presets in a different order in the stack's config cannot break it.
 * **Never** rely on the order of a `for_each` map or on user-supplied key order.
 
 ## 8. HCL idioms, and two traps

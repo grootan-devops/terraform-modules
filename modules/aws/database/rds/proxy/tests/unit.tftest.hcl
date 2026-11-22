@@ -179,6 +179,11 @@ run "outputs" {
     condition     = length(output.endpoints) == 0 && output.log_group_name == null
     error_message = "No extra endpoints or log group by default."
   }
+
+  assert {
+    condition     = output.port == 5432 && output.resource_id == "prx-0123456789abcdef0" && output.db_user_arn_prefix == "arn:aws:rds-db:eu-west-1:123456789012:dbuser:prx-0123456789abcdef0"
+    error_message = "Port, resource ID and the rds-db:connect ARN prefix must be output."
+  }
 }
 
 run "egress_is_planned_safely" {

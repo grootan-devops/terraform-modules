@@ -431,6 +431,21 @@ variable "status_page_configs" {
     ])
     error_message = "A status page domain must set exactly one of domain_name or domain_id."
   }
+
+  validation {
+    condition = var.custom_fields == null || alltrue([
+      for key, page in var.status_page_configs :
+      page.custom_fields == null || can(keys(jsondecode(page.custom_fields)))
+    ])
+
+    error_message = format(
+      "custom_fields must be a JSON object: %s.",
+      join(", ", [
+        for key, page in var.status_page_configs : key
+        if page.custom_fields != null && !can(keys(jsondecode(page.custom_fields)))
+      ]),
+    )
+  }
 }
 
 

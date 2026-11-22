@@ -162,9 +162,23 @@ variable "dead_letter_queue" {
     enabled                   = optional(bool, true)
     max_receive_count         = optional(number, 3)
     message_retention_seconds = optional(number, 1209600)
+    allowed_publishers = optional(map(object({
+      principal  = string
+      source_arn = string
+    })), {})
   })
   default  = {}
   nullable = false
+
+  validation {
+    condition     = alltrue([for p in values(var.dead_letter_queue.allowed_publishers) : contains(["events.amazonaws.com", "sns.amazonaws.com"], p.principal)])
+    error_message = "dead_letter_queue.allowed_publishers[*].principal: events or sns.amazonaws.com."
+  }
+
+  validation {
+    condition     = var.dead_letter_queue.enabled || length(var.dead_letter_queue.allowed_publishers) == 0
+    error_message = "dead_letter_queue.allowed_publishers: needs enabled = true."
+  }
 
   validation {
     condition     = var.dead_letter_queue.max_receive_count >= 1 && var.dead_letter_queue.max_receive_count <= 1000

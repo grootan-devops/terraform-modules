@@ -18,7 +18,7 @@ on-call never touches monitors.
 | --- | --- | --- |
 | Root | `oneuptime_label.this` | label name in `labels_config`, plus the `application` label |
 | Root | `oneuptime_team.this` | group in `rbac_team_mapping` |
-| [Monitors](monitors/README.md) | `oneuptime_monitor` | slug in `monitors_component_mapping` |
+| [Monitors](monitors/README.md) | `oneuptime_monitor`, `oneuptime_monitor_group_resource` (its membership of the component's group) | slug in `monitors_component_mapping` |
 | [Monitors](monitors/README.md) | `oneuptime_monitor_group`, `_owner_rule`, `_label_rule` | component |
 | [Alerts](alerts/README.md) | `oneuptime_alert_owner_rule`, `_label_rule`, `_grouping_rule` | component |
 | [Incidents](incidents/README.md) | `oneuptime_incident_owner_rule`, `_label_rule`, `_grouping_rule` | component |
@@ -60,6 +60,9 @@ dependencies between areas, and they are data, never `depends_on`.
 - **Secrets stay out of state**: monitors reference credentials as
   `"{{monitorSecrets.<name>}}"`. Workflow variable content (`workflow_variable_contents`) is
   `sensitive`, applied on create and then ignored, because OneUptime never returns it.
+- **Heartbeat and agent keys**: the Incoming Request, Incoming Email and Server monitor secret
+  keys are `sensitive` outputs. OneUptime generates them, so they are in state; protect the state
+  like any credential store.
 - **Public status pages by default**: `status_page_defaults` ships pages public and indexable,
   which is the common shape for a customer-facing page. Set `is_public_status_page = false`
   and `enable_search_engine_indexing = false` for an internal page. The MCP server is off.
@@ -239,7 +242,7 @@ module "oneuptime" {
 | `status_page_announcements` | Announcements published across status pages. | `map(object({...}))` | `{}` | No |
 | `workflow_configs` | Workflows as nodes, and their variables. See [workflows](workflows/README.md). | `map(object({...}))` | `{}` | No |
 | `workflow_variable_contents` | `"<workflow>.<variable>"` -> initial variable content. Write-once. | `map(string)` | `{}` | No |
-| `custom_fields` | Project-level custom fields as a JSON string. Accepted but not yet applied to any resource. | `string` | `null` | No |
+| `custom_fields` | Stack-wide custom fields as a JSON object string, e.g. `jsonencode({ team = "core" })`. Merged under every monitor's and status page's own `custom_fields`, the item's keys winning. | `string` | `null` | No |
 
 `workflow_variable_contents` is `sensitive`.
 
@@ -253,8 +256,14 @@ module "oneuptime" {
 | `team_ids` | Group name -> team id. | No |
 | `monitor_ids` | Monitor slug -> monitor id. | No |
 | `monitor_group_ids` | Component -> monitor group id. | No |
+| `monitor_group_memberships` | Monitor slug -> id of the monitor group it is in. | No |
+| `incoming_request_secret_keys` | Incoming Request monitor slug -> heartbeat secret key. | Yes |
+| `incoming_email_secret_keys` | Incoming Email monitor slug -> inbound email secret key. | Yes |
+| `server_monitor_secret_keys` | Server monitor slug -> agent secret key. | Yes |
 | `on_call_policy_ids` | Component -> on-call policy id. | No |
+| `on_call_schedule_ids` | Component -> on-call schedule id, for components with `schedule_enabled`. | No |
 | `status_page_ids` | Status page key -> status page id. | No |
+| `status_page_group_ids` | `"<page key>.<group key>"` -> status page group id. | No |
 | `workflow_ids` | Workflow key -> workflow id. | No |
 | `workflow_graphs` | Workflow key -> the canvas JSON sent to OneUptime. | No |
 

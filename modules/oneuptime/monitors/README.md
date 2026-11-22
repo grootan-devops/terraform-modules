@@ -3,6 +3,8 @@
 Creates one `oneuptime_monitor` per entry in `monitor_configs`, plus the
 `oneuptime_monitor_group`, `oneuptime_monitor_owner_rule` and
 `oneuptime_monitor_label_rule` for each component in `rbac_component_mapping`.
+An `oneuptime_monitor_group_resource` puts every monitor in its component's
+group.
 
 Inputs are set on the **parent module** (`modules/oneuptime`), not here — this
 submodule receives them already normalized, along with resolved label and team
@@ -18,6 +20,10 @@ selectable in the OneUptime dashboard afterwards.
 | --- | --- |
 | `monitor_ids` | monitor key -> monitor id. Consumed by `status-pages`. |
 | `monitor_group_ids` | component -> monitor group id. |
+| `monitor_group_memberships` | monitor key -> id of the monitor group it is in. |
+| `incoming_request_secret_keys` | Incoming Request monitor key -> heartbeat secret key. Sensitive. |
+| `incoming_email_secret_keys` | Incoming Email monitor key -> inbound email secret key. Sensitive. |
+| `server_monitor_secret_keys` | Server monitor key -> agent secret key. Sensitive. |
 | `monitor_status_ids` | `operational` / `degraded` / `offline` -> monitor status id. Consumed by `workflows`. |
 
 ---
@@ -174,12 +180,14 @@ incident or alert are generated once, generically.
 
 | Preset | Order | Condition | Status | Creates |
 | --- | --- | --- | --- | --- |
-| `offline` | 1st | `Any` | Offline | incident, at `severities.incident` |
-| `degraded` | 2nd | `All` | Degraded | alert, at `severities.alert` |
-| `operational` | last | `All` | Operational | — |
+| `offline` | `10` | `Any` | Offline | incident, at `severities.incident` |
+| `degraded` | `20` | `All` | Degraded | alert, at `severities.alert` |
+| `operational` | `90` | `All` | Operational | — |
 
 Order is fixed by the preset, not by the order they are listed — criteria are
-evaluated first-match-wins, so the worst case has to come first.
+evaluated first-match-wins, lowest order first, so the worst case has to come
+first. `extra_criteria` sit at `50` unless they set their own `order`
+([§6](#6-escape-hatches)).
 
 ### Filters per monitor type
 
@@ -222,7 +230,7 @@ slugs are created; an entry whose slug is not mapped is ignored.
 | `thresholds` | threshold overrides for every criterion of this monitor |
 | `criteria` | `preset -> values`, see below |
 | `criteria_presets` | which presets to generate. Defaults to all the ones the type supports |
-| `extra_criteria` | fully-formed criteria, evaluated after `degraded` and before `operational` |
+| `extra_criteria` | fully-formed criteria, evaluated at their `order` (default `50`: after `degraded`, before `operational`) |
 | `monitor_steps` | full escape hatch. Opts the monitor out of step generation entirely |
 | `monitoring_interval` | cron string, see [§5](#5-allowed-values) |
 | `disable_active_monitoring` | `true` pauses checks |
@@ -230,7 +238,7 @@ slugs are created; an entry whose slug is not mapped is ignored.
 | `depends_on_monitors` | set of monitor ids, e.g. `[oneuptime_monitor.this["k8s-cluster"].id]` |
 | `suppress_alerts_when_parent_monitor_statuses` | only read when `depends_on_monitors` is non-empty |
 | `monitor_template_id` | provision from a template instead of steps |
-| `custom_fields` | `jsonencode({...})` |
+| `custom_fields` | `jsonencode({...})`. Merged over the module's stack-wide `custom_fields`, this monitor's keys winning |
 
 Entries are **heterogeneous objects** — an API monitor carries `target`, a Port
 monitor carries `port`, a Manual monitor carries neither. `var.monitor_configs`
@@ -384,15 +392,24 @@ criteria = {
 
 ### `extra_criteria` — a check no preset covers
 
-Fully-formed criteria, appended after `degraded` and before `operational`, in
-the order listed.
+Fully-formed criteria, placed among the presets by an optional `order` (a whole
+number from `0` to `999`, default `50`). Evaluation is first match wins, lowest
+order first: `offline` is `10`, `degraded` `20`, `operational` `90`. An extra
+criterion runs before a preset with the same order, and extra criteria with the
+same order run in the order listed. `order` is not sent to OneUptime.
+
+The default `50` suits a check that only matters once the monitor is neither
+offline nor degraded. A check that overlaps the generated Offline criterion
+needs a lower order: on an API or Website monitor, Offline matches any status
+code other than `expected_status_code`, so a 429 criterion at `50` never fires.
 
 ```hcl
 extra_criteria = [
   {
-    name             = "Rate limited"
-    filter_condition = "All"
-    filters          = [{ check_on = "Response Status Code", filter_type = "Equal To", value = "429" }]
+    name                  = "Rate limited"
+    order                 = 5                     # before Offline, which matches any non-200 code
+    filter_condition      = "All"
+    filters               = [{ check_on = "Response Status Code", filter_type = "Equal To", value = "429" }]
     change_monitor_status = true
     monitor_status_id     = data.oneuptime_monitor_status.degraded.id
   },
@@ -490,7 +507,8 @@ Each criterion written by hand takes: `name` (**required**), `description`,
 ### Server — agent-reported host metrics
 
 No destination; the agent posts in using the monitor's
-`server_monitor_secret_key`.
+`server_monitor_secret_key`, which the module outputs as
+`server_monitor_secret_keys["<slug>"]` (sensitive).
 
 ```hcl
 "build-runner-01" = {
@@ -504,7 +522,9 @@ No destination; the agent posts in using the monitor's
 
 The job pings the monitor URL; `heartbeat_timeout_minutes` is the window, and it
 belongs on the monitor rather than one criterion because both the offline and
-the operational criterion read it.
+the operational criterion read it. The job reports with the monitor's secret
+key, `incoming_request_secret_keys["<slug>"]` (`incoming_email_secret_keys` for
+an Incoming Email monitor), both sensitive outputs.
 
 ```hcl
 "nightly-backup" = {
@@ -615,7 +635,8 @@ validation if they do not.
 * `value` in a hand-written filter is **always a string**, even for numbers and
   durations. Generated criteria handle this themselves.
 * Criteria are evaluated **top to bottom, first match wins**. Presets are
-  ordered for you; `extra_criteria` land between `degraded` and `operational`.
+  ordered for you; `extra_criteria` land between `degraded` and `operational`
+  unless their `order` moves them.
 * `Not Recieved In Minutes` / `Recieved In Minutes` are misspelled upstream. The
   misspelling is required.
 * Omit `incidents` / `alerts` entirely rather than passing `[]`.

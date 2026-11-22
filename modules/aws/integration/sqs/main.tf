@@ -95,7 +95,7 @@ module "dlq_policy" {
   count  = var.dead_letter_queue.enabled ? 1 : 0
 
   default_resources = [aws_sqs_queue.dlq[0].arn]
-  statements        = [local.tls_statement]
+  statements        = concat([local.tls_statement], local.dlq_publisher_statements)
 }
 
 resource "aws_sqs_queue_policy" "dlq" {

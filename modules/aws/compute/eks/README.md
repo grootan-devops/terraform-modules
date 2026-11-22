@@ -34,8 +34,8 @@ Kubernetes resources (Helm releases, namespaces, the Load Balancer Controller it
 - **Version (EKS.2, EKS.9):** `cluster_version` is required; node groups follow it unless `release_version` is set.
 - **Audit logging (EKS.8):** all five control plane log types by default, kept 365 days with deletion protection.
 - **Secrets:** with `kms.create` or `kms.key_id`, Kubernetes secrets are envelope-encrypted with that key; without
-  it, EKS encrypts all Kubernetes API data with an AWS owned key (Kubernetes 1.28+), registered as a Trivy
-  suppression (`AVD-AWS-0039`).
+  it, EKS encrypts all Kubernetes API data with an AWS owned key (Kubernetes 1.28+), the reason for the Trivy
+  suppression `AVD-AWS-0039`.
 - **Nodes:** IMDSv2 with hop limit 2, encrypted gp3 volumes (module key or the AWS managed EBS key), governance tags
   on instances and volumes. The node role has `AmazonEKSWorkerNodePolicy` and `AmazonEC2ContainerRegistryPullOnly`;
   `AmazonEKS_CNI_Policy` moves to the VPC CNI Pod Identity role when add-ons are on.

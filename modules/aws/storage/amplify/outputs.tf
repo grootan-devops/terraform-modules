@@ -24,11 +24,17 @@ output "branch_names" {
 }
 
 output "domain_dns_records" {
-  description = "Certificate verification and sub-domain DNS records by domain."
+  description = "DNS records by domain: certificate verification and sub-domains as name, type, value."
   value = {
     for d, a in aws_amplify_domain_association.this : d => {
-      certificate_verification = a.certificate_verification_dns_record
-      sub_domains              = { for s in a.sub_domain : s.prefix => s.dns_record }
+      certificate_verification = try(zipmap(["name", "type", "value"], compact(split(" ", a.certificate_verification_dns_record))), null)
+      sub_domains = {
+        for s in a.sub_domain : s.prefix => {
+          name  = s.prefix
+          type  = try(reverse(compact(split(" ", s.dns_record)))[1], null)
+          value = try(reverse(compact(split(" ", s.dns_record)))[0], null)
+        }
+      }
     }
   }
 }

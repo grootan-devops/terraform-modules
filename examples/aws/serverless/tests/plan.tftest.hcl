@@ -49,4 +49,14 @@ run "plans_with_unknown_arns" {
     condition     = module.http_api.name == "shop-dev-public" && module.http_api.stage_name == "$default"
     error_message = "The HTTP API serves the same function behind the Cognito JWT authorizer."
   }
+
+  assert {
+    condition     = output.state_machine_name == "shop-dev-fulfilment" && module.fulfilment.log_group_name == "/aws/vendedlogs/states/shop-dev-fulfilment"
+    error_message = "The fulfilment state machine and its vended log group follow the naming standard."
+  }
+
+  assert {
+    condition     = module.fulfilment.role_name == "shop-dev-fulfilment-sfn-eu-west-1" && !contains(output.role_names, module.fulfilment.role_name)
+    error_message = "The state machine has its own execution role, never a function's."
+  }
 }

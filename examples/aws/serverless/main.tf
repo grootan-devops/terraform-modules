@@ -30,6 +30,11 @@ module "orders_queue" {
   allowed_publishers = {
     events = { principal = "events.amazonaws.com", source_arn = module.events.rule_arns["order-created"] }
   }
+  dead_letter_queue = {
+    allowed_publishers = {
+      events = { principal = "events.amazonaws.com", source_arn = module.events.rule_arns["order-created"] }
+    }
+  }
 }
 
 module "api_fn" {
@@ -38,11 +43,12 @@ module "api_fn" {
   application           = var.application
   environment           = var.environment
   name                  = "api"
-  environment_variables = { TABLE_NAME = module.orders_table.name }
+  environment_variables = { TABLE_NAME = module.orders_table.name, FULFILMENT_STATE_MACHINE_ARN = module.fulfilment.arn }
   iam_role = {
     policy_statements = [
       { sid = "ReadWriteOrders", actions = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"], resources = [module.orders_table.arn] },
-      { sid = "PublishEvents", actions = ["events:PutEvents"], resources = [module.events.bus_arn] }
+      { sid = "PublishEvents", actions = ["events:PutEvents"], resources = [module.events.bus_arn] },
+      { sid = "StartFulfilment", actions = ["states:StartExecution"], resources = [module.fulfilment.arn] }
     ]
   }
 }
@@ -119,5 +125,38 @@ module "http_api" {
   routes = {
     "GET /orders"  = { integration = "orders", authorizer = "users" }
     "POST /orders" = { integration = "orders", authorizer = "users" }
+  }
+}
+
+module "fulfilment" {
+  source = "../../../modules/aws/integration/step-functions"
+
+  application          = var.application
+  environment          = var.environment
+  name                 = "fulfilment"
+  kms                  = { create = true }
+  lambda_function_arns = [module.worker_fn.arn]
+  definition = jsonencode({
+    StartAt = "Fulfil"
+    States = {
+      Fulfil = {
+        Type       = "Task"
+        Resource   = "arn:aws:states:::lambda:invoke"
+        Parameters = { FunctionName = module.worker_fn.alias_arn, "Payload.$" = "$" }
+        Retry      = [{ ErrorEquals = ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], IntervalSeconds = 2, MaxAttempts = 3, BackoffRate = 2 }]
+        Next       = "Notify"
+      }
+      Notify = {
+        Type     = "Task"
+        Resource = "arn:aws:states:::events:putEvents"
+        Parameters = {
+          Entries = [{ EventBusName = module.events.bus_arn, Source = "shop.orders", DetailType = "OrderFulfilled", "Detail.$" = "$.Payload" }]
+        }
+        End = true
+      }
+    }
+  })
+  iam_role = {
+    policy_statements = [{ sid = "PublishEvents", actions = ["events:PutEvents"], resources = [module.events.bus_arn] }]
   }
 }

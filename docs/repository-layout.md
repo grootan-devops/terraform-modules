@@ -9,13 +9,12 @@ terraform-modules/
 ├── Makefile                            # contracts, validate, test, verify (MODULES= filter)
 ├── docs/
 │   ├── AWS.md                          # AWS module catalog, wiring, examples and roadmap
-│   ├── compliance/                     # Compliance assessment, controls matrix, inventory, governance runbook
-│   │   └── data/                       # Security Hub CSPM control catalog (generated)
 │   ├── ONEUPTIME.md                    # OneUptime architecture, monitoring baselines & catalog
 │   ├── consumption.md                  # Calling modules and the rules for composing environments
 │   ├── module-contract.md              # The AWS module standard
 │   ├── module-readme.md                # The README every module ships
 │   ├── naming-and-tagging.md           # Collision-free names, length limits and governance tags
+│   ├── organizations-governance.md     # Account model, policy types, rollout and break-glass for an organization
 │   ├── other-providers.md              # Naming bounds and capability tables beyond AWS
 │   ├── provider-schema.md              # Deriving inputs and outputs from the schema
 │   ├── repository-layout.md            # This layout
@@ -24,7 +23,8 @@ terraform-modules/
 │   ├── testing.md                      # make verify, the gate, test levels and test shapes
 │   └── versioning.md                   # SemVer levels and releases
 ├── examples/
-│   └── aws/                            # serverless, web-service, eks-platform, multi-region, security-baseline
+│   ├── aws/                            # serverless, web-service, static-site, eks-platform, multi-region, security-baseline
+│   └── oneuptime/                      # platform: every OneUptime area in one inventory
 ├── modules/
 │   ├── aws/
 │   │   ├── core/                       # naming, encryption, policy-document (helpers)
@@ -38,8 +38,7 @@ terraform-modules/
 │   │   │                               # iam-role, identity-center, inspector, kms, secrets-manager, security-hub
 │   │   └── storage/                    # amplify, backup, efs, log-bucket, s3
 │   └── oneuptime/                      # OneUptime monitors, on-call, status pages, workflows
-├── scripts/compliance/                 # Control catalog fetcher, Config rule generator, compliance renderer
-└── tests/                              # Contract gate, compliance inventory, suppression and alarm checks
+└── tests/                              # Contract gate and alarm checks
 ```
 
 [Documentation index](../README.md#documentation)

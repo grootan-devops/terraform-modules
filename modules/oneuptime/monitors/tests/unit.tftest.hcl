@@ -954,6 +954,193 @@ run "stack_defaults_sit_under_monitor_and_criterion_values" {
   }
 }
 
+run "every_monitor_joins_its_component_group" {
+  command = apply
+
+  assert {
+    condition     = toset(keys(oneuptime_monitor_group_resource.this)) == toset(keys(oneuptime_monitor.this))
+    error_message = "Every created monitor should be added to a monitor group."
+  }
+
+  assert {
+    condition = alltrue([
+      for key, member in oneuptime_monitor_group_resource.this :
+      member.monitor_id == oneuptime_monitor.this[key].id
+      && member.monitor_group_id == oneuptime_monitor_group.this[local.monitor_definitions[key].component].id
+    ])
+    error_message = "Each monitor should join the group of the component that maps it."
+  }
+
+  assert {
+    condition = (
+      output.monitor_group_memberships["api"] == oneuptime_monitor_group.this["application"].id
+      && output.monitor_group_memberships["edge"] == oneuptime_monitor_group.this["platform"].id
+    )
+    error_message = "monitor_group_memberships should map each monitor to its component's group id."
+  }
+}
+
+run "a_component_without_owners_gets_no_group_membership" {
+  command = plan
+
+  variables {
+    monitors_component_mapping = {
+      "platform" = ["edge"]
+      "devops"   = ["maintenance"]
+    }
+  }
+
+  assert {
+    condition     = keys(oneuptime_monitor_group_resource.this) == ["edge"] && contains(keys(oneuptime_monitor.this), "maintenance")
+    error_message = "A monitor whose component has no monitor group should be created without a membership."
+  }
+}
+
+run "extra_criteria_take_their_order_among_the_presets" {
+  command = plan
+
+  variables {
+    monitors_component_mapping = { "application" = ["api"] }
+    monitor_configs = {
+      "api" = {
+        display_name = "Core API"
+        monitor_type = "API"
+        target       = "https://api.example.com/health"
+        extra_criteria = [
+          {
+            name                  = "Rate limited"
+            order                 = 5
+            filters               = [{ check_on = "Response Status Code", filter_type = "Equal To", value = "429" }]
+            change_monitor_status = true
+            monitor_status_id     = "status-degraded"
+          },
+          {
+            name    = "Maintenance page"
+            filters = [{ check_on = "Response Status Code", filter_type = "Equal To", value = "503" }]
+          },
+          {
+            name    = "Read-only"
+            order   = 10
+            filters = [{ check_on = "Response Body", filter_type = "Contains", value = "read-only" }]
+          },
+          {
+            name    = "Slow start"
+            order   = 15
+            filters = [{ check_on = "Response Time (in ms)", filter_type = "Greater Than", value = "10000" }]
+          },
+        ]
+      }
+    }
+  }
+
+  assert {
+    condition = [for c in oneuptime_monitor.this["api"].monitor_steps[0].criteria : c.name] == [
+      "Rate limited", "Read-only", "Offline", "Slow start", "Degraded", "Maintenance page", "Operational",
+    ]
+    error_message = "Extra criteria should sort by order (default 50) against offline 10, degraded 20 and operational 90, ahead of a preset at the same order."
+  }
+
+  assert {
+    condition     = alltrue([for c in local.monitor_criteria["api"] : !contains(keys(c), "order")])
+    error_message = "order should be dropped before the criterion is sent."
+  }
+
+  assert {
+    condition = (
+      oneuptime_monitor.this["api"].monitor_steps[0].criteria[0].monitor_status_id == "status-degraded"
+      && oneuptime_monitor.this["api"].monitor_steps[0].criteria[0].filters[0].value == "429"
+      && oneuptime_monitor.this["api"].monitor_steps[0].criteria[0].filter_condition == "All"
+    )
+    error_message = "An extra criterion moved first should keep its own values over the criteria defaults."
+  }
+}
+
+run "stack_custom_fields_sit_under_a_monitors_own" {
+  command = plan
+
+  variables {
+    custom_fields              = jsonencode({ team = "core", tier = "2" })
+    monitors_component_mapping = { "application" = ["api", "docs"] }
+    monitor_configs = {
+      "api" = {
+        display_name  = "Core API"
+        monitor_type  = "API"
+        target        = "https://api.example.com/health"
+        custom_fields = jsonencode({ tier = "1", runbook = "https://runbooks.example.com/api" })
+      }
+      "docs" = {
+        monitor_type = "Website"
+        target       = "https://docs.example.com"
+      }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(oneuptime_monitor.this["api"].custom_fields) == { team = "core", tier = "1", runbook = "https://runbooks.example.com/api" }
+    error_message = "A monitor's own custom_fields should win over the stack's, key by key."
+  }
+
+  assert {
+    condition     = oneuptime_monitor.this["docs"].custom_fields == jsonencode({ team = "core", tier = "2" })
+    error_message = "A monitor without custom_fields should take the stack's."
+  }
+}
+
+run "a_monitors_custom_fields_pass_through_without_a_stack_default" {
+  command = plan
+
+  variables {
+    monitors_component_mapping = { "application" = ["api"] }
+    monitor_configs = {
+      "api" = {
+        display_name  = "Core API"
+        monitor_type  = "API"
+        target        = "https://api.example.com/health"
+        custom_fields = "{\"tier\": \"1\"}"
+      }
+    }
+  }
+
+  assert {
+    condition     = oneuptime_monitor.this["api"].custom_fields == "{\"tier\": \"1\"}"
+    error_message = "Without a stack default a monitor's custom_fields should be sent verbatim."
+  }
+}
+
+run "secret_keys_are_listed_by_monitor_type" {
+  command = apply
+
+  variables {
+    monitors_component_mapping = {
+      "platform" = ["backup", "runner", "mailbox", "edge"]
+    }
+    monitor_configs = merge(var.monitor_configs, {
+      "mailbox" = {
+        display_name = "Backup report mailbox"
+        monitor_type = "Incoming Email"
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      keys(nonsensitive(output.incoming_request_secret_keys)) == ["backup"]
+      && keys(nonsensitive(output.incoming_email_secret_keys)) == ["mailbox"]
+      && keys(nonsensitive(output.server_monitor_secret_keys)) == ["runner"]
+    )
+    error_message = "Each secret key output should list only the monitors of its type."
+  }
+
+  assert {
+    condition = (
+      nonsensitive(output.incoming_request_secret_keys["backup"]) == oneuptime_monitor.this["backup"].incoming_request_secret_key
+      && nonsensitive(output.incoming_email_secret_keys["mailbox"]) == oneuptime_monitor.this["mailbox"].incoming_email_secret_key
+      && nonsensitive(output.server_monitor_secret_keys["runner"]) == oneuptime_monitor.this["runner"].server_monitor_secret_key
+    )
+    error_message = "The secret key outputs should read the monitor's own secret key attributes."
+  }
+}
+
 run "outputs_expose_the_created_ids" {
   command = apply
 

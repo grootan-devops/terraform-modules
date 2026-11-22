@@ -14,7 +14,7 @@ variable "incident_grouping_rule_config" {
     enable_reopen_window  = bool
     reopen_window_minutes = number
   })
-  description = "Alert grouping rule configuration"
+  description = "Incident grouping rule configuration"
   default = {
     enable_time_window       = false
     group_by_monitor         = false

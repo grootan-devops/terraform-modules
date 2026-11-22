@@ -19,6 +19,7 @@ module "monitors" {
   monitors_component_mapping = var.monitors_component_mapping
   monitor_configs            = var.monitor_configs
   monitor_defaults           = var.monitor_defaults
+  custom_fields              = var.custom_fields
 
   component_definitions = local.component_definitions
   label_ids             = local.label_ids
@@ -75,6 +76,7 @@ module "status_pages" {
   status_page_configs       = var.status_page_configs
   status_page_announcements = var.status_page_announcements
   monitor_configs           = var.monitor_configs
+  custom_fields             = var.custom_fields
 
   component_definitions = local.component_definitions
   label_ids             = local.label_ids

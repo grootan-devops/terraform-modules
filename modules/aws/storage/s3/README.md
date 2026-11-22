@@ -31,7 +31,8 @@ functions are other modules; pass their names or ARNs in.
 - **Versioning and lifecycle (S3.10, S3.13, S3.14):** versioning always on; incomplete uploads aborted after 7 days;
   `noncurrent_version_expiration` deletes old versions (deleted versions cannot be recovered).
 - **Access logs (S3.9):** `access_logs` writes to a separate SSE-S3 bucket such as
-  [`storage/log-bucket`](../log-bucket); server access logs cannot target an SSE-KMS bucket.
+  [`storage/log-bucket`](../log-bucket); server access logs cannot target an SSE-KMS bucket, so they are opt-in (Trivy
+  suppression `AVD-AWS-0089`).
 - **Event notifications (S3.11):** EventBridge or SNS, SQS and Lambda targets. The target's own policy must allow
   `s3.amazonaws.com` (SNS/SQS) or a Lambda permission for this bucket.
 - **Object Lock (S3.15):** only at creation (`object_lock.enabled`); it cannot be turned off.

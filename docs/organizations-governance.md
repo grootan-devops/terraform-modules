@@ -3,7 +3,7 @@
 This is the operator runbook for the organization-level security baseline. It covers the account
 model, the policy types, who owns trusted access and delegated administration, how to check the live
 organization read-only, and the order in which to roll everything out. The policy catalog and inputs
-are in the [`governance/organizations` README](../../modules/aws/governance/organizations/README.md).
+are in the [`governance/organizations` README](../modules/aws/governance/organizations/README.md).
 
 Nothing in this repository applies anything. An authorized operator runs every step below from a
 pipeline or workstation with the right account credentials.
@@ -34,7 +34,7 @@ The supplied snapshot (unverified; check with the commands below) has `SERVICE_C
 | `TAG_POLICY` | Disabled | Enabled | Capitalization of `Application`, `Environment`, `Name`, `ManagedBy` (reporting; enforcement opt-in) |
 | `INSPECTOR_POLICY`, `GUARDDUTY_POLICY`, `SECURITYHUB_POLICY`, `BACKUP_POLICY` | Disabled | Not managed | The service modules (`security/inspector`, `security/guardduty`, `security/security-hub`, `storage/backup`) own enablement; one owner per setting. An organization that already has these types enabled can keep them through `organization.additional_policy_types` |
 | `AISERVICES_OPT_OUT_POLICY` | Disabled | Opt-in | AI services data use |
-| `SECURITYHUB_CSPM_POLICY` | Disabled | Not supported | `hashicorp/aws` 6.73.0 cannot create this policy type; Security Hub CSPM uses central configuration until it can (see the [security-hub README](../../modules/aws/security/security-hub/README.md)) |
+| `SECURITYHUB_CSPM_POLICY` | Disabled | Not supported | `hashicorp/aws` 6.73.0 cannot create this policy type; Security Hub CSPM uses central configuration until it can (see the [security-hub README](../modules/aws/security/security-hub/README.md)) |
 | `CHATBOT_POLICY`, `BEDROCK_POLICY`, `UPGRADE_ROLLOUT_POLICY`, `NETWORK_SECURITY_DIRECTOR_POLICY` | Disabled | Not enabled | Not part of this baseline |
 
 The module creates a policy, and enables its type, only when the policy has `targets` (plus
@@ -152,4 +152,4 @@ The rendered documents are in the module's `policies` output.
 - Manage Security Hub CSPM through Organizations policies until the provider supports
   `SECURITYHUB_CSPM_POLICY`.
 
-[Compliance documentation](README.md)
+[Documentation index](../README.md#documentation)

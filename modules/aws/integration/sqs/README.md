@@ -22,7 +22,9 @@ and an optional customer managed key. Producers and consumers are other modules;
 - **TLS only:** both policies start with `DenyInsecureTransport` (`aws:SecureTransport = false`).
 - **No public access (SQS.3):** `allowed_publishers` grants only `sqs:SendMessage` to `events`, `sns` or `s3`, each
   limited to one `aws:SourceArn`; `policy_statements` come after the guard and default to the queue as resource.
-- **Dead-letter queue:** on by default so poison messages are kept, not retried forever.
+- **Dead-letter queue:** on by default so poison messages are kept, not retried forever. When an EventBridge rule
+  target or an SNS subscription uses it as its own dead-letter queue, list that rule or topic in
+  `dead_letter_queue.allowed_publishers`; otherwise its policy admits nothing and failed events are dropped.
 - **Tags (SQS.2):** governance tags on both queues.
 
 A key created with `kms.create` grants `kms:GenerateDataKey` and `kms:Decrypt` to each publisher service, limited by

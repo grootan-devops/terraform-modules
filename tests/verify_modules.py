@@ -167,6 +167,10 @@ def contract_checks(module):
             )
     if not any((module / "tests").glob("*.tftest.hcl")):
         errors.append(f"{rel}: tests/*.tftest.hcl is missing")
+    readme_text = readme.read_text() if readme.exists() else ""
+    for check in sorted(set(re.findall(r"#\s*trivy:ignore:([A-Z]+-[A-Z]+-[0-9]+)", text))):
+        if check not in readme_text:
+            errors.append(f"{rel}: Trivy suppression {check} is not explained in README.md")
     if rel.parts[1] == "aws" and not nested:
         errors.extend(aws_standard_checks(module, text, rel))
     return errors

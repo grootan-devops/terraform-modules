@@ -77,6 +77,20 @@ class PublicSourceContractTests(unittest.TestCase):
                     not ok,
                 )
 
+    def test_trivy_suppression_needs_a_reason_in_the_readme(self):
+        source = (
+            "git::https://github.com/grootan-devops/terraform-modules.git//"
+            "modules/aws/network/vpc?ref=1.0.0"
+        )
+        (self.module / "main.tf").write_text('#trivy:ignore:AVD-AWS-0178\nlocals { flow = true }\n')
+        self.assertIn("modules/aws/network/vpc: Trivy suppression AVD-AWS-0178 is not explained in README.md",
+                      self.findings_for_source(source))
+        (self.module / "README.md").write_text(
+            '# VPC\n\nScope: `workload`\n\nFlow logs are opt-in (Trivy suppression `AVD-AWS-0178`).\n\n'
+            f'```hcl\nmodule "vpc" {{\n  source = "{source}"\n}}\n```\n'
+        )
+        self.assertEqual(verify_modules.contract_checks(self.module), [])
+
     def test_unused_data_source_is_found_outside_data_tf(self):
         (self.module / "iam.tf").write_text('data "aws_caller_identity" "current" {}\n')
         source = (

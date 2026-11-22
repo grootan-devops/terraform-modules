@@ -2,8 +2,7 @@
 
 The AWS modules live under [`modules/aws/`](../modules/aws/) and share one standard:
 [module contract](module-contract.md), [naming and tagging](naming-and-tagging.md) and
-[security baselines](security-baselines.md). Which Security Hub CSPM controls each module meets, with evidence, is in
-the [compliance documentation](compliance/README.md).
+[security baselines](security-baselines.md). Each module README names the Security Hub CSPM controls it meets.
 
 ## Catalog
 
@@ -110,7 +109,7 @@ others.
 | Layout | `organization` modules | `account` modules | `workload` modules |
 | --- | --- | --- | --- |
 | One account | Only when the account manages an organization: `governance/organizations`, `security/identity-center` | Once, in the account; guardduty, detective, inspector, iam-access-analyzer and security-hub with `organization_configuration = { enabled = false }` | Once per environment; names carry the environment |
-| An organization | In the management account | In the management, security tooling and log archive accounts, in the [rollout](compliance/aws-organizations-governance.md#rollout) order; `security/config` recording in every workload account | Once per environment, in each workload account |
+| An organization | In the management account | In the management, security tooling and log archive accounts, in the [rollout](organizations-governance.md#rollout) order; `security/config` recording in every workload account | Once per environment, in each workload account |
 
 With `organization_configuration.enabled = false` a security module covers only its own account: no delegated
 administrator and no auto-enable for new accounts. The [Terragrunt architecture](terragrunt.md) runs each column in its
@@ -149,14 +148,15 @@ Root configurations under [`examples/aws/`](../examples/aws/) wire the modules t
 
 | Example | Modules |
 | --- | --- |
-| [`serverless`](../examples/aws/serverless) | cognito, dynamodb, sqs, two lambdas, eventbridge with a nightly schedule, api-gateway, http-api with a Cognito JWT authorizer |
-| [`web-service`](../examples/aws/web-service) | vpc, log-bucket, route53, acm, alb, ecs, rds/postgres, nlb in front of the alb with a PrivateLink endpoint service |
+| [`serverless`](../examples/aws/serverless) | cognito, dynamodb, sqs, two lambdas, eventbridge with a nightly schedule, api-gateway, http-api with a Cognito JWT authorizer, step-functions fulfilment flow that invokes the worker alias and is started by the API function |
+| [`web-service`](../examples/aws/web-service) | core/naming, vpc, kms shared by rds/postgres, rds/proxy logs, valkey, secrets-manager, efs, batch and log-group, two log-buckets (ALB and `aws-waf-logs-` WAF logs), route53, acm, waf on the alb, alb, nlb in front of the alb with a PrivateLink endpoint service, ecs, rds/postgres behind rds/proxy with IAM authentication end to end, security-group for the proxy clients, valkey with its AUTH token in secrets-manager, efs shared by ecs and batch, log-group for audit logs, batch nightly reports scheduled by eventbridge with an sqs dead-letter queue |
+| [`static-site`](../examples/aws/static-site) | core/naming, core/encryption (one us-east-1 key for the edge logs), route53, acm in us-east-1, log-bucket, s3 behind cloudfront with origin access control, waf with CLOUDFRONT scope, amplify for the admin console on a sub-domain |
 | [`eks-platform`](../examples/aws/eks-platform) | vpc, ecr, s3, iam-role, eks with node groups, access entries and Pod Identity |
 | [`multi-region`](../examples/aws/multi-region) | the same lambda and s3 in two Regions, proving names never collide |
-| [`security-baseline`](../examples/aws/security-baseline) | organizations, account-baseline, cloudtrail, config, security-hub, guardduty, alarm-routing, cloudwatch-alarms, cost-guardrails |
+| [`security-baseline`](../examples/aws/security-baseline) | organizations with a custom SCP rendered by core/policy-document, identity-center, account-baseline, cloudtrail, config, security-hub, guardduty, detective, inspector and iam-access-analyzer in account-only mode, systems-manager, backup with vault notifications, alarm-routing, cloudwatch-alarms, cost-guardrails |
 
 Account and organization modules run in a fixed order across the management, security tooling and log archive
-accounts; [AWS Organizations governance](compliance/aws-organizations-governance.md) has the runbook.
+accounts; [AWS Organizations governance](organizations-governance.md) has the runbook.
 
 ## Not built yet
 

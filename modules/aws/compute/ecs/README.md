@@ -40,7 +40,7 @@ and ECS Exec. Load balancers, target groups and repositories are other modules; 
 - **Network (ECS.2, ECS.17):** private subnets, no public IP, `awsvpc`. Ingress only on the service container ports
   from `ingress_security_group_ids`, `ingress_cidr_blocks` and `ingress_prefix_list_ids`; `0.0.0.0/0` is rejected.
   Egress defaults to `0.0.0.0/0` so tasks reach ECR, Secrets Manager and CloudWatch Logs without VPC endpoints;
-  narrow it where endpoints exist (registered Trivy suppression `AVD-AWS-0104`).
+  narrow it where endpoints exist (Trivy suppression `AVD-AWS-0104`).
 - **Platform (ECS.10) and logs (ECS.9, ECS.12):** `LATEST` Fargate platform, `awslogs` on every container, logs kept
   365 days with deletion protection, Container Insights `enhanced`.
 - **Least privilege:** the execution role writes only to the service log groups, pulls only from the ECR repositories

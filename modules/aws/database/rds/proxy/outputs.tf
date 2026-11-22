@@ -18,6 +18,21 @@ output "endpoint" {
   value       = aws_db_proxy.this.endpoint
 }
 
+output "port" {
+  description = "Port the proxy listens on."
+  value       = local.engine_port
+}
+
+output "resource_id" {
+  description = "Proxy resource ID (prx-...)."
+  value       = element(split(":", aws_db_proxy.this.arn), 6)
+}
+
+output "db_user_arn_prefix" {
+  description = "rds-db:connect ARN prefix, without the user name."
+  value       = "arn:${module.naming.partition}:rds-db:${module.naming.region}:${module.naming.account_id}:dbuser:${element(split(":", aws_db_proxy.this.arn), 6)}"
+}
+
 output "endpoints" {
   description = "Extra endpoint hostnames by key."
   value       = { for k, e in aws_db_proxy_endpoint.this : k => e.endpoint }

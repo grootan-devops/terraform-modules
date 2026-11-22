@@ -108,6 +108,9 @@ Attributes that are **not** defaulted — titles, copy, branding, custom CSS,
 SMTP/SMS config ids, report interval and timezone — are passed straight through
 and are simply not sent to OneUptime when omitted.
 
+`custom_fields` takes `jsonencode({...})` and is merged over the module's
+stack-wide `custom_fields` input, the page's keys winning.
+
 ---
 
 ## 2. Configuring a page

@@ -27,3 +27,9 @@ variable "partner_principal_arn" {
   type        = string
   default     = "arn:aws:iam::210987654321:root"
 }
+
+variable "cache_token_version" {
+  description = "Cache AUTH token version; increment to rotate."
+  type        = number
+  default     = 1
+}

@@ -23,7 +23,8 @@ auth for previews. Builds and deployments come from CI; branches never build on 
   base64 pair is stored in state; prefer branch access control in the console for anything beyond short-lived previews.
 - **Tags (Amplify.1, Amplify.2):** caller tags first, governance tags last on the app and every branch.
 - **Custom domains:** with `wait_for_verification` (default) apply waits for DNS; set it to `false` when the records
-  from `domain_dns_records` are created by the same apply.
+  from `domain_dns_records` are created by the same apply. Each record is `{ name, type, value }`, ready for a Route 53
+  record.
 
 ## Requirements & Providers
 
@@ -99,4 +100,4 @@ module "web" {
 | `name` | App name. | No |
 | `default_domain` | Default amplifyapp.com domain. | No |
 | `branch_names` | Branch names. | No |
-| `domain_dns_records` | Certificate verification and sub-domain DNS records by domain. | No |
+| `domain_dns_records` | DNS records by domain: certificate verification and sub-domains as name, type, value. | No |

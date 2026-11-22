@@ -25,6 +25,12 @@ mock_provider "aws" {
       default_domain = "d1a2b3c4d5e6f7.amplifyapp.com"
     }
   }
+
+  mock_resource "aws_amplify_domain_association" {
+    defaults = {
+      certificate_verification_dns_record = "_c3e2d7eaf1e656b73f46cd6980fdc0e.example.com. CNAME _a1b2c3.acm-validations.aws."
+    }
+  }
 }
 
 variables {
@@ -116,6 +122,11 @@ run "branches_domains_and_outputs" {
   assert {
     condition     = keys(output.domain_dns_records) == ["example.com", "example.org"] && keys(output.domain_dns_records["example.com"].sub_domains) == ["app", "staging"]
     error_message = "DNS records are exported by domain."
+  }
+
+  assert {
+    condition     = output.domain_dns_records["example.com"].certificate_verification["name"] == "_c3e2d7eaf1e656b73f46cd6980fdc0e.example.com." && output.domain_dns_records["example.com"].certificate_verification["type"] == "CNAME" && output.domain_dns_records["example.com"].certificate_verification["value"] == "_a1b2c3.acm-validations.aws." && output.domain_dns_records["example.com"].sub_domains["app"].name == "app"
+    error_message = "DNS records come as name, type and value, ready for Route 53."
   }
 
   assert {
