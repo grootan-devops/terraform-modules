@@ -2,89 +2,81 @@
 
 The bounds for providers other than AWS are in [Other providers](other-providers.md).
 
-## Deterministic naming
+## Deterministic, collision-free names
 
-Every module resolves its resource names through one local:
+Every AWS module derives its names through [`core/naming`](../modules/aws/core/naming). The base is
+`<application>-<environment>[-<name>]`. What gets appended depends on the namespace the name has to be unique in:
+
+| Namespace | Resources | Rule | Example |
+| --- | --- | --- | --- |
+| Account and Region (`uniqueness = "region"`, default) | Most resources: functions, queues, tables, clusters, log groups, security groups | `<base>[-<suffix>]` | `core-prod-orders` |
+| Account, created by a regional module (`uniqueness = "account"`) | IAM roles, policies and instance profiles | `<base>[-<suffix>]-<region>` | `core-prod-orders-lambda-eu-west-1` |
+| Global (`uniqueness = "global"`) | S3 buckets, Cognito prefix domains | `<base>[-<suffix>]-<account-id>-<region>` | `core-prod-assets-123456789012-eu-west-1` |
+
+IAM role suffixes name the service (`lambda`, `sfn`, `ecs-exec`, `batch-exec`, `proxy`, ...), so a function and a
+state machine with the same `name` never share a role. `tests/verify_modules.py` rejects a role purpose that two
+modules use.
+
+So the same application and environment can be deployed in a second Region or account without a name clash, and two
+instances of a module in one environment differ by `name`, which is required on every module that is normally
+instantiated more than once (see [Module contract](module-contract.md#identity-and-tags)).
+
+Names never carry a project, company or customer label; everything flows from `application`, `environment` and
+`name`. Account and organization modules create singletons and use `uniqueness = "region"` for them.
+
+An exact name is accepted only where something outside Terraform depends on it: `bucket_name` on `storage/s3`,
+`iam_role.name` on modules that create a role. Even then the length limit is validated.
+
+## Length limits and truncation
+
+Each name is cut to its resource's limit. When the full name is longer, the module keeps the first characters and
+appends `-` and the first 6 hex characters of the MD5 of the **full** name, so two long names that share a prefix still
+differ:
 
 ```hcl
 locals {
-  rendered_name = var.name != null && var.name != "" ? "${var.application}-${var.environment}-${var.name}" : "${var.application}-${var.environment}"
+  full      = "core-prod-orders-reconciliation-sfn-ap-southeast-2"
+  max       = 32
+  truncated = length(local.full) <= local.max ? local.full : "${trimsuffix(substr(local.full, 0, local.max - 7), "-")}-${substr(md5(local.full), 0, 6)}"
 }
 ```
 
-Names are never hardcoded and never carry a project, company, or customer label. Everything
-flows through `var.application`, `var.environment`, and `var.name`, so the same module is
-reusable across tenants.
-
-## Length limits and deterministic truncation
-
-AWS enforces a different length and character set per resource, and most of them recreate
-destructively when a name changes. Blind concatenation is therefore unsafe on the short
-ones:
-
-| Resource | Limit | Valid characters | Mitigation |
-| --- | :---: | --- | --- |
-| `aws_lb`, `aws_lb_target_group` | 1–32 | `^[a-zA-Z0-9-]+$`, no leading/trailing hyphen | Truncate to 27 chars + `-` + 4-char MD5 of the full name |
-| `aws_s3_bucket` | 3–63 | lowercase, digits, hyphen, period | Global namespace — use `bucket_name_override`, or append a deterministic account/region hash |
-| `aws_iam_role` | 1–64 | `^[a-zA-Z0-9+=,.@_-]+$` | Truncate to 58 chars + 5-char hash |
-| `aws_db_instance` | 1–63 | lowercase, digits, hyphen | Truncate to 57 chars + 5-char hash |
-| `aws_kms_key` alias | 1–256 | `^[a-zA-Z0-9:/_-]+$`, `alias/` prefix | None needed; rename is non-destructive |
-
-Truncation keeps a readable prefix and appends a stable hash, so two names that share a
-prefix cannot collide:
-
-```hcl
-locals {
-  alb_name_hash      = substr(md5(local.rendered_name), 0, 4)
-  alb_truncated_name = length(local.rendered_name) > 32 ? "${substr(local.rendered_name, 0, 27)}-${local.alb_name_hash}" : local.rendered_name
-}
-```
-
-> **Current state:** no module implements this. `modules/aws/network/alb` passes
-> `local.rendered_name` to `aws_lb` unguarded, so an `application`/`environment`/`name`
-> triple longer than 32 characters fails at apply with a provider validation error.
+| Resource | Limit |
+| --- | :---: |
+| `aws_lb`, `aws_lb_target_group` | 32 |
+| `aws_elasticache_replication_group` | 40 |
+| `aws_backup_vault` | 50 |
+| `aws_s3_bucket`, `aws_db_instance`, `aws_db_proxy`, `aws_ecr_repository` (none shorter than 256, kept short) | 63 |
+| `aws_iam_role`, `aws_iam_instance_profile`, IAM policy names | 64 |
+| `aws_sqs_queue`, `aws_sfn_state_machine` | 80 |
+| `aws_lambda_function` | 64 |
+| `aws_cloudwatch_metric_alarm` | 255 |
 
 ## Governance tags and merge precedence
 
-Four tags are reserved for cost allocation, ownership, and audit:
+Four tags are reserved for cost allocation, ownership and audit:
 
 | Tag | Value |
 | --- | --- |
-| `Application` | `var.application` |
-| `Environment` | `var.environment`, validated against `^[a-z0-9-]+$` |
-| `Name` | `local.rendered_name`, or the sub-resource name |
-| `ManagedBy` | the literal `"Terraform"` |
+| `Application` | `var.application` (`"platform"` by default on account and organization modules) |
+| `Environment` | `var.environment` |
+| `Name` | the resource's rendered name |
+| `ManagedBy` | `"Terraform"` |
 
-Consumer tags are merged **first** and governance tags **last**, so a caller can add
-metadata but cannot overwrite the tags an audit depends on:
-
-```hcl
-locals {
-  governance_tags = {
-    Application = var.application
-    Environment = var.environment
-    Name        = local.rendered_name
-    ManagedBy   = "Terraform"
-  }
-
-  tags = merge(var.tags, local.governance_tags)
-}
-```
-
-> **Current state:** 23 of the 24 AWS modules do the opposite — they merge
-> `var.tags` last, so a caller passing `tags = { Environment = "prod" }` silently overwrites
-> the governance value, and none of them emit `ManagedBy`.
-> [`modules/aws/security/secrets-manager`](../modules/aws/security/secrets-manager) is the only
-> module on the standard above. Reversing the order on the rest changes tag values on live
-> resources, which is an in-place update rather than a replacement, but it is a visible
-> behavioural change and needs an entry in [MIGRATION.md](../MIGRATION.md).
-
-A sub-resource with a distinct role overrides only `Name`:
+Caller tags are merged first and governance tags last, so a caller can add metadata (`Owner`, `CostCenter`,
+`DataClassification`) but cannot overwrite the tags an audit depends on:
 
 ```hcl
-tags = merge(local.tags, { Name = "${local.rendered_name}-public-${each.key}" })
+tags = merge(var.tags, module.naming.governance_tags)
 ```
 
-Tags are never forced onto a resource whose provider schema has no `tags` argument.
+A resource with its own name overrides only `Name`:
+
+```hcl
+tags = merge(module.naming.tags, { Name = module.naming.names.role })
+```
+
+No resource ignores tag changes, and tags are never set on a resource whose schema has no `tags` argument. The
+`REQUIRED_TAGS` rule in [`security/config`](../modules/aws/security/config) checks the four governance keys.
 
 [Documentation index](../README.md#documentation)

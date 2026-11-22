@@ -28,7 +28,7 @@ resource "oneuptime_status_page" "this" {
   copyright_text            = var.status_page_configs[each.key].copyright_text
   default_language          = var.status_page_configs[each.key].default_language
   enabled_languages         = var.status_page_configs[each.key].enabled_languages
-  custom_fields             = var.status_page_configs[each.key].custom_fields
+  custom_fields             = local.status_page_custom_fields[each.key]
 
   // Access
   is_public_status_page               = each.value.is_public_status_page

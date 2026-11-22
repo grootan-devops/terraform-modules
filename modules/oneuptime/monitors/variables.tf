@@ -22,6 +22,12 @@ variable "monitor_defaults" {
   description = "Baseline applied to every monitor, already merged with the module defaults"
 }
 
+variable "custom_fields" {
+  type        = string
+  description = "Stack-wide custom fields JSON, under each monitor's own"
+  default     = null
+}
+
 variable "component_definitions" {
   type = map(object({
     groups      = list(string)

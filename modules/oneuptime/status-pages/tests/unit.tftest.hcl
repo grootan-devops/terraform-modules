@@ -968,3 +968,40 @@ run "a_domain_given_by_id_skips_the_name_lookup" {
     error_message = "A domain given by domain_id should be attached without a name lookup, and subdomain \"@\" sent as the empty subdomain OneUptime stores."
   }
 }
+
+run "stack_custom_fields_sit_under_a_pages_own" {
+  command = plan
+
+  variables {
+    custom_fields = jsonencode({ team = "core", tier = "2" })
+    status_page_configs = {
+      "core"     = merge(var.blank_page, { custom_fields = jsonencode({ tier = "1", audience = "customers" }) })
+      "internal" = var.blank_page
+    }
+  }
+
+  assert {
+    condition     = jsondecode(oneuptime_status_page.this["core"].custom_fields) == { team = "core", tier = "1", audience = "customers" }
+    error_message = "A page's own custom_fields should win over the stack's, key by key."
+  }
+
+  assert {
+    condition     = oneuptime_status_page.this["internal"].custom_fields == jsonencode({ team = "core", tier = "2" })
+    error_message = "A page without custom_fields should take the stack's."
+  }
+}
+
+run "a_pages_custom_fields_pass_through_without_a_stack_default" {
+  command = plan
+
+  variables {
+    status_page_configs = {
+      "core" = merge(var.blank_page, { custom_fields = "{\"tier\": \"1\"}" })
+    }
+  }
+
+  assert {
+    condition     = oneuptime_status_page.this["core"].custom_fields == "{\"tier\": \"1\"}"
+    error_message = "Without a stack default a page's custom_fields should be sent verbatim."
+  }
+}

@@ -25,6 +25,12 @@ variable "status_page_announcements" {
   default     = {}
 }
 
+variable "custom_fields" {
+  type        = string
+  description = "Stack-wide custom fields JSON, under each page's own"
+  default     = null
+}
+
 variable "monitor_configs" {
   type        = any
   description = "Monitor configuration, read only for the display_name of a published monitor"

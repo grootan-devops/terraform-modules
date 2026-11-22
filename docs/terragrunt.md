@@ -1,29 +1,44 @@
 # Terragrunt architecture
 
-The recommended Terragrunt pattern pairs a single canonical Terraform composition stack in `resources/` with sibling environment directories:
+A live repository runs each module where its scope says (the `Scope` column of the [AWS catalog](AWS.md#catalog)):
+`workload` modules once per environment, `account` modules once per account, `organization` modules once per
+organization. Each scope gets its own composition root and its own Terragrunt unit, so each has its own state.
 
 ```text
 infra-live/
-├── root.hcl                          # Remote state (S3/DynamoDB) and provider generator
-├── resources/                        # Single Terraform stack composing modules
-│   ├── kms.tf                        # KMS module pinned to the public Git release
-│   ├── vpc.tf                        # VPC module pinned to the public Git release
-│   ├── rds.tf                        # RDS module pinned to the public Git release
-│   ├── iam.tf                        # Direct IAM roles / policies
-│   ├── route53.tf                    # Direct DNS records
-│   ├── variables.tf                  # Parameterized inputs
-│   └── outputs.tf
-├── dev/
-│   └── terragrunt.hcl                # immutable Git source for resources, dev inputs
-├── qa/
-│   └── terragrunt.hcl                # immutable Git source for resources, qa inputs
-└── prod/
-    └── terragrunt.hcl                # immutable Git source for resources, prod inputs
+├── root.hcl                     # remote state, shared locals and inputs
+├── environment.hcl              # shared by every environment unit
+├── resources/                   # workload composition root: module calls only
+│   ├── versions.tf
+│   ├── providers.tf
+│   ├── variables.tf
+│   ├── network.tf               # kms, vpc, security-group
+│   ├── data.tf                  # rds/postgres, rds/proxy, dynamodb, elasticache/valkey
+│   ├── api.tf                   # alb, ecs, api-gateway, http-api, cognito
+│   ├── outputs.tf
+│   └── tests/offline.tftest.hcl
+├── layers/
+│   ├── organization/            # organizations, identity-center (management account only)
+│   └── account/                 # account-baseline, cloudtrail, config, security-hub, guardduty, backup, shared ecr
+├── organization/terragrunt.hcl  # unit: layers/organization
+├── account/terragrunt.hcl       # unit: layers/account, after organization
+├── dev/terragrunt.hcl           # unit: resources/ with dev inputs, after account
+├── qa/terragrunt.hcl
+└── prod/terragrunt.hcl
 ```
+
+Each unit directory also holds the `.terraform.lock.hcl` Terragrunt writes back; commit it.
 
 ## `root.hcl`
 
 ```hcl
+locals {
+  application    = "<application>"
+  account_id     = "<account-id>"
+  primary_region = "<region>"
+  state_bucket   = "<state-bucket>"
+}
+
 remote_state {
   backend = "s3"
 
@@ -33,107 +48,113 @@ remote_state {
   }
 
   config = {
-    bucket         = "company-tf-state-storage-prod"
-    key            = "${path_relative_to_include()}/terraform.tfstate"
-    region         = "us-east-2"
-    encrypt        = true
-    kms_key_id     = "arn:aws:kms:us-east-2:123456789012:key/company-global-state-key"
-    dynamodb_table = "company-tf-locks"
+    bucket                = local.state_bucket
+    key                   = "${path_relative_to_include()}/terraform.tfstate"
+    region                = local.primary_region
+    encrypt               = true
+    use_lockfile          = true
+    disable_bucket_update = true
   }
 }
 
-generate "provider" {
-  path      = "provider_override.tf"
-  if_exists = "overwrite_terragrunt"
-  contents  = <<EOF
+inputs = {
+  application = local.application
+  account_id  = local.account_id
+  region      = local.primary_region
+}
+```
+
+- `use_lockfile` is the native S3 lock; no DynamoDB table.
+- Create the state bucket (versioned, encrypted, public access blocked) outside these stacks. Terragrunt creates none
+  without `--backend-bootstrap`, and `disable_bucket_update` stops it changing the bucket's settings.
+- The state key is the unit's path, so `dev/` and `account/` never share state. Never rename a unit directory that
+  already has state.
+
+## Composition roots
+
+`resources/` and every directory under `layers/` follow the same rules:
+
+- module calls only, connected through their documented outputs ([how the modules connect](AWS.md#how-the-modules-connect));
+- one `versions.tf` with minimum versions (the committed lock file pins the exact ones) and one `providers.tf`;
+- variables for everything that differs by environment, outputs for what other units read.
+
+```hcl
+# resources/versions.tf
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = ">= 1.17.0"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 6.0.0, < 7.0.0"
+      version = ">= 6.73.0"
     }
   }
 }
 
+# resources/providers.tf
 provider "aws" {
-  region = "us-east-2"
-  default_tags {
-    tags = {
-      Orchestrator = "Terragrunt"
-      Repository   = "infra-live"
-      Environment  = "${path_relative_to_include()}"
-    }
-  }
-}
-
-provider "aws" {
-  alias  = "replica"
-  region = "us-east-1"
-}
-EOF
+  region              = var.region
+  allowed_account_ids = [var.account_id]
 }
 ```
 
-## `resources/` Composition Example
+One provider is enough: modules that work in another Region (CloudFront certificates and web ACLs in `us-east-1`,
+backup copies, account settings across `regions`) take it as an input. `allowed_account_ids` stops a plan in the wrong
+account. Governance tags come from the modules, so the provider needs no `default_tags`.
 
 ```hcl
-# resources/kms.tf
+# resources/network.tf
 module "kms" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/security/kms?ref=<version>"
 
-  application             = var.application
-  environment             = var.environment
-  name                    = "primary"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
+  application = var.application
+  environment = var.environment
+  name        = "primary"
 }
 
-# resources/vpc.tf
 module "vpc" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/vpc?ref=<version>"
 
-  application                 = var.application
-  environment                 = var.environment
-  name                        = "network"
-  cidr_block                  = var.vpc_cidr
-  aws_availability_zone_names = var.availability_zones
-  public_subnet_cidrs         = var.public_subnet_cidrs
-  private_subnet_cidrs        = var.private_subnet_cidrs
-  intra_subnet_cidrs          = var.intra_subnet_cidrs
-  kms_key_arn                 = module.kms.key_arn
-}
-
-# resources/rds.tf
-module "rds" {
-  source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/rds/postgres?ref=<version>"
-
-  application    = var.application
-  environment    = var.environment
-  name           = "db"
-  engine_version = "16.3"
-  instance_class = var.db_instance_class
-  multi_az       = var.db_multi_az
-
-  vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.intra_subnet_ids
-  kms_key_id = module.kms.key_arn
-
-  credential = {
-    username = var.db_username
-    password = var.db_password
-  }
-
-  storage = {
-    allocated_storage     = var.db_allocated_storage
-    max_allocated_storage = var.db_max_allocated_storage
-    storage_type          = "gp3"
-  }
+  application = var.application
+  environment = var.environment
+  cidr_block  = var.vpc_cidr
+  az_count    = var.az_count
+  nat         = { mode = var.nat_mode }
+  kms         = { key_id = module.kms.arn }
 }
 ```
 
-## Environment Terragrunt (`dev/terragrunt.hcl`, `prod/terragrunt.hcl`)
+## Environment units
+
+`environment.hcl` holds what every environment shares: the source, the environment name and the outputs read from the
+account layer.
+
+```hcl
+# environment.hcl
+locals {
+  root     = read_terragrunt_config(find_in_parent_folders("root.hcl")).locals
+  root_dir = dirname(find_in_parent_folders("root.hcl"))
+  env      = basename(get_terragrunt_dir())
+}
+
+terraform {
+  source = "${local.root_dir}/resources"
+}
+
+dependency "account" {
+  config_path = "${local.root_dir}/account"
+
+  mock_outputs = {
+    ecr_repository_urls = { api = "${local.root.account_id}.dkr.ecr.${local.root.primary_region}.amazonaws.com/${local.root.application}-shared-api" }
+  }
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
+}
+
+inputs = {
+  environment         = local.env
+  ecr_repository_urls = dependency.account.outputs.ecr_repository_urls
+}
+```
 
 ```hcl
 # dev/terragrunt.hcl
@@ -141,59 +162,109 @@ include "root" {
   path = find_in_parent_folders("root.hcl")
 }
 
-terraform {
-  source = "git::https://github.com/contoso-corporation/infra-live.git//resources?ref=1.0.0"
+include "environment" {
+  path = find_in_parent_folders("environment.hcl")
 }
 
 inputs = {
-  application = "company"
-  environment = "dev"
+  vpc_cidr          = "10.10.0.0/16"
+  az_count          = 2
+  nat_mode          = "single"
+  db_instance_class = "db.t4g.micro"
+  db_multi_az       = false
+}
+```
 
-  vpc_cidr             = "10.10.0.0/16"
-  availability_zones   = ["us-east-2a", "us-east-2b"]
-  public_subnet_cidrs  = ["10.10.1.0/24", "10.10.2.0/24"]
-  private_subnet_cidrs = ["10.10.10.0/24", "10.10.20.0/24"]
-  intra_subnet_cidrs   = ["10.10.100.0/24", "10.10.200.0/24"]
+`prod/terragrunt.hcl` is the same file with prod values (`az_count = 3`, `nat_mode = "per_az"`, `db_multi_az = true`).
+Mock outputs stand in only until the account layer is applied; never allow them for `apply`.
 
-  db_instance_class        = "db.t4g.medium"
-  db_multi_az              = false
-  db_allocated_storage     = 20
-  db_max_allocated_storage = 100
-  db_username              = "dbadmin"
-  db_password              = get_env("DEV_DB_PASSWORD")
+To promote one tested version of `resources/` from environment to environment, tag the live repository and point each
+environment at a tag instead of the local path:
+`source = "git::https://github.com/<organization>/<live-repository>.git//resources?ref=<live-version>"`.
+
+## Account and organization layers
+
+```hcl
+# account/terragrunt.hcl
+include "root" {
+  path   = find_in_parent_folders("root.hcl")
+  expose = true
+}
+
+terraform {
+  source = "${get_parent_terragrunt_dir("root")}/layers/account"
+}
+
+dependencies {
+  paths = ["../organization"]
+}
+
+inputs = {
+  environment = "shared"
+  regions     = [include.root.locals.primary_region, "us-east-1"]
+}
+```
+
+- **One account for every environment:** `account/` runs once and the environments depend on it. Resources every
+  environment shares (ECR repositories, a parent DNS zone) live here; each environment reads them through a
+  `dependency`. Names carry the environment, so dev, qa and prod never collide in the one account.
+- **An organization of accounts:** one account unit per account (`accounts/<account>/terragrunt.hcl`), each with that
+  account's provider role, and the organization unit in the management account. The order is in
+  [account layouts](AWS.md#account-layouts).
+
+Run the whole repository in dependency order with `terragrunt run --all -- plan`; `terragrunt dag graph` prints the
+order.
+
+## Validation and offline plans
+
+`terragrunt hcl fmt --check` and `terragrunt hcl validate --inputs` need no credentials. Everything that runs Terraform
+does: a unit reads its `dependency` outputs from the dependency's S3 state, and Terragrunt's auto-init configures the
+S3 backend before each command. Without credentials, skip the dependency outputs (their mocks stand in) and turn
+auto-init off, so the `-backend=false` init is the one that stays.
+
+A plan without credentials runs as a `terraform test` under a mocked provider. Add one test file to each composition
+root and give the data sources the modules read real-looking values:
+
+```hcl
+# resources/tests/offline.tftest.hcl
+mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "123456789012", arn = "arn:aws:sts::123456789012:assumed-role/offline-plan/mock" }
+  }
+  mock_data "aws_region" {
+    defaults = { region = "eu-west-1" }
+  }
+  mock_data "aws_partition" {
+    defaults = { partition = "aws", dns_suffix = "amazonaws.com" }
+  }
+  mock_data "aws_availability_zones" {
+    defaults = { names = ["eu-west-1a", "eu-west-1b", "eu-west-1c"], zone_ids = ["euw1-az1", "euw1-az2", "euw1-az3"] }
+  }
+}
+
+run "offline_plan" {
+  command = plan
 }
 ```
 
 ```hcl
-# prod/terragrunt.hcl
-include "root" {
-  path = find_in_parent_folders("root.hcl")
-}
-
-terraform {
-  source = "git::https://github.com/contoso-corporation/infra-live.git//resources?ref=1.0.0"
-}
-
-inputs = {
-  application = "company"
-  environment = "prod"
-
-  vpc_cidr             = "10.0.0.0/16"
-  availability_zones   = ["us-east-2a", "us-east-2b", "us-east-2c"]
-  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24", "10.0.30.0/24"]
-  intra_subnet_cidrs   = ["10.0.100.0/24", "10.0.200.0/24", "10.0.300.0/24"]
-
-  db_instance_class        = "db.r7g.xlarge"
-  db_multi_az              = true
-  db_allocated_storage     = 100
-  db_max_allocated_storage = 1000
-  db_username              = "dbadmin"
-  db_password              = get_env("PROD_DB_PASSWORD")
-}
+# environment.hcl, dependency "account"
+skip_outputs                            = get_env("OFFLINE_PLAN", "false") == "true"
+mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "test"]
 ```
 
-The rules for sources, versions, state, providers and secrets in such a stack are in
-[Consuming modules](consumption.md).
+```bash
+terragrunt hcl fmt --check
+terragrunt hcl validate --inputs
+export OFFLINE_PLAN=true TG_NO_AUTO_INIT=true
+terragrunt run --all -- init -backend=false
+terragrunt run --all -- validate
+terragrunt run --all -- test -verbose
+```
+
+The test prints the full plan of every unit. Mocked values are not AWS's: unknown ARNs and IDs stay unknown, and
+nothing proves the plan applies. A real plan with credentials is still reviewed before any apply.
+
+The rules for sources, versions, state, providers and secrets are in [Consuming modules](consumption.md).
 
 [Documentation index](../README.md#documentation)

@@ -1,601 +1,764 @@
-# output "username" is derived from the sensitive var.credential but is not
-# marked sensitive, so any plan that includes aws_db_instance.this fails when
-# this module is the root module, as it is under `terraform test`
-# ("Output refers to sensitive values"). Until that output is fixed, every run
-# targets the resources that do not depend on the DB instance, and
-# aws_db_instance.this, aws_db_instance_automated_backups_replication.this and
-# the outputs are left untested.
-
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "eu-west-1"
+    }
+  }
+
   mock_data "aws_partition" {
     defaults = {
-      partition = "aws"
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
     }
   }
 
-  mock_data "aws_iam_policy_document" {
+  mock_resource "aws_kms_key" {
     defaults = {
-      json = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"monitoring.rds.amazonaws.com\"}}]}"
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
     }
   }
-}
 
-# The module declares configuration_aliases = [aws.replica] for cross-region
-# automated backup replication.
-mock_provider "aws" {
-  alias = "replica"
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:role/core-prod-orders-monitoring-eu-west-1"
+    }
+  }
+
+  mock_resource "aws_security_group" {
+    defaults = {
+      id = "sg-0123456789abcdef0"
+    }
+  }
+
+  mock_resource "aws_db_instance" {
+    defaults = {
+      arn         = "arn:aws:rds:eu-west-1:123456789012:db:core-prod-orders"
+      address     = "core-prod-orders.abcdefghijkl.eu-west-1.rds.amazonaws.com"
+      endpoint    = "core-prod-orders.abcdefghijkl.eu-west-1.rds.amazonaws.com:5432"
+      resource_id = "db-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      master_user_secret = [{
+        kms_key_id    = "arn:aws:kms:eu-west-1:123456789012:key/aws-secretsmanager"
+        secret_arn    = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:rds!db-1234-AbCdEf"
+        secret_status = "active"
+      }]
+    }
+  }
 }
 
 variables {
   application    = "core"
   environment    = "prod"
-  name           = "db"
-  engine_version = "16.3"
-  instance_class = "db.t4g.medium"
-  multi_az       = true
+  name           = "orders"
+  engine_version = "18"
   vpc_id         = "vpc-0a1b2c3d4e5f67890"
   subnet_ids     = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_id     = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+  tags           = { Team = "payments" }
+}
 
-  credential = {
-    username = "dbadmin"
-    password = sha256("rds-postgres-test-fixture")
+run "secure_defaults" {
+  command = plan
+
+  assert {
+    condition     = aws_db_instance.this.identifier == "core-prod-orders" && aws_db_instance.this.engine == "postgres" && aws_db_instance.this.engine_version == "18" && aws_db_instance.this.engine_lifecycle_support == "open-source-rds-extended-support-disabled" && aws_db_instance.this.instance_class == "db.t4g.medium" && aws_db_instance.this.port == 5432
+    error_message = "Defaults: PostgreSQL on db.t4g.medium, port 5432, named <application>-<environment>-<name>."
   }
 
-  backup_retention_period                  = 30
-  monitoring_interval                      = 0
-  performance_insights_retention_period    = 7
-  automated_backup_replication_kms_key_arn = "arn:aws:kms:us-east-1:123456789012:key/87654321-4321-4321-4321-210987654321"
+  assert {
+    condition     = aws_db_instance.this.multi_az && !aws_db_instance.this.publicly_accessible && aws_db_instance.this.network_type == "IPV4"
+    error_message = "Multi-AZ (RDS.5) and private (RDS.2) by default."
+  }
 
-  cloudwatch_logs = {
-    retention_in_days = {
-      postgresql        = 90
-      upgrade           = 30
-      iam-db-auth-error = 14
-    }
-    kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/abcdefab-1234-1234-1234-abcdefabcdef"
+  assert {
+    condition     = aws_db_instance.this.storage_encrypted && module.encryption.key_arn == null && output.kms_key_arn == null
+    error_message = "Storage encrypted with the AWS managed key by default (RDS.3)."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.allocated_storage == 20 && aws_db_instance.this.max_allocated_storage == 1000 && aws_db_instance.this.storage_type == "gp3"
+    error_message = "Storage defaults: 20 GiB gp3 growing to 1000 GiB."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.username == "dbadmin" && aws_db_instance.this.manage_master_user_password && aws_db_instance.this.password_wo_version == null
+    error_message = "The master password is managed in Secrets Manager for dbadmin by default (RDS.25)."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.deletion_protection && !aws_db_instance.this.skip_final_snapshot && aws_db_instance.this.copy_tags_to_snapshot && !aws_db_instance.this.delete_automated_backups
+    error_message = "Deletion protection (RDS.8), final snapshot and tag copy (RDS.17)."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.backup_retention_period == 14 && length(aws_db_instance_automated_backups_replication.this) == 0
+    error_message = "14-day backups (RDS.11); no cross-Region replication by default."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.iam_database_authentication_enabled && aws_db_instance.this.auto_minor_version_upgrade && !aws_db_instance.this.allow_major_version_upgrade && !aws_db_instance.this.apply_immediately
+    error_message = "IAM authentication (RDS.10), minor upgrades (RDS.13), changes in the maintenance window."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.monitoring_interval == 60 && aws_db_instance.this.performance_insights_enabled && aws_db_instance.this.performance_insights_retention_period == 7 && aws_db_instance.this.database_insights_mode == "standard"
+    error_message = "Enhanced Monitoring every 60 s (RDS.6) and Performance Insights for 7 days."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.enabled_cloudwatch_logs_exports == toset(["postgresql", "upgrade"])
+    error_message = "postgresql and upgrade logs must be exported (RDS.9, RDS.36)."
+  }
+
+  assert {
+    condition     = length(aws_db_event_subscription.this) == 0
+    error_message = "No event subscriptions by default."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.tags["Name"] == "core-prod-orders" && aws_db_instance.this.tags["Team"] == "payments" && aws_db_instance.this.tags["ManagedBy"] == "Terraform" && aws_db_subnet_group.this.tags["Environment"] == "prod"
+    error_message = "Caller and governance tags must be applied (RDS.30, RDS.33)."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Naming
-# ------------------------------------------------------------------------------
-
-run "verify_rendered_names" {
+run "subnet_and_parameter_groups" {
   command = plan
 
-  plan_options {
-    target = [
-      aws_db_subnet_group.this,
-      aws_db_parameter_group.this,
-      aws_security_group.this,
-      aws_cloudwatch_log_group.this,
-      aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic,
-      aws_cloudwatch_log_metric_filter.postgresql_auth_failure,
-      aws_cloudwatch_query_definition.recent_errors,
-      aws_cloudwatch_query_definition.slow_queries,
-      aws_iam_role_policy_attachment.enhanced_monitoring,
-    ]
+  assert {
+    condition     = aws_db_subnet_group.this.name == "core-prod-orders" && aws_db_instance.this.db_subnet_group_name == "core-prod-orders"
+    error_message = "A dedicated subnet group must be used."
   }
 
   assert {
-    condition     = aws_db_subnet_group.this.name == "core-prod-db-sng"
-    error_message = "Subnet group name must be the rendered name with a -sng suffix."
+    condition     = aws_db_parameter_group.this.family == "postgres18" && aws_db_parameter_group.this.name == "core-prod-orders-postgres18" && aws_db_instance.this.parameter_group_name == "core-prod-orders-postgres18"
+    error_message = "The parameter group follows the engine major version."
   }
 
   assert {
-    condition     = aws_db_parameter_group.this.name == "core-prod-db-postgres"
-    error_message = "Parameter group name must be the rendered name with a -postgres suffix."
-  }
-
-  assert {
-    condition     = aws_security_group.this.name == "core-prod-db-rds"
-    error_message = "Security group name must be the rendered name with a -rds suffix."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this["postgresql"].name == "/aws/rds/instance/core-prod-db/postgresql" && aws_cloudwatch_log_group.this["upgrade"].name == "/aws/rds/instance/core-prod-db/upgrade"
-    error_message = "Log group names must follow the RDS /aws/rds/instance/<identifier>/<type> convention."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic[0].name == "core-prod-db-error-warning-fatal-panic" && aws_cloudwatch_log_metric_filter.postgresql_auth_failure[0].name == "core-prod-db-auth-failures"
-    error_message = "Metric filter names must be derived from the rendered name."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic[0].metric_transformation[0].namespace == "Custom/RDSPostgreSQLLogs/core-prod-db"
-    error_message = "Metric namespace must be derived from the rendered name."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_query_definition.recent_errors[0].name == "RDS/core-prod-db/RecentErrors" && aws_cloudwatch_query_definition.slow_queries[0].name == "RDS/core-prod-db/SlowQueries"
-    error_message = "Query definition names must be derived from the rendered name."
-  }
-
-  assert {
-    condition     = aws_db_parameter_group.this.description == "Database parameter group for core db" && aws_db_subnet_group.this.description == "Database subnet group for core db" && aws_security_group.this.description == "Security Group for RDS instance core db"
-    error_message = "Descriptions must include application and name."
+    condition     = toset([for p in aws_db_parameter_group.this.parameter : "${p.name}=${p.value}"]) == toset(["rds.force_ssl=1"])
+    error_message = "rds.force_ssl must be 1 (RDS.38)."
   }
 }
 
-run "verify_name_fallback_when_null" {
+run "monitoring_role" {
   command = plan
 
-  plan_options {
-    target = [
-      aws_db_subnet_group.this,
-      aws_db_parameter_group.this,
-      aws_security_group.this,
-      aws_cloudwatch_log_group.this,
-    ]
+  assert {
+    condition     = module.monitoring_role[0].name == "core-prod-orders-monitoring-eu-west-1" && module.monitoring_role[0].policy_json == null
+    error_message = "The monitoring role is <base>-monitoring-<region> with only the managed policy."
   }
+
+  assert {
+    condition     = jsondecode(module.monitoring_role[0].trust_policy_json).Statement[0].Principal.Service == ["monitoring.rds.amazonaws.com"]
+    error_message = "Only Enhanced Monitoring may assume the role."
+  }
+
+  assert {
+    condition     = jsondecode(module.monitoring_role[0].trust_policy_json).Statement[0].Condition.StringEquals["aws:SourceAccount"] == ["123456789012"] && jsondecode(module.monitoring_role[0].trust_policy_json).Statement[0].Condition.ArnLike["aws:SourceArn"] == ["arn:aws:rds:eu-west-1:123456789012:db:core-prod-orders"]
+    error_message = "The trust must be limited to this account and instance."
+  }
+}
+
+run "log_groups" {
+  command = plan
+
+  assert {
+    condition     = module.log_group["postgresql"].name == "/aws/rds/instance/core-prod-orders/postgresql" && module.log_group["upgrade"].name == "/aws/rds/instance/core-prod-orders/upgrade"
+    error_message = "Every export gets its log group before the instance writes to it."
+  }
+
+  assert {
+    condition     = module.log_group["postgresql"].retention_in_days == 365 && module.log_group["postgresql"].kms_key_arn == null
+    error_message = "Log groups keep 365 days with service encryption by default (CloudWatch.16)."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_query_definition.recent_errors.log_group_names == tolist(["/aws/rds/instance/core-prod-orders/postgresql"]) && aws_cloudwatch_query_definition.slow_queries.name == "RDS/core-prod-orders/SlowQueries"
+    error_message = "Saved queries must target the PostgreSQL log."
+  }
+}
+
+run "security_group_wiring" {
+  command   = apply
+  state_key = "network"
 
   variables {
-    name = null
-  }
-
-  assert {
-    condition     = aws_db_subnet_group.this.name == "core-prod-sng" && aws_db_parameter_group.this.name == "core-prod-postgres" && aws_security_group.this.name == "core-prod-rds"
-    error_message = "A null name must fall back to <application>-<environment>."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this["postgresql"].name == "/aws/rds/instance/core-prod/postgresql"
-    error_message = "Log group names must use the <application>-<environment> fallback."
-  }
-
-  assert {
-    condition     = aws_db_parameter_group.this.description == "Database parameter group for core"
-    error_message = "Descriptions must fall back to the application name alone."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Tags
-# ------------------------------------------------------------------------------
-
-run "verify_governance_tags" {
-  command = plan
-
-  plan_options {
-    target = [
-      aws_db_subnet_group.this,
-      aws_db_parameter_group.this,
-      aws_security_group.this,
-      aws_cloudwatch_log_group.this,
-    ]
-  }
-
-  assert {
-    condition     = aws_db_subnet_group.this.tags["Application"] == "core" && aws_db_subnet_group.this.tags["Environment"] == "prod" && aws_db_subnet_group.this.tags["Name"] == "core-prod-db-sng"
-    error_message = "Subnet group must carry governance tags with its own Name."
-  }
-
-  assert {
-    condition     = aws_db_parameter_group.this.tags["Application"] == "core" && aws_db_parameter_group.this.tags["Environment"] == "prod" && aws_db_parameter_group.this.tags["Name"] == "core-prod-db-postgres"
-    error_message = "Parameter group must carry governance tags with its own Name."
-  }
-
-  assert {
-    condition     = aws_security_group.this.tags["Application"] == "core" && aws_security_group.this.tags["Environment"] == "prod" && aws_security_group.this.tags["Name"] == "core-prod-db-rds"
-    error_message = "Security group must carry governance tags with its own Name."
-  }
-
-  assert {
-    condition = alltrue([
-      for k, lg in aws_cloudwatch_log_group.this :
-      lg.tags["Application"] == "core" && lg.tags["Environment"] == "prod" && lg.tags["Name"] == "/aws/rds/instance/core-prod-db/${k}"
-    ])
-    error_message = "Log groups must carry governance tags with their own Name."
-  }
-}
-
-run "verify_caller_tags_preserved" {
-  command = plan
-
-  plan_options {
-    target = [
-      aws_db_subnet_group.this,
-      aws_db_parameter_group.this,
-      aws_security_group.this,
-      aws_cloudwatch_log_group.this,
-      aws_iam_role_policy_attachment.enhanced_monitoring,
-    ]
-  }
-
-  variables {
-    monitoring_interval = 60
-    tags = {
-      AuditLevel = "PCI-DSS-L1"
-      CostCenter = "1234"
+    security_group = {
+      ingress_security_group_ids    = ["sg-0aaaaaaaaaaaaaaaa"]
+      ingress_cidr_blocks           = ["10.0.0.0/16"]
+      ingress_prefix_list_ids       = ["pl-0123456789abcdef0"]
+      additional_security_group_ids = ["sg-0bbbbbbbbbbbbbbbb"]
     }
   }
 
   assert {
-    condition = alltrue([
-      for t in concat(
-        [
-          aws_db_subnet_group.this.tags,
-          aws_db_parameter_group.this.tags,
-          aws_security_group.this.tags,
-          aws_iam_role.enhanced_monitoring[0].tags,
-        ],
-        [for lg in aws_cloudwatch_log_group.this : lg.tags],
-      ) : t["AuditLevel"] == "PCI-DSS-L1" && t["CostCenter"] == "1234" && t["Application"] == "core" && t["Environment"] == "prod"
-    ])
-    error_message = "Caller tags must be preserved alongside governance tags on every taggable resource."
+    condition     = toset(keys(module.security_group[0].ingress_rule_ids)) == toset(["sg-0", "cidr-0", "pl-0"]) && length(module.security_group[0].egress_rule_ids) == 0
+    error_message = "One ingress rule per source on the database port; no egress by default."
   }
 
   assert {
-    condition     = aws_db_subnet_group.this.tags["Name"] == "core-prod-db-sng" && aws_iam_role.enhanced_monitoring[0].tags["Name"] == "core-prod-db-monitoring-role"
-    error_message = "Name tags must survive caller tags."
+    condition     = aws_db_instance.this.vpc_security_group_ids == toset(["sg-0123456789abcdef0", "sg-0bbbbbbbbbbbbbbbb"]) && output.security_group_id == "sg-0123456789abcdef0"
+    error_message = "The instance must use the module group and the extra group."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Security defaults
-# ------------------------------------------------------------------------------
+run "outputs" {
+  command   = apply
+  state_key = "network"
 
-run "verify_security_defaults" {
-  command = plan
-
-  plan_options {
-    target = [
-      aws_db_parameter_group.this,
-      aws_cloudwatch_log_group.this,
-    ]
+  assert {
+    condition     = output.id == "core-prod-orders" && output.arn == "arn:aws:rds:eu-west-1:123456789012:db:core-prod-orders" && output.resource_id == "db-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    error_message = "id, arn and resource_id must come from the instance."
   }
 
   assert {
-    condition     = length([for p in aws_db_parameter_group.this.parameter : p if p.name == "rds.force_ssl" && p.value == "1"]) == 1
-    error_message = "The parameter group must enforce rds.force_ssl = 1."
+    condition     = output.address == "core-prod-orders.abcdefghijkl.eu-west-1.rds.amazonaws.com" && output.endpoint == "core-prod-orders.abcdefghijkl.eu-west-1.rds.amazonaws.com:5432" && output.port == 5432
+    error_message = "Connection details must be output."
   }
 
   assert {
-    condition     = alltrue([for lg in aws_cloudwatch_log_group.this : lg.kms_key_id == var.cloudwatch_logs.kms_key_arn])
-    error_message = "Every log group must be encrypted with cloudwatch_logs.kms_key_arn."
+    condition     = output.master_user_secret_arn == "arn:aws:secretsmanager:eu-west-1:123456789012:secret:rds!db-1234-AbCdEf" && output.monitoring_role_arn == "arn:aws:iam::123456789012:role/core-prod-orders-monitoring-eu-west-1"
+    error_message = "The managed secret and monitoring role must be output."
   }
 
   assert {
-    condition     = alltrue([for lg in aws_cloudwatch_log_group.this : lg.deletion_protection_enabled == true])
-    error_message = "Log group deletion protection must be enabled by default."
+    condition     = output.log_group_names == { postgresql = "/aws/rds/instance/core-prod-orders/postgresql", upgrade = "/aws/rds/instance/core-prod-orders/upgrade" }
+    error_message = "Log group names must be output by export."
   }
 }
 
-run "verify_force_ssl_cannot_be_overridden" {
-  command = plan
-
-  plan_options {
-    target = [aws_db_parameter_group.this]
-  }
+run "egress_for_extensions" {
+  command   = apply
+  state_key = "egress"
 
   variables {
-    parameters = [
-      { name = "rds.force_ssl", value = "0" },
-      { name = "shared_preload_libraries", value = "pg_stat_statements", apply_method = "pending-reboot" },
-      { name = "log_min_duration_statement", value = "500" }
-    ]
+    security_group = { egress_cidr_blocks = ["10.0.0.0/16"] }
   }
 
   assert {
-    condition     = length([for p in aws_db_parameter_group.this.parameter : p if p.name == "rds.force_ssl"]) == 1
-    error_message = "Only the module's own rds.force_ssl parameter may be present."
-  }
-
-  assert {
-    condition     = length([for p in aws_db_parameter_group.this.parameter : p if p.name == "rds.force_ssl" && p.value == "1"]) == 1
-    error_message = "A caller-supplied rds.force_ssl must not weaken SSL enforcement."
-  }
-
-  assert {
-    condition     = length([for p in aws_db_parameter_group.this.parameter : p if p.name == "shared_preload_libraries" && p.value == "pg_stat_statements" && p.apply_method == "pending-reboot"]) == 1
-    error_message = "Caller parameters must pass through with their apply_method."
-  }
-
-  assert {
-    condition     = length([for p in aws_db_parameter_group.this.parameter : p if p.name == "log_min_duration_statement" && p.value == "500" && p.apply_method == "immediate"]) == 1
-    error_message = "Caller parameters without apply_method must default to immediate."
-  }
-
-  assert {
-    condition     = length(aws_db_parameter_group.this.parameter) == 3
-    error_message = "The parameter group must hold rds.force_ssl plus the caller's other parameters."
+    condition     = keys(module.security_group[0].egress_rule_ids) == ["cidr-0"] && length(module.security_group[0].ingress_rule_ids) == 0
+    error_message = "Egress only follows egress_cidr_blocks."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Parameters
-# ------------------------------------------------------------------------------
-
-run "verify_shipped_defaults" {
-  command = plan
-
-  plan_options {
-    target = [
-      aws_db_subnet_group.this,
-      aws_db_parameter_group.this,
-      aws_security_group.this,
-      aws_cloudwatch_log_group.this,
-      aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic,
-      aws_cloudwatch_log_metric_filter.postgresql_auth_failure,
-      aws_cloudwatch_query_definition.recent_errors,
-      aws_cloudwatch_query_definition.slow_queries,
-      aws_iam_role_policy_attachment.enhanced_monitoring,
-    ]
-  }
-
-  assert {
-    condition     = aws_db_parameter_group.this.family == "postgres16"
-    error_message = "Parameter group family must be derived from the engine major version."
-  }
-
-  assert {
-    condition     = length(aws_db_parameter_group.this.parameter) == 1
-    error_message = "Only rds.force_ssl must be set when no parameters are passed."
-  }
-
-  assert {
-    condition     = toset(keys(aws_cloudwatch_log_group.this)) == toset(["postgresql", "upgrade"])
-    error_message = "One log group must be created per default export (postgresql, upgrade)."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this["postgresql"].retention_in_days == 90 && aws_cloudwatch_log_group.this["upgrade"].retention_in_days == 30
-    error_message = "Log retention must be taken per log type from cloudwatch_logs.retention_in_days."
-  }
-
-  assert {
-    condition     = alltrue([for lg in aws_cloudwatch_log_group.this : lg.log_group_class == "STANDARD"])
-    error_message = "Log groups must use the STANDARD class."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic) == 1 && aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic[0].log_group_name == "/aws/rds/instance/core-prod-db/postgresql"
-    error_message = "The error metric filter must watch the postgresql log group."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_log_metric_filter.postgresql_auth_failure) == 1 && aws_cloudwatch_log_metric_filter.postgresql_auth_failure[0].log_group_name == "/aws/rds/instance/core-prod-db/postgresql"
-    error_message = "Without iam-db-auth-error exports, the auth-failure filter must watch the postgresql log group."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_query_definition.recent_errors) == 1 && length(aws_cloudwatch_query_definition.slow_queries) == 1
-    error_message = "Logs Insights query definitions must be created when postgresql logs are exported."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_query_definition.recent_errors[0].log_group_names == tolist(["/aws/rds/instance/core-prod-db/postgresql"])
-    error_message = "Query definitions must read the postgresql log group."
-  }
-
-  assert {
-    condition     = length(aws_iam_role_policy_attachment.enhanced_monitoring) == 0 && length(aws_iam_role.enhanced_monitoring) == 0
-    error_message = "No enhanced monitoring role must be created when monitoring_interval is 0."
-  }
-
-  assert {
-    condition     = length(aws_security_group.this.egress) == 1 && one(aws_security_group.this.egress).cidr_blocks == tolist(["0.0.0.0/0"])
-    error_message = "Default egress must allow 0.0.0.0/0."
-  }
-
-  assert {
-    condition     = aws_db_subnet_group.this.subnet_ids == toset(var.subnet_ids) && aws_security_group.this.vpc_id == var.vpc_id
-    error_message = "Subnet group and security group must use the caller's subnets and VPC."
-  }
-}
-
-run "verify_no_ingress_by_default" {
-  # The ingress set is optional+computed, so its contents are only final after apply.
-  command = apply
-
-  plan_options {
-    target = [aws_security_group.this]
-  }
-
-  assert {
-    condition     = length(aws_security_group.this.ingress) == 0
-    error_message = "No ingress rule must exist when allowed_cidr_blocks is empty."
-  }
-}
-
-run "verify_enhanced_monitoring_enabled" {
-  command = apply
-
-  plan_options {
-    target = [aws_iam_role_policy_attachment.enhanced_monitoring]
-  }
+run "module_key_is_planned_safely" {
+  command   = plan
+  state_key = "module_key"
 
   variables {
-    monitoring_interval = 60
+    kms = { create = true }
   }
 
   assert {
-    condition     = length(aws_iam_role_policy_attachment.enhanced_monitoring) == 1
-    error_message = "Enhanced monitoring must create the policy attachment when monitoring_interval > 0."
-  }
-
-  assert {
-    condition     = aws_iam_role.enhanced_monitoring[0].name == "core-prod-db-monitoring-role"
-    error_message = "Monitoring role name must be the rendered name with a -monitoring-role suffix."
-  }
-
-  assert {
-    condition     = aws_iam_role.enhanced_monitoring[0].tags["Name"] == "core-prod-db-monitoring-role" && aws_iam_role.enhanced_monitoring[0].tags["Application"] == "core" && aws_iam_role.enhanced_monitoring[0].tags["Environment"] == "prod"
-    error_message = "Monitoring role must carry governance tags with its own Name."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy_attachment.enhanced_monitoring[0].policy_arn == "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
-    error_message = "Monitoring role must get the AWS managed AmazonRDSEnhancedMonitoringRole policy in the current partition."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy_attachment.enhanced_monitoring[0].role == aws_iam_role.enhanced_monitoring[0].name
-    error_message = "The policy must be attached to the module's monitoring role."
-  }
-
-  assert {
-    condition     = contains(flatten([for p in data.aws_iam_policy_document.enhanced_monitoring_assume_role.statement[0].principals : p.identifiers]), "monitoring.rds.amazonaws.com")
-    error_message = "Monitoring role must be assumable only by monitoring.rds.amazonaws.com."
+    condition     = module.encryption.created
+    error_message = "kms.create must plan without knowing the key ARN."
   }
 }
 
-run "verify_overrides" {
-  command = plan
-
-  plan_options {
-    target = [
-      aws_db_parameter_group.this,
-      aws_security_group.this,
-      aws_cloudwatch_log_group.this,
-      aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic,
-      aws_cloudwatch_log_metric_filter.postgresql_auth_failure,
-    ]
-  }
+run "module_key_encrypts_everything" {
+  command   = apply
+  state_key = "module_key"
 
   variables {
-    engine_version      = "17.2"
-    allowed_cidr_blocks = ["10.0.0.0/16"]
-    egress_cidr_blocks  = ["10.0.0.0/8"]
+    kms = { create = true }
+  }
 
-    cloudwatch_logs = {
-      exports = ["postgresql", "upgrade", "iam-db-auth-error"]
-      retention_in_days = {
-        postgresql        = 365
-        upgrade           = 180
-        iam-db-auth-error = 60
-      }
-      kms_key_arn                 = "arn:aws:kms:us-west-2:123456789012:key/abcdefab-1234-1234-1234-abcdefabcdef"
-      deletion_protection_enabled = false
+  assert {
+    condition     = aws_db_instance.this.kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && aws_db_instance.this.performance_insights_kms_key_id == aws_db_instance.this.kms_key_id
+    error_message = "The module key must encrypt storage and Performance Insights."
+  }
+
+  assert {
+    condition     = aws_db_instance.this.master_user_secret_kms_key_id == aws_db_instance.this.kms_key_id && module.log_group["postgresql"].kms_key_arn == aws_db_instance.this.kms_key_id
+    error_message = "The module key must encrypt the master secret and the logs."
+  }
+}
+
+run "caller_keys" {
+  command = plan
+
+  variables {
+    kms             = { key_id = "11111111-2222-3333-4444-555555555555" }
+    credential      = { kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/22222222-2222-3333-4444-555555555555" }
+    cloudwatch_logs = { kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555", retention_in_days = 731, exports = ["postgresql", "upgrade", "iam-db-auth-error"] }
+  }
+
+  assert {
+    condition     = aws_db_instance.this.kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555" && aws_db_instance.this.master_user_secret_kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/22222222-2222-3333-4444-555555555555"
+    error_message = "A key ID must be used as the key ARN; credential.kms_key_arn overrides the secret key."
+  }
+
+  assert {
+    condition     = module.log_group["iam-db-auth-error"].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555" && module.log_group["postgresql"].retention_in_days == 731
+    error_message = "cloudwatch_logs must override the log key and retention for every export."
+  }
+}
+
+run "write_only_password" {
+  command = plan
+
+  variables {
+    credential          = { username = "orders_owner", manage_master_user_password = false }
+    password_wo         = "correct-horse-battery-staple"
+    password_wo_version = 1
+  }
+
+  assert {
+    condition     = aws_db_instance.this.manage_master_user_password == null && aws_db_instance.this.password_wo_version == 1 && aws_db_instance.this.username == "orders_owner"
+    error_message = "password_wo must replace the managed secret."
+  }
+}
+
+run "backup_replication" {
+  command = plan
+
+  variables {
+    backup_replication = { enabled = true, region = "eu-central-1", kms_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/33333333-2222-3333-4444-555555555555" }
+  }
+
+  assert {
+    condition     = aws_db_instance_automated_backups_replication.this[0].region == "eu-central-1" && aws_db_instance_automated_backups_replication.this[0].kms_key_id == "arn:aws:kms:eu-central-1:123456789012:key/33333333-2222-3333-4444-555555555555" && aws_db_instance_automated_backups_replication.this[0].retention_period == 14
+    error_message = "Backups must replicate to the other Region with its key and the same retention."
+  }
+}
+
+run "event_subscriptions" {
+  command = plan
+
+  variables {
+    event_subscription = { enabled = true, sns_topic_arn = "arn:aws:sns:eu-west-1:123456789012:core-prod-alarms" }
+  }
+
+  assert {
+    condition     = aws_db_event_subscription.this["instance"].source_type == "db-instance" && aws_db_event_subscription.this["instance"].source_ids == toset(["core-prod-orders"]) && contains(aws_db_event_subscription.this["instance"].event_categories, "maintenance")
+    error_message = "Instance events must be sent to the topic (RDS.20)."
+  }
+
+  assert {
+    condition     = aws_db_event_subscription.this["parameter-group"].source_type == "db-parameter-group" && aws_db_event_subscription.this["parameter-group"].source_ids == toset(["core-prod-orders-postgres18"]) && aws_db_event_subscription.this["parameter-group"].event_categories == toset(["configuration change"])
+    error_message = "Parameter group changes must be sent to the topic (RDS.21)."
+  }
+
+  assert {
+    condition     = aws_db_event_subscription.this["instance"].sns_topic == "arn:aws:sns:eu-west-1:123456789012:core-prod-alarms" && aws_db_event_subscription.this["instance"].name == "core-prod-orders-instance" && aws_db_event_subscription.this["instance"].tags["ManagedBy"] == "Terraform"
+    error_message = "Subscriptions are named after the instance and tagged."
+  }
+}
+
+run "bring_your_own_monitoring_role" {
+  command = plan
+
+  variables {
+    iam_role = { create = false, arn = "arn:aws:iam::123456789012:role/rds-monitoring" }
+  }
+
+  assert {
+    condition     = length(module.monitoring_role) == 0 && aws_db_instance.this.monitoring_role_arn == "arn:aws:iam::123456789012:role/rds-monitoring" && output.monitoring_role_arn == "arn:aws:iam::123456789012:role/rds-monitoring"
+    error_message = "A caller role must replace the monitoring role."
+  }
+}
+
+run "extend_the_monitoring_role" {
+  command = plan
+
+  variables {
+    iam_role = {
+      permissions_boundary_arn = "arn:aws:iam::123456789012:policy/boundary"
+      policy_statements        = [{ sid = "Extra", actions = ["logs:PutLogEvents"], resources = ["arn:aws:logs:eu-west-1:123456789012:log-group:RDSOSMetrics:*"] }]
     }
   }
 
   assert {
-    condition     = aws_db_parameter_group.this.family == "postgres17"
-    error_message = "engine_version override must drive the parameter group family."
-  }
-
-  assert {
-    condition     = length(aws_security_group.this.ingress) == 1
-    error_message = "One ingress rule must be created when allowed_cidr_blocks is set."
-  }
-
-  assert {
-    condition     = one(aws_security_group.this.ingress).from_port == 5432 && one(aws_security_group.this.ingress).to_port == 5432 && one(aws_security_group.this.ingress).protocol == "tcp" && one(aws_security_group.this.ingress).cidr_blocks == tolist(["10.0.0.0/16"])
-    error_message = "Ingress must be limited to TCP 5432 from allowed_cidr_blocks."
-  }
-
-  assert {
-    condition     = one(aws_security_group.this.egress).cidr_blocks == tolist(["10.0.0.0/8"])
-    error_message = "egress_cidr_blocks override must pass through."
-  }
-
-  assert {
-    condition     = toset(keys(aws_cloudwatch_log_group.this)) == toset(["postgresql", "upgrade", "iam-db-auth-error"])
-    error_message = "One log group must be created per export."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this["postgresql"].retention_in_days == 365 && aws_cloudwatch_log_group.this["upgrade"].retention_in_days == 180 && aws_cloudwatch_log_group.this["iam-db-auth-error"].retention_in_days == 60
-    error_message = "Per-type retention overrides must pass through."
-  }
-
-  assert {
-    condition     = alltrue([for lg in aws_cloudwatch_log_group.this : lg.deletion_protection_enabled == false])
-    error_message = "cloudwatch_logs.deletion_protection_enabled override must pass through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_metric_filter.postgresql_auth_failure[0].log_group_name == "/aws/rds/instance/core-prod-db/iam-db-auth-error"
-    error_message = "With iam-db-auth-error exported, the auth-failure filter must watch that log group."
-  }
-
-  assert {
-    condition     = alltrue([for lg in aws_cloudwatch_log_group.this : lg.kms_key_id == var.cloudwatch_logs.kms_key_arn])
-    error_message = "Log encryption must hold when other inputs are overridden."
+    condition     = [for s in jsondecode(module.monitoring_role[0].policy_json).Statement : s.Sid] == ["Extra"]
+    error_message = "Caller statements must be added to the monitoring role."
   }
 }
 
-run "verify_logs_without_postgresql_export" {
+run "custom_sizing" {
   command = plan
 
-  plan_options {
-    target = [
-      aws_cloudwatch_log_group.this,
-      aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic,
-      aws_cloudwatch_log_metric_filter.postgresql_auth_failure,
-      aws_cloudwatch_query_definition.recent_errors,
-      aws_cloudwatch_query_definition.slow_queries,
-    ]
-  }
-
   variables {
-    cloudwatch_logs = {
-      exports = ["upgrade"]
-      retention_in_days = {
-        postgresql        = 90
-        upgrade           = 30
-        iam-db-auth-error = 14
-      }
-      kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/abcdefab-1234-1234-1234-abcdefabcdef"
-    }
+    engine_version      = "16"
+    instance_class      = "db.r8g.large"
+    multi_az            = false
+    deletion_protection = false
+    storage             = { allocated_storage = 100, max_allocated_storage = 0, type = "io2", iops = 3000 }
+    parameters          = { "log_min_duration_statement" = { value = "500" }, "shared_preload_libraries" = { value = "pg_stat_statements", apply_method = "pending-reboot" } }
+    monitoring_interval = 15
+    port                = 5433
   }
 
   assert {
-    condition     = toset(keys(aws_cloudwatch_log_group.this)) == toset(["upgrade"])
-    error_message = "Only the exported log type must get a log group."
+    condition     = !aws_db_instance.this.multi_az && !aws_db_instance.this.deletion_protection && aws_db_instance.this.storage_type == "io2" && aws_db_instance.this.iops == 3000 && aws_db_instance.this.max_allocated_storage == 0
+    error_message = "Sizing and protection overrides must apply."
   }
 
   assert {
-    condition     = length(aws_cloudwatch_log_metric_filter.postgresql_error_warning_fatal_panic) == 0 && length(aws_cloudwatch_log_metric_filter.postgresql_auth_failure) == 0
-    error_message = "Metric filters must not be created without postgresql or iam-db-auth-error exports."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_query_definition.recent_errors) == 0 && length(aws_cloudwatch_query_definition.slow_queries) == 0
-    error_message = "Query definitions must not be created without postgresql exports."
+    condition     = aws_db_parameter_group.this.family == "postgres16" && length(aws_db_parameter_group.this.parameter) == 3 && aws_db_instance.this.monitoring_interval == 15 && aws_db_instance.this.port == 5433
+    error_message = "Parameters are added to rds.force_ssl in the family of the version."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Validation
-# ------------------------------------------------------------------------------
-
-run "verify_invalid_environment_fails" {
+run "long_identifier_is_truncated_to_63" {
   command = plan
 
-  plan_options {
-    target = [aws_db_parameter_group.this]
+  variables {
+    application = "customer-onboarding-plat"
+    environment = "production01"
+    name        = "orders-reconciliation-ledger-001"
   }
 
+  assert {
+    condition     = length(aws_db_instance.this.identifier) == 63 && startswith(aws_db_instance.this.identifier, "customer-onboarding-plat-production01-orders-reconciliat")
+    error_message = "Identifiers must be cut to 63 characters with a hash."
+  }
+
+  assert {
+    condition     = module.log_group["postgresql"].name == "/aws/rds/instance/${aws_db_instance.this.identifier}/postgresql"
+    error_message = "Log groups follow the real identifier."
+  }
+}
+
+run "rejects_invalid_name" {
+  command = plan
+
   variables {
-    environment = "INVALID_UPPERCASE"
+    name = "Orders_DB"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "rejects_invalid_application" {
+  command = plan
+
+  variables {
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
+
+run "rejects_invalid_environment" {
+  command = plan
+
+  variables {
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
 }
 
-run "verify_invalid_cloudwatch_log_export_fails" {
+run "extended_support_opt_in" {
   command = plan
 
-  # With targeting, a variable is only validated when a targeted resource uses it.
-  plan_options {
-    target = [aws_cloudwatch_log_group.this]
+  variables {
+    extended_support = true
   }
 
+  assert {
+    condition     = aws_db_instance.this.engine_lifecycle_support == "open-source-rds-extended-support"
+    error_message = "Extended Support only when asked."
+  }
+}
+
+run "major_version_upgrade" {
+  command = plan
+
   variables {
-    cloudwatch_logs = {
-      exports = ["postgresql", "audit"]
-      retention_in_days = {
-        postgresql        = 90
-        upgrade           = 30
-        iam-db-auth-error = 14
-      }
-      kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/abcdefab-1234-1234-1234-abcdefabcdef"
-    }
+    engine_version              = "18"
+    allow_major_version_upgrade = true
+    apply_immediately           = true
+  }
+
+  assert {
+    condition     = aws_db_instance.this.allow_major_version_upgrade && aws_db_instance.this.apply_immediately && aws_db_parameter_group.this.family == "postgres18" && aws_db_instance.this.parameter_group_name == aws_db_parameter_group.this.name
+    error_message = "A major upgrade moves the instance to a new parameter group of the new family, applied now."
+  }
+}
+
+run "rejects_minor_engine_version" {
+  command = plan
+
+  variables {
+    engine_version = "18.6"
+  }
+
+  expect_failures = [var.engine_version]
+}
+
+run "rejects_major_upgrade_in_maintenance_window" {
+  command = plan
+
+  variables {
+    allow_major_version_upgrade = true
+  }
+
+  expect_failures = [var.allow_major_version_upgrade]
+}
+
+run "rejects_old_engine_version" {
+  command = plan
+
+  variables {
+    engine_version = "14"
+  }
+
+  expect_failures = [var.engine_version]
+}
+
+run "rejects_invalid_instance_class" {
+  command = plan
+
+  variables {
+    instance_class = "m7g.large"
+  }
+
+  expect_failures = [var.instance_class]
+}
+
+run "rejects_unknown_storage_type" {
+  command = plan
+
+  variables {
+    storage = { type = "standard" }
+  }
+
+  expect_failures = [var.storage]
+}
+
+run "rejects_autoscaling_limit_below_size" {
+  command = plan
+
+  variables {
+    storage = { allocated_storage = 100, max_allocated_storage = 50 }
+  }
+
+  expect_failures = [var.storage]
+}
+
+run "rejects_force_ssl_override" {
+  command = plan
+
+  variables {
+    parameters = { "rds.force_ssl" = { value = "0" } }
+  }
+
+  expect_failures = [var.parameters]
+}
+
+run "rejects_unknown_apply_method" {
+  command = plan
+
+  variables {
+    parameters = { "work_mem" = { value = "65536", apply_method = "later" } }
+  }
+
+  expect_failures = [var.parameters]
+}
+
+run "rejects_invalid_username" {
+  command = plan
+
+  variables {
+    credential = { username = "1admin" }
+  }
+
+  expect_failures = [var.credential]
+}
+
+run "rejects_default_admin_username" {
+  command = plan
+
+  variables {
+    credential = { username = "Postgres" }
+  }
+
+  expect_failures = [var.credential]
+}
+
+run "rejects_password_with_managed_secret" {
+  command = plan
+
+  variables {
+    password_wo         = "correct-horse-battery-staple"
+    password_wo_version = 1
+  }
+
+  expect_failures = [var.password_wo]
+}
+
+run "rejects_no_password_source" {
+  command = plan
+
+  variables {
+    credential = { manage_master_user_password = false }
+  }
+
+  expect_failures = [var.password_wo]
+}
+
+run "rejects_password_without_version" {
+  command = plan
+
+  variables {
+    credential  = { manage_master_user_password = false }
+    password_wo = "correct-horse-battery-staple"
+  }
+
+  expect_failures = [var.password_wo_version]
+}
+
+run "rejects_one_subnet" {
+  command = plan
+
+  variables {
+    subnet_ids = ["subnet-0123456789abcdef0"]
+  }
+
+  expect_failures = [var.subnet_ids]
+}
+
+run "rejects_low_port" {
+  command = plan
+
+  variables {
+    port = 80
+  }
+
+  expect_failures = [var.port]
+}
+
+run "rejects_open_ingress" {
+  command = plan
+
+  variables {
+    security_group = { ingress_cidr_blocks = ["0.0.0.0/0"] }
+  }
+
+  expect_failures = [var.security_group]
+}
+
+run "rejects_no_security_group" {
+  command = plan
+
+  variables {
+    security_group = { create = false }
+  }
+
+  expect_failures = [var.security_group]
+}
+
+run "rejects_kms_create_with_key_id" {
+  command = plan
+
+  variables {
+    kms = { create = true, key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "alias/orders" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_short_backup_retention" {
+  command = plan
+
+  variables {
+    backup_retention_period = 6
+  }
+
+  expect_failures = [var.backup_retention_period]
+}
+
+run "rejects_backup_replication_without_key" {
+  command = plan
+
+  variables {
+    backup_replication = { enabled = true, region = "eu-central-1" }
+  }
+
+  expect_failures = [var.backup_replication]
+}
+
+run "rejects_invalid_backup_region" {
+  command = plan
+
+  variables {
+    backup_replication = { enabled = true, region = "frankfurt", kms_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/33333333-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.backup_replication]
+}
+
+run "rejects_monitoring_off" {
+  command = plan
+
+  variables {
+    monitoring_interval = 0
+  }
+
+  expect_failures = [var.monitoring_interval]
+}
+
+run "rejects_role_without_arn" {
+  command = plan
+
+  variables {
+    iam_role = { create = false }
+  }
+
+  expect_failures = [var.iam_role]
+}
+
+run "rejects_invalid_performance_insights_retention" {
+  command = plan
+
+  variables {
+    performance_insights_retention_period = 30
+  }
+
+  expect_failures = [var.performance_insights_retention_period]
+}
+
+run "rejects_exports_without_postgresql" {
+  command = plan
+
+  variables {
+    cloudwatch_logs = { exports = ["upgrade"] }
   }
 
   expect_failures = [var.cloudwatch_logs]
+}
+
+run "rejects_subscription_without_topic" {
+  command = plan
+
+  variables {
+    event_subscription = { enabled = true }
+  }
+
+  expect_failures = [var.event_subscription]
+}
+
+run "rejects_subscription_without_critical_categories" {
+  command = plan
+
+  variables {
+    event_subscription = { enabled = true, sns_topic_arn = "arn:aws:sns:eu-west-1:123456789012:core-prod-alarms", event_categories = ["failure"] }
+  }
+
+  expect_failures = [var.event_subscription]
 }

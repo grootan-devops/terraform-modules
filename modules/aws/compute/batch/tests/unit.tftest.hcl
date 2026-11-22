@@ -1,819 +1,831 @@
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
   mock_data "aws_region" {
     defaults = {
-      name   = "us-west-2"
-      region = "us-west-2"
+      region = "eu-west-1"
     }
   }
 
-  # The provider validates ARN-typed arguments, so computed ARNs that feed
-  # other resources need ARN-shaped mock values.
+  mock_data "aws_partition" {
+    defaults = {
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
+    }
+  }
+
+  mock_data "aws_vpc" {
+    defaults = {
+      cidr_block = "10.0.0.0/16"
+    }
+  }
+
   mock_resource "aws_iam_role" {
     defaults = {
-      arn = "arn:aws:iam::123456789012:role/core-prod-etl-mock"
+      arn = "arn:aws:iam::123456789012:role/core-prod-etl-job-eu-west-1"
     }
   }
 
-  mock_resource "aws_batch_scheduling_policy" {
+  mock_resource "aws_iam_instance_profile" {
     defaults = {
-      arn = "arn:aws:batch:us-west-2:123456789012:scheduling-policy/core-prod-etl-policy"
+      arn = "arn:aws:iam::123456789012:instance-profile/core-prod-etl-instance-eu-west-1"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    }
+  }
+
+  mock_resource "aws_cloudwatch_log_group" {
+    defaults = {
+      arn = "arn:aws:logs:eu-west-1:123456789012:log-group:/aws/batch/core-prod-etl"
+    }
+  }
+
+  mock_resource "aws_security_group" {
+    defaults = {
+      id = "sg-0bbbbbbbbbbbbbbbb"
+    }
+  }
+
+  mock_resource "aws_launch_template" {
+    defaults = {
+      id             = "lt-0123456789abcdef0"
+      latest_version = 1
     }
   }
 
   mock_resource "aws_batch_compute_environment" {
     defaults = {
-      arn = "arn:aws:batch:us-west-2:123456789012:compute-environment/core-prod-etl-fargate"
+      arn = "arn:aws:batch:eu-west-1:123456789012:compute-environment/core-prod-etl-fargate"
     }
   }
 
-  mock_resource "aws_batch_job_queue" {
+  mock_resource "aws_batch_scheduling_policy" {
     defaults = {
-      arn = "arn:aws:batch:us-west-2:123456789012:job-queue/core-prod-etl-default"
+      arn = "arn:aws:batch:eu-west-1:123456789012:scheduling-policy/core-prod-etl-fair-share"
     }
   }
 
   mock_resource "aws_batch_job_definition" {
     defaults = {
-      arn = "arn:aws:batch:us-west-2:123456789012:job-definition/core-prod-etl-sync:1"
+      arn        = "arn:aws:batch:eu-west-1:123456789012:job-definition/core-prod-etl-nightly:1"
+      arn_prefix = "arn:aws:batch:eu-west-1:123456789012:job-definition/core-prod-etl-nightly"
     }
   }
 }
 
 variables {
-  application = "core"
-  environment = "prod"
-  name        = "etl"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+  application              = "core"
+  environment              = "prod"
+  name                     = "etl"
+  tags                     = { Team = "data" }
+  readonly_root_filesystem = true
 }
 
-# ------------------------------------------------------------------------------
-# Naming
-# ------------------------------------------------------------------------------
-run "verify_rendered_names" {
+run "nothing_without_inputs" {
   command = plan
 
   assert {
-    condition     = aws_iam_role.ecs_execution_role.name == "core-prod-etl-ecs-execution-role"
-    error_message = "ECS execution role name did not match <application>-<environment>-<name>-ecs-execution-role."
+    condition     = length(aws_batch_compute_environment.this) + length(aws_batch_job_queue.this) + length(aws_batch_job_definition.this) + length(aws_batch_scheduling_policy.this) + length(aws_launch_template.this) == 0
+    error_message = "No inputs means no Batch resources."
   }
 
   assert {
-    condition     = aws_iam_role.ecs_job_role.name == "core-prod-etl-ecs-job-role"
-    error_message = "ECS job role name did not match <application>-<environment>-<name>-ecs-job-role."
+    condition     = length(module.job_role) + length(module.execution_role) + length(module.instance_role) + length(module.log_group) + length(module.security_group) == 0
+    error_message = "Roles, log group and security group exist only when something needs them."
   }
 
   assert {
-    condition     = aws_iam_role.eventbridge_batch.name == "core-prod-etl-eb-batch-role"
-    error_message = "EventBridge role name did not match <application>-<environment>-<name>-eb-batch-role."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy.eventbridge_batch.name == "core-prod-etl-eb-batch-policy"
-    error_message = "EventBridge inline policy name did not match <application>-<environment>-<name>-eb-batch-policy."
+    condition     = output.role_arn == null && output.execution_role_arn == null && output.log_group_name == null && output.security_group_id == null && output.kms_key_arn == null
+    error_message = "Outputs are null without resources."
   }
 }
 
-run "verify_name_fallback_when_empty" {
-  command = plan
+run "fargate_stack" {
+  command = apply
 
   variables {
-    name = ""
-  }
-
-  assert {
-    condition     = aws_iam_role.ecs_execution_role.name == "core-prod-ecs-execution-role"
-    error_message = "An empty name must fall back to <application>-<environment>."
-  }
-
-  assert {
-    condition     = aws_iam_role.ecs_execution_role.tags["Name"] == "core-prod"
-    error_message = "The Name tag must fall back to <application>-<environment> when name is empty."
-  }
-}
-
-run "verify_name_fallback_when_null" {
-  command = plan
-
-  variables {
-    name = null
-  }
-
-  assert {
-    condition     = aws_iam_role.eventbridge_batch.name == "core-prod-eb-batch-role"
-    error_message = "A null name must fall back to <application>-<environment>."
-  }
-
-  assert {
-    condition     = aws_iam_role.ecs_job_role.tags["Name"] == "core-prod"
-    error_message = "The Name tag must fall back to <application>-<environment> when name is null."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Tags
-# ------------------------------------------------------------------------------
-run "verify_governance_and_caller_tags" {
-  command = plan
-
-  variables {
-    tags = {
-      CostCenter = "data-platform"
-      Owner      = "platform-team"
-    }
-  }
-
-  assert {
-    condition = alltrue([
-      for role in [aws_iam_role.ecs_execution_role, aws_iam_role.ecs_job_role, aws_iam_role.eventbridge_batch] :
-      role.tags["Application"] == "core" && role.tags["Environment"] == "prod" && role.tags["Name"] == "core-prod-etl"
-    ])
-    error_message = "Every IAM role must carry the Application, Environment and Name governance tags."
-  }
-
-  assert {
-    condition = alltrue([
-      for role in [aws_iam_role.ecs_execution_role, aws_iam_role.ecs_job_role, aws_iam_role.eventbridge_batch] :
-      role.tags["CostCenter"] == "data-platform" && role.tags["Owner"] == "platform-team"
-    ])
-    error_message = "Caller tags from var.tags must be preserved on every IAM role."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Security and shipped defaults
-# ------------------------------------------------------------------------------
-run "verify_iam_least_privilege_defaults" {
-  command = plan
-
-  assert {
-    condition     = jsondecode(aws_iam_role.ecs_execution_role.assume_role_policy).Statement[0].Principal.Service == "ecs-tasks.amazonaws.com"
-    error_message = "ECS execution role must only be assumable by ecs-tasks.amazonaws.com."
-  }
-
-  assert {
-    condition     = jsondecode(aws_iam_role.ecs_job_role.assume_role_policy).Statement[0].Principal.Service == "ecs-tasks.amazonaws.com"
-    error_message = "ECS job role must only be assumable by ecs-tasks.amazonaws.com."
-  }
-
-  assert {
-    condition     = jsondecode(aws_iam_role.eventbridge_batch.assume_role_policy).Statement[0].Principal.Service == "events.amazonaws.com"
-    error_message = "EventBridge role must only be assumable by events.amazonaws.com."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy_attachment.ecs_execution.policy_arn == "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-    error_message = "ECS execution role must have the AWS managed AmazonECSTaskExecutionRolePolicy attached."
-  }
-
-  assert {
-    condition     = jsondecode(aws_iam_role_policy.eventbridge_batch.policy).Statement[0].Action == ["batch:SubmitJob"]
-    error_message = "EventBridge inline policy must grant only batch:SubmitJob."
-  }
-
-  assert {
-    condition     = length(aws_iam_role_policy_attachment.ecs_job_custom) == 0
-    error_message = "The ECS job role must have no policies attached unless the caller supplies them."
-  }
-}
-
-run "verify_optional_features_off_by_default" {
-  command = plan
-
-  assert {
-    condition     = length(aws_batch_scheduling_policy.this) == 0
-    error_message = "No scheduling policy should be created by default."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_log_group.this) == 0
-    error_message = "No CloudWatch log group should be created when cloudwatch_logs is null."
-  }
-
-  assert {
-    condition = (
-      length(aws_batch_compute_environment.this) == 0 &&
-      length(aws_batch_job_queue.this) == 0 &&
-      length(aws_batch_job_definition.this) == 0
-    )
-    error_message = "No compute environments, job queues or job definitions should be created by default."
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_event_rule.this) == 0 && length(aws_cloudwatch_event_target.this) == 0
-    error_message = "No EventBridge rules or targets should be created by default."
-  }
-
-  assert {
-    condition = (
-      length(aws_iam_role_policy_attachment.ecs_execution_custom) == 0 &&
-      length(aws_iam_role_policy_attachment.eventbridge_batch_custom) == 0
-    )
-    error_message = "No custom policy attachments should be created by default."
-  }
-
-  assert {
-    condition     = output.job_queue_arns == {} && output.job_definition_arns == {}
-    error_message = "Job queue and job definition ARN outputs must be empty maps by default."
-  }
-}
-
-run "verify_cloudwatch_logs_encrypted_with_module_kms_key" {
-  command = plan
-
-  variables {
-    cloudwatch_logs = {
-      retention_in_days = 90
-    }
-  }
-
-  assert {
-    condition     = length(aws_cloudwatch_log_group.this) == 1
-    error_message = "A log group must be created when cloudwatch_logs is set."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].name == "/aws/batch/core-prod-etl"
-    error_message = "Log group name must be /aws/batch/<rendered_name>."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].kms_key_id == "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
-    error_message = "Log group must be encrypted with var.kms_key_arn when cloudwatch_logs.kms_key_arn is unset."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].retention_in_days == 90
-    error_message = "Log group retention must come from cloudwatch_logs.retention_in_days."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].log_group_class == "STANDARD"
-    error_message = "Log group class must be STANDARD."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].deletion_protection_enabled == false
-    error_message = "Log group deletion protection must default to false."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].tags["Name"] == "/aws/batch/core-prod-etl"
-    error_message = "Log group Name tag must be overridden with the log group name."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].tags["Application"] == "core" && aws_cloudwatch_log_group.this[0].tags["Environment"] == "prod"
-    error_message = "Log group must carry the Application and Environment governance tags."
-  }
-}
-
-run "verify_cloudwatch_logs_kms_and_protection_overrides" {
-  command = plan
-
-  variables {
-    cloudwatch_logs = {
-      retention_in_days           = 365
-      kms_key_arn                 = "arn:aws:kms:us-west-2:123456789012:key/87654321-4321-4321-4321-210987654321"
-      deletion_protection_enabled = true
-    }
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].kms_key_id == "arn:aws:kms:us-west-2:123456789012:key/87654321-4321-4321-4321-210987654321"
-    error_message = "cloudwatch_logs.kms_key_arn must take precedence over var.kms_key_arn."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].retention_in_days == 365
-    error_message = "Log group retention override was not applied."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_log_group.this[0].deletion_protection_enabled == true
-    error_message = "Log group deletion protection override was not applied."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Full stack with shipped per-item defaults
-# ------------------------------------------------------------------------------
-run "verify_full_stack_defaults_and_wiring" {
-  command   = apply
-  state_key = "verify_full_stack_defaults_and_wiring"
-
-  variables {
-    tags = {
-      Workload = "DataPipeline"
-    }
-
-    create_scheduling_policy = true
-
-    cloudwatch_logs = {
-      retention_in_days = 30
-    }
-
+    vpc_id     = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
     compute_environments = {
-      fargate = {
-        compute_resources = {
-          max_vcpus          = 16
-          security_group_ids = ["sg-0123456789abcdef0"]
-          subnets            = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-        }
-      }
+      fargate = { max_vcpus = 16 }
     }
-
     job_queues = {
-      default = {
-        priority             = 1
-        compute_environments = ["fargate"]
-      }
+      default = { priority = 1, compute_environments = ["fargate"] }
     }
-
     job_definitions = {
-      sync = {
-        type = "container"
-        container_properties = jsonencode({
-          image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/etl-sync:v1.0.0"
-        })
-      }
-    }
-
-    eventbridge_rules = {
       nightly = {
-        schedule_expression = "cron(0 2 * * ? *)"
+        image           = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/core-prod-etl:1.0.0"
+        command         = ["python", "run.py"]
+        vcpu            = 0.5
+        memory          = 1024
+        user            = "1000:1000"
+        environment     = { LOG_LEVEL = "info" }
+        secrets         = { DB_URL = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:core-prod-db-AbCdEf:url::", API = "/core/prod/api-key" }
+        writable_paths  = ["/tmp"]
+        timeout_seconds = 3600
+        attempts        = 3
       }
     }
-
-    eventbridge_targets = {
-      nightly_sync = {
-        rule_name          = "nightly"
-        job_queue_key      = "default"
-        job_definition_key = "sync"
-        job_name           = "nightly-sync"
-      }
-    }
-  }
-
-  # Compute environment
-  assert {
-    condition     = aws_batch_compute_environment.this["fargate"].name == "core-prod-etl-fargate"
-    error_message = "Compute environment name must be <rendered_name>-<key>."
   }
 
   assert {
-    condition     = aws_batch_compute_environment.this["fargate"].type == "MANAGED" && aws_batch_compute_environment.this["fargate"].state == "ENABLED"
-    error_message = "Compute environment must default to a MANAGED, ENABLED environment."
+    condition     = aws_batch_compute_environment.this["fargate"].name_prefix == "core-prod-etl-fargate-" && aws_batch_compute_environment.this["fargate"].type == "MANAGED" && aws_batch_compute_environment.this["fargate"].compute_resources[0].type == "FARGATE"
+    error_message = "Fargate compute environment named <application>-<environment>-<name>-<key>-."
   }
 
   assert {
-    condition     = aws_batch_compute_environment.this["fargate"].compute_resources[0].type == "FARGATE"
-    error_message = "Compute resources must default to FARGATE."
+    condition     = aws_batch_compute_environment.this["fargate"].compute_resources[0].instance_role == null && length(aws_batch_compute_environment.this["fargate"].compute_resources[0].launch_template) == 0 && length(aws_launch_template.this) == 0 && length(module.instance_role) == 0
+    error_message = "Fargate needs no instance role or launch template."
   }
 
   assert {
-    condition     = aws_batch_compute_environment.this["fargate"].compute_resources[0].max_vcpus == 16
-    error_message = "Compute resources max_vcpus did not flow through."
+    condition     = aws_batch_compute_environment.this["fargate"].compute_resources[0].security_group_ids == toset(["sg-0bbbbbbbbbbbbbbbb"]) && keys(module.security_group[0].egress_rule_ids) == ["https-0"] && length(module.security_group[0].ingress_rule_ids) == 0
+    error_message = "The module security group has egress only."
   }
 
   assert {
-    condition     = toset(aws_batch_compute_environment.this["fargate"].compute_resources[0].subnets) == toset(["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"])
-    error_message = "Compute resources subnets did not flow through."
+    condition     = local.egress_rules["https-0"].ip_protocol == "tcp" && local.egress_rules["https-0"].from_port == 443 && local.egress_rules["https-0"].to_port == 443 && local.egress_rules["https-0"].cidr_ipv4 == "0.0.0.0/0"
+    error_message = "Default egress is TCP 443 only, for image pulls and AWS APIs."
   }
 
   assert {
-    condition     = toset(aws_batch_compute_environment.this["fargate"].compute_resources[0].security_group_ids) == toset(["sg-0123456789abcdef0"])
-    error_message = "Compute resources security groups did not flow through."
+    condition     = aws_batch_compute_environment.this["fargate"].tags["Name"] == "core-prod-etl-fargate" && aws_batch_compute_environment.this["fargate"].tags["Team"] == "data" && aws_batch_compute_environment.this["fargate"].tags["ManagedBy"] == "Terraform"
+    error_message = "Compute environments must carry caller and governance tags (Batch.3)."
   }
 
   assert {
-    condition     = aws_batch_compute_environment.this["fargate"].tags["Name"] == "core-prod-etl-fargate"
-    error_message = "Compute environment Name tag must be overridden with <rendered_name>-<key>."
+    condition     = aws_batch_job_queue.this["default"].name == "core-prod-etl-default" && aws_batch_job_queue.this["default"].compute_environment_order[0].compute_environment == "arn:aws:batch:eu-west-1:123456789012:compute-environment/core-prod-etl-fargate" && aws_batch_job_queue.this["default"].tags["ManagedBy"] == "Terraform" && aws_batch_job_queue.this["default"].scheduling_policy_arn == null
+    error_message = "The queue must use the module compute environment and carry governance tags (Batch.1)."
   }
 
   assert {
-    condition = (
-      aws_batch_compute_environment.this["fargate"].tags["Application"] == "core" &&
-      aws_batch_compute_environment.this["fargate"].tags["Environment"] == "prod" &&
-      aws_batch_compute_environment.this["fargate"].tags["Workload"] == "DataPipeline"
-    )
-    error_message = "Compute environment must carry the governance tags and the caller tags."
-  }
-
-  # Scheduling policy
-  assert {
-    condition     = aws_batch_scheduling_policy.this[0].name == "core-prod-etl-policy"
-    error_message = "Scheduling policy name must default to <rendered_name>-policy."
+    condition     = aws_batch_job_definition.this["nightly"].name == "core-prod-etl-nightly" && aws_batch_job_definition.this["nightly"].platform_capabilities == toset(["FARGATE"]) && aws_batch_job_definition.this["nightly"].propagate_tags && aws_batch_job_definition.this["nightly"].retry_strategy[0].attempts == 3 && aws_batch_job_definition.this["nightly"].timeout[0].attempt_duration_seconds == 3600
+    error_message = "Job definition name, platform, retries and timeout."
   }
 
   assert {
-    condition     = aws_batch_scheduling_policy.this[0].tags["Name"] == "core-prod-etl" && aws_batch_scheduling_policy.this[0].tags["Workload"] == "DataPipeline"
-    error_message = "Scheduling policy must carry the governance Name tag and the caller tags."
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).readonlyRootFilesystem && jsondecode(aws_batch_job_definition.this["nightly"].container_properties).user == "1000:1000" && jsondecode(aws_batch_job_definition.this["nightly"].container_properties).networkConfiguration.assignPublicIp == "DISABLED" && jsondecode(aws_batch_job_definition.this["nightly"].container_properties).fargatePlatformConfiguration.platformVersion == "LATEST"
+    error_message = "Containers run read-only, non-root, without a public IP, on the latest platform."
   }
 
   assert {
-    condition     = length(aws_batch_scheduling_policy.this[0].fair_share_policy) == 0
-    error_message = "No fair share policy block should be rendered unless one is configured."
-  }
-
-  # Job queue
-  assert {
-    condition     = aws_batch_job_queue.this["default"].name == "core-prod-etl-default"
-    error_message = "Job queue name must be <rendered_name>-<key>."
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).resourceRequirements == [{ type = "VCPU", value = "0.5" }, { type = "MEMORY", value = "1024" }] && jsondecode(aws_batch_job_definition.this["nightly"].container_properties).command == ["python", "run.py"]
+    error_message = "vCPU, memory and command must be rendered."
   }
 
   assert {
-    condition     = aws_batch_job_queue.this["default"].state == "ENABLED" && aws_batch_job_queue.this["default"].priority == 1
-    error_message = "Job queue must default to ENABLED and use the configured priority."
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).mountPoints == [{ sourceVolume = "scratch-0", containerPath = "/tmp", readOnly = false }] && jsondecode(aws_batch_job_definition.this["nightly"].container_properties).volumes == [{ name = "scratch-0" }]
+    error_message = "writable_paths must mount scratch volumes."
   }
 
   assert {
-    condition     = aws_batch_job_queue.this["default"].scheduling_policy_arn == aws_batch_scheduling_policy.this[0].arn
-    error_message = "Job queue must use the module-created scheduling policy when create_scheduling_policy is true."
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).logConfiguration == { logDriver = "awslogs", options = { "awslogs-group" = "/aws/batch/core-prod-etl", "awslogs-region" = "eu-west-1", "awslogs-stream-prefix" = "nightly" } }
+    error_message = "Jobs must log to the module log group."
   }
 
   assert {
-    condition     = aws_batch_job_queue.this["default"].compute_environment_order[0].compute_environment == aws_batch_compute_environment.this["fargate"].arn
-    error_message = "Job queue must resolve a compute environment key to the module-created compute environment ARN."
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).jobRoleArn == output.role_arn && jsondecode(aws_batch_job_definition.this["nightly"].container_properties).executionRoleArn == output.execution_role_arn && output.role_arn != null
+    error_message = "Jobs must use the module roles."
   }
 
   assert {
-    condition     = aws_batch_job_queue.this["default"].compute_environment_order[0].order == 0
-    error_message = "Compute environment order must follow the list index."
+    condition     = module.log_group[0].name == "/aws/batch/core-prod-etl" && module.log_group[0].retention_in_days == 365 && module.log_group[0].kms_key_arn == null
+    error_message = "Logs: /aws/batch/<base>, 365 days, service encryption by default."
   }
 
   assert {
-    condition     = aws_batch_job_queue.this["default"].tags["Name"] == "core-prod-etl-default"
-    error_message = "Job queue Name tag must be overridden with <rendered_name>-<key>."
-  }
-
-  # Job definition
-  assert {
-    condition     = aws_batch_job_definition.this["sync"].name == "core-prod-etl-sync"
-    error_message = "Job definition name must be <rendered_name>-<key>."
-  }
-
-  assert {
-    condition     = toset(aws_batch_job_definition.this["sync"].platform_capabilities) == toset(["FARGATE"])
-    error_message = "Job definition platform capabilities must default to FARGATE."
-  }
-
-  assert {
-    condition     = length(aws_batch_job_definition.this["sync"].retry_strategy) == 0 && length(aws_batch_job_definition.this["sync"].timeout) == 0
-    error_message = "No retry strategy or timeout should be rendered unless configured."
-  }
-
-  assert {
-    condition     = jsondecode(aws_batch_job_definition.this["sync"].container_properties).executionRoleArn == aws_iam_role.ecs_execution_role.arn
-    error_message = "Job definition must inject the module ECS execution role ARN."
-  }
-
-  assert {
-    condition     = jsondecode(aws_batch_job_definition.this["sync"].container_properties).jobRoleArn == aws_iam_role.ecs_job_role.arn
-    error_message = "Job definition must inject the module ECS job role ARN."
-  }
-
-  assert {
-    condition     = jsondecode(aws_batch_job_definition.this["sync"].container_properties).image == "123456789012.dkr.ecr.us-west-2.amazonaws.com/etl-sync:v1.0.0"
-    error_message = "Caller container properties must be preserved in the job definition."
-  }
-
-  assert {
-    condition = jsondecode(aws_batch_job_definition.this["sync"].container_properties).logConfiguration == {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = "/aws/batch/core-prod-etl"
-        "awslogs-region"        = "us-west-2"
-        "awslogs-stream-prefix" = "sync"
-      }
-    }
-    error_message = "Job definition must ship logs to the module KMS-encrypted log group with the awslogs driver."
-  }
-
-  assert {
-    condition     = aws_batch_job_definition.this["sync"].tags["Name"] == "core-prod-etl-sync"
-    error_message = "Job definition Name tag must be overridden with <rendered_name>-<key>."
-  }
-
-  # EventBridge
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["nightly"].name == "core-prod-etl-nightly"
-    error_message = "EventBridge rule name must be <rendered_name>-<key>."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["nightly"].state == "ENABLED"
-    error_message = "EventBridge rule state must default to ENABLED."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["nightly"].schedule_expression == "cron(0 2 * * ? *)"
-    error_message = "EventBridge rule schedule expression did not flow through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["nightly"].tags["Name"] == "core-prod-etl-nightly"
-    error_message = "EventBridge rule Name tag must be overridden with <rendered_name>-<key>."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["nightly_sync"].rule == aws_cloudwatch_event_rule.this["nightly"].name
-    error_message = "EventBridge target must attach to the rule named by rule_name."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["nightly_sync"].arn == aws_batch_job_queue.this["default"].arn
-    error_message = "EventBridge target must resolve a job queue key to the module-created queue ARN."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["nightly_sync"].batch_target[0].job_definition == aws_batch_job_definition.this["sync"].arn
-    error_message = "EventBridge target must resolve a job definition key to the module-created job definition ARN."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["nightly_sync"].batch_target[0].job_name == "nightly-sync"
-    error_message = "EventBridge target job name did not flow through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["nightly_sync"].role_arn == aws_iam_role.eventbridge_batch.arn
-    error_message = "EventBridge target must use the module EventBridge role."
-  }
-
-  assert {
-    condition = (
-      length(aws_cloudwatch_event_target.this["nightly_sync"].dead_letter_config) == 0 &&
-      length(aws_cloudwatch_event_target.this["nightly_sync"].retry_policy) == 0
-    )
-    error_message = "No dead letter or retry policy block should be rendered unless configured."
-  }
-
-  # Outputs
-  assert {
-    condition     = output.job_queue_arns == { default = aws_batch_job_queue.this["default"].arn }
-    error_message = "job_queue_arns output must map queue keys to queue ARNs."
-  }
-
-  assert {
-    condition     = output.job_definition_arns == { sync = aws_batch_job_definition.this["sync"].arn }
-    error_message = "job_definition_arns output must map job definition keys to job definition ARNs."
-  }
-
-  assert {
-    condition     = output.eventbridge_role_arn == aws_iam_role.eventbridge_batch.arn
-    error_message = "eventbridge_role_arn output must expose the EventBridge role ARN."
+    condition     = output.job_definition_arn_prefixes["nightly"] == "arn:aws:batch:eu-west-1:123456789012:job-definition/core-prod-etl-nightly" && output.job_queue_names["default"] == "core-prod-etl-default"
+    error_message = "Outputs must expose queues and job definitions."
   }
 }
 
-# ------------------------------------------------------------------------------
-# Parameter overrides
-# ------------------------------------------------------------------------------
-run "verify_optional_inputs_flow_through" {
-  command   = apply
-  state_key = "verify_optional_inputs_flow_through"
-
-  variables {
-    create_scheduling_policy = true
-    scheduling_policy_name   = "core-prod-fair-share"
-    scheduling_policy_fair_share_policy = {
-      share_decay_seconds = 3600
-      share_distribution = [
-        {
-          share_identifier = "high"
-          weight_factor    = 1
-        }
-      ]
-    }
-
-    compute_environments = {
-      spot = {
-        state            = "DISABLED"
-        service_role_arn = "arn:aws:iam::123456789012:role/aws-service-role/batch.amazonaws.com/AWSServiceRoleForBatch"
-        compute_resources = {
-          type               = "FARGATE_SPOT"
-          max_vcpus          = 64
-          security_group_ids = ["sg-0123456789abcdef0"]
-          subnets            = ["subnet-0123456789abcdef0"]
-        }
-      }
-    }
-
-    job_queues = {
-      external = {
-        state                 = "DISABLED"
-        priority              = 5
-        scheduling_policy_arn = "arn:aws:batch:us-west-2:123456789012:scheduling-policy/external"
-        compute_environments  = ["arn:aws:batch:us-west-2:123456789012:compute-environment/external"]
-      }
-    }
-
-    job_definitions = {
-      report = {
-        type                  = "container"
-        platform_capabilities = ["EC2"]
-        parameters = {
-          mode = "full"
-        }
-        retry_strategy = {
-          attempts = 3
-          evaluate_on_exit = [
-            {
-              action       = "RETRY"
-              on_exit_code = "1"
-            }
-          ]
-        }
-        timeout = {
-          attempt_duration_seconds = 3600
-        }
-      }
-    }
-
-    custom_ecs_execution_policies = ["arn:aws:iam::123456789012:policy/core-prod-ecr-pull"]
-    custom_ecs_job_role_policies  = ["arn:aws:iam::123456789012:policy/core-prod-s3-read", "arn:aws:iam::123456789012:policy/core-prod-ssm-read"]
-    custom_eventbridge_policies   = ["arn:aws:iam::123456789012:policy/core-prod-eb-extra"]
-
-    eventbridge_rules = {
-      on_upload = {
-        description   = "Run the report when a file lands."
-        event_pattern = "{\"source\":[\"aws.s3\"]}"
-        state         = "DISABLED"
-        tags = {
-          Trigger = "s3"
-        }
-      }
-    }
-
-    eventbridge_targets = {
-      report = {
-        rule_name           = "on_upload"
-        job_queue_key       = "arn:aws:batch:us-west-2:123456789012:job-queue/external"
-        job_definition_key  = "arn:aws:batch:us-west-2:123456789012:job-definition/external:1"
-        job_name            = "report"
-        attempts            = 2
-        container_overrides = "{\"ContainerOverrides\":{\"Command\":[\"run\"]}}"
-        dead_letter_arn     = "arn:aws:sqs:us-west-2:123456789012:core-prod-etl-dlq"
-        retry_policy = {
-          maximum_event_age_in_seconds = 600
-          maximum_retry_attempts       = 4
-        }
-      }
-    }
-  }
-
-  assert {
-    condition     = aws_batch_scheduling_policy.this[0].name == "core-prod-fair-share"
-    error_message = "scheduling_policy_name must override the rendered scheduling policy name."
-  }
-
-  assert {
-    condition     = aws_batch_scheduling_policy.this[0].fair_share_policy[0].share_decay_seconds == 3600
-    error_message = "Fair share decay seconds did not flow through."
-  }
-
-  assert {
-    condition     = one(aws_batch_scheduling_policy.this[0].fair_share_policy[0].share_distribution).share_identifier == "high"
-    error_message = "Fair share distribution did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_compute_environment.this["spot"].state == "DISABLED"
-    error_message = "Compute environment state override did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_compute_environment.this["spot"].service_role == "arn:aws:iam::123456789012:role/aws-service-role/batch.amazonaws.com/AWSServiceRoleForBatch"
-    error_message = "Compute environment service role did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_compute_environment.this["spot"].compute_resources[0].type == "FARGATE_SPOT" && aws_batch_compute_environment.this["spot"].compute_resources[0].max_vcpus == 64
-    error_message = "Compute resources type and max_vcpus overrides did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_job_queue.this["external"].state == "DISABLED" && aws_batch_job_queue.this["external"].priority == 5
-    error_message = "Job queue state and priority overrides did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_job_queue.this["external"].scheduling_policy_arn == "arn:aws:batch:us-west-2:123456789012:scheduling-policy/external"
-    error_message = "An explicit queue scheduling_policy_arn must win over the module-created policy."
-  }
-
-  assert {
-    condition     = aws_batch_job_queue.this["external"].compute_environment_order[0].compute_environment == "arn:aws:batch:us-west-2:123456789012:compute-environment/external"
-    error_message = "A compute environment value that is not a module key must pass through as a direct ARN."
-  }
-
-  assert {
-    condition     = toset(aws_batch_job_definition.this["report"].platform_capabilities) == toset(["EC2"])
-    error_message = "Job definition platform capabilities override did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_job_definition.this["report"].parameters["mode"] == "full"
-    error_message = "Job definition parameters did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_job_definition.this["report"].retry_strategy[0].attempts == 3
-    error_message = "Job definition retry attempts did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_job_definition.this["report"].retry_strategy[0].evaluate_on_exit[0].action == "RETRY" && aws_batch_job_definition.this["report"].retry_strategy[0].evaluate_on_exit[0].on_exit_code == "1"
-    error_message = "Job definition evaluate_on_exit rules did not flow through."
-  }
-
-  assert {
-    condition     = aws_batch_job_definition.this["report"].timeout[0].attempt_duration_seconds == 3600
-    error_message = "Job definition timeout did not flow through."
-  }
-
-  assert {
-    condition     = !can(jsondecode(aws_batch_job_definition.this["report"].container_properties).logConfiguration)
-    error_message = "No logConfiguration should be injected when cloudwatch_logs is null."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy_attachment.ecs_execution_custom["0"].policy_arn == "arn:aws:iam::123456789012:policy/core-prod-ecr-pull"
-    error_message = "Custom ECS execution policies must be attached to the execution role."
-  }
-
-  assert {
-    condition     = length(aws_iam_role_policy_attachment.ecs_job_custom) == 2 && aws_iam_role_policy_attachment.ecs_job_custom["1"].policy_arn == "arn:aws:iam::123456789012:policy/core-prod-ssm-read"
-    error_message = "Custom ECS job role policies must be attached to the job role."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy_attachment.ecs_job_custom["0"].role == aws_iam_role.ecs_job_role.name
-    error_message = "Custom ECS job role policies must target the job role."
-  }
-
-  assert {
-    condition     = aws_iam_role_policy_attachment.eventbridge_batch_custom["0"].role == aws_iam_role.eventbridge_batch.name
-    error_message = "Custom EventBridge policies must be attached to the EventBridge role."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["on_upload"].state == "DISABLED" && aws_cloudwatch_event_rule.this["on_upload"].event_pattern == "{\"source\":[\"aws.s3\"]}"
-    error_message = "EventBridge rule state and event pattern overrides did not flow through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["on_upload"].description == "Run the report when a file lands."
-    error_message = "EventBridge rule description did not flow through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_rule.this["on_upload"].tags["Trigger"] == "s3" && aws_cloudwatch_event_rule.this["on_upload"].tags["Name"] == "core-prod-etl-on_upload"
-    error_message = "EventBridge rule must merge per-rule tags with the Name override."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["report"].arn == "arn:aws:batch:us-west-2:123456789012:job-queue/external"
-    error_message = "A job_queue_key that is not a module key must pass through as a direct ARN."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["report"].batch_target[0].job_definition == "arn:aws:batch:us-west-2:123456789012:job-definition/external:1"
-    error_message = "A job_definition_key that is not a module key must pass through as a direct ARN."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["report"].batch_target[0].job_attempts == 2
-    error_message = "EventBridge target attempts did not flow through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["report"].input == "{\"ContainerOverrides\":{\"Command\":[\"run\"]}}"
-    error_message = "EventBridge target container overrides did not flow through."
-  }
-
-  assert {
-    condition     = aws_cloudwatch_event_target.this["report"].dead_letter_config[0].arn == "arn:aws:sqs:us-west-2:123456789012:core-prod-etl-dlq"
-    error_message = "EventBridge target dead letter ARN did not flow through."
-  }
-
-  assert {
-    condition = (
-      aws_cloudwatch_event_target.this["report"].retry_policy[0].maximum_event_age_in_seconds == 600 &&
-      aws_cloudwatch_event_target.this["report"].retry_policy[0].maximum_retry_attempts == 4
-    )
-    error_message = "EventBridge target retry policy did not flow through."
-  }
-}
-
-# ------------------------------------------------------------------------------
-# Validation
-# ------------------------------------------------------------------------------
-run "verify_invalid_environment_fails" {
+run "execution_and_job_roles" {
   command = plan
 
   variables {
-    environment = "INVALID_UPPERCASE"
+    job_definitions = {
+      nightly = {
+        image   = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/core-prod-etl:1.0.0"
+        secrets = { DB_URL = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:core-prod-db-AbCdEf:url::", API = "/core/prod/api-key" }
+      }
+    }
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.execution_role[0].policy_json).Statement : s.Sid] == ["WriteLogs", "GetRegistryToken", "PullImages", "ReadSecrets", "ReadParameters", "DecryptSecrets"]
+    error_message = "The execution role must get logs, image pulls and secrets only."
+  }
+
+  assert {
+    condition     = jsondecode(module.execution_role[0].policy_json).Statement[0].Resource == ["arn:aws:logs:eu-west-1:123456789012:log-group:/aws/batch/core-prod-etl:*"] && jsondecode(module.execution_role[0].policy_json).Statement[2].Resource == ["arn:aws:ecr:eu-west-1:123456789012:repository/core-prod-etl"]
+    error_message = "Logs and image pulls must be scoped to the log group and repository."
+  }
+
+  assert {
+    condition     = jsondecode(module.execution_role[0].policy_json).Statement[3].Resource == ["arn:aws:secretsmanager:eu-west-1:123456789012:secret:core-prod-db-AbCdEf"] && jsondecode(module.execution_role[0].policy_json).Statement[4].Resource == ["arn:aws:ssm:eu-west-1:123456789012:parameter/core/prod/api-key"] && jsondecode(module.execution_role[0].policy_json).Statement[4].Action == ["ssm:GetParameters"]
+    error_message = "Secrets Manager and SSM references must become secret and parameter ARNs."
+  }
+
+  assert {
+    condition     = jsondecode(module.execution_role[0].policy_json).Statement[5].Condition.StringEquals["kms:ViaService"] == ["secretsmanager.eu-west-1.amazonaws.com", "ssm.eu-west-1.amazonaws.com"]
+    error_message = "kms:Decrypt must be limited to Secrets Manager and SSM."
+  }
+
+  assert {
+    condition     = module.execution_role[0].name == "core-prod-etl-batch-exec-eu-west-1" && module.job_role[0].name == "core-prod-etl-job-eu-west-1" && module.job_role[0].policy_json == null
+    error_message = "Roles named <base>-<purpose>-<region>; the job role has no permissions by default."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].trust_policy_json).Statement[0].Principal.Service == ["ecs-tasks.amazonaws.com"] && jsondecode(module.job_role[0].trust_policy_json).Statement[0].Condition.StringEquals["aws:SourceAccount"] == ["123456789012"] && jsondecode(module.job_role[0].trust_policy_json).Statement[0].Condition.ArnLike["aws:SourceArn"] == ["arn:aws:ecs:eu-west-1:123456789012:*"]
+    error_message = "Only ECS tasks in this account may assume the job role."
+  }
+}
+
+run "ec2_environments_with_module_key" {
+  command   = apply
+  state_key = "ec2"
+
+  variables {
+    vpc_id     = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    kms        = { create = true }
+    compute_environments = {
+      ondemand = { type = "EC2", max_vcpus = 64, min_vcpus = 2, instance_types = ["c7i"], root_volume_size = 50 }
+      spot     = { type = "SPOT", max_vcpus = 128 }
+    }
+    job_definitions = {
+      gpu = { image = "public.ecr.aws/docker/library/python:3.13", platform = "EC2", readonly_root_filesystem = false }
+    }
+  }
+
+  assert {
+    condition     = aws_launch_template.this["ondemand"].metadata_options[0].http_tokens == "required" && aws_launch_template.this["ondemand"].metadata_options[0].http_put_response_hop_limit == 1
+    error_message = "Instances must require IMDSv2 with hop limit 1."
+  }
+
+  assert {
+    condition     = aws_launch_template.this["ondemand"].block_device_mappings[0].ebs[0].encrypted == "true" && aws_launch_template.this["ondemand"].block_device_mappings[0].ebs[0].volume_type == "gp3" && aws_launch_template.this["ondemand"].block_device_mappings[0].ebs[0].volume_size == 50 && aws_launch_template.this["ondemand"].block_device_mappings[0].ebs[0].kms_key_id == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "Root volumes must be encrypted gp3 with the module key."
+  }
+
+  assert {
+    condition     = aws_launch_template.this["spot"].tag_specifications[0].tags["ManagedBy"] == "Terraform" && aws_launch_template.this["spot"].tag_specifications[1].resource_type == "volume" && aws_launch_template.this["spot"].tag_specifications[1].tags["Application"] == "core"
+    error_message = "Instances and volumes must carry governance tags."
+  }
+
+  assert {
+    condition     = aws_batch_compute_environment.this["ondemand"].compute_resources[0].instance_role == "arn:aws:iam::123456789012:instance-profile/core-prod-etl-instance-eu-west-1" && aws_batch_compute_environment.this["ondemand"].compute_resources[0].allocation_strategy == "BEST_FIT_PROGRESSIVE" && aws_batch_compute_environment.this["ondemand"].compute_resources[0].min_vcpus == 2 && aws_batch_compute_environment.this["ondemand"].compute_resources[0].instance_type == toset(["c7i"])
+    error_message = "EC2 environments use the instance profile and BEST_FIT_PROGRESSIVE."
+  }
+
+  assert {
+    condition     = aws_batch_compute_environment.this["spot"].compute_resources[0].allocation_strategy == "SPOT_PRICE_CAPACITY_OPTIMIZED" && aws_batch_compute_environment.this["spot"].compute_resources[0].ec2_configuration[0].image_type == "ECS_AL2023" && aws_batch_compute_environment.this["spot"].compute_resources[0].launch_template[0].launch_template_id == "lt-0123456789abcdef0"
+    error_message = "Spot environments use price-capacity-optimized, AL2023 and the launch template."
+  }
+
+  assert {
+    condition     = aws_batch_compute_environment.this["spot"].compute_resources[0].tags["ManagedBy"] == "Terraform" && aws_batch_compute_environment.this["spot"].compute_resources[0].tags["Name"] == "core-prod-etl-spot"
+    error_message = "EC2 compute resources must be tagged (Batch.4)."
+  }
+
+  assert {
+    condition     = module.instance_role[0].instance_profile_arn != null && jsondecode(module.instance_role[0].trust_policy_json).Statement[0].Principal.Service == ["ec2.amazonaws.com"]
+    error_message = "EC2 environments get an instance profile trusted by EC2."
+  }
+
+  assert {
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "The module key must encrypt the log group."
+  }
+
+  assert {
+    condition     = !jsondecode(aws_batch_job_definition.this["gpu"].container_properties).privileged && !jsondecode(aws_batch_job_definition.this["gpu"].container_properties).readonlyRootFilesystem && !can(jsondecode(aws_batch_job_definition.this["gpu"].container_properties).networkConfiguration)
+    error_message = "EC2 jobs are unprivileged; the per-job read-only override applies."
+  }
+
+  assert {
+    condition     = !contains([for s in jsondecode(module.execution_role[0].policy_json).Statement : s.Sid], "PullImages")
+    error_message = "Images outside ECR need no pull permission."
+  }
+}
+
+run "module_key_is_planned_safely" {
+  command = plan
+
+  variables {
+    vpc_id     = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    kms        = { create = true }
+    compute_environments = {
+      ondemand = { type = "EC2", max_vcpus = 8 }
+    }
+    job_definitions = {
+      nightly = { image = "123456789012.dkr.ecr.eu-west-1.amazonaws.com/core-prod-etl:1.0.0" }
+    }
+  }
+
+  assert {
+    condition     = module.encryption.created && length(aws_launch_template.this) == 1 && length(module.log_group) == 1
+    error_message = "kms.create must plan without knowing the key ARN."
+  }
+}
+
+run "caller_key_id_and_log_key_override" {
+  command = plan
+
+  variables {
+    kms             = { key_id = "11111111-2222-3333-4444-555555555555" }
+    cloudwatch_logs = { kms_key_arn = "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555", retention_in_days = 731 }
+    job_definitions = {
+      nightly = { image = "busybox:1.37" }
+    }
+  }
+
+  assert {
+    condition     = output.kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    error_message = "A key ID must be used as the key ARN."
+  }
+
+  assert {
+    condition     = module.log_group[0].kms_key_arn == "arn:aws:kms:eu-west-1:123456789012:key/99999999-2222-3333-4444-555555555555" && module.log_group[0].retention_in_days == 731
+    error_message = "cloudwatch_logs must override the log key and retention."
+  }
+}
+
+run "logs_disabled" {
+  command = apply
+
+  variables {
+    cloudwatch_logs = { enabled = false }
+    job_definitions = {
+      nightly = { image = "busybox:1.37" }
+    }
+  }
+
+  assert {
+    condition     = length(module.log_group) == 0 && output.log_group_name == null && !can(jsondecode(aws_batch_job_definition.this["nightly"].container_properties).logConfiguration)
+    error_message = "cloudwatch_logs.enabled = false removes the log group and log configuration."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.execution_role[0].policy_json).Statement : s.Sid] == ["GetRegistryToken"]
+    error_message = "Without logs, ECR images or secrets the execution role only gets a registry token."
+  }
+}
+
+run "scheduling_policy_and_queue_order" {
+  command = apply
+
+  variables {
+    vpc_id     = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    compute_environments = {
+      fargate = { max_vcpus = 16 }
+    }
+    scheduling_policy = {
+      enabled             = true
+      share_decay_seconds = 3600
+      share_distribution  = [{ share_identifier = "high", weight_factor = 0.5 }]
+    }
+    job_queues = {
+      default  = { priority = 10, compute_environments = ["fargate", "arn:aws:batch:eu-west-1:123456789012:compute-environment/shared"] }
+      external = { priority = 1, compute_environments = ["arn:aws:batch:eu-west-1:123456789012:compute-environment/shared"], scheduling_policy_arn = "arn:aws:batch:eu-west-1:123456789012:scheduling-policy/shared" }
+    }
+  }
+
+  assert {
+    condition     = aws_batch_scheduling_policy.this[0].name == "core-prod-etl-fair-share" && aws_batch_scheduling_policy.this[0].fair_share_policy[0].share_decay_seconds == 3600 && aws_batch_scheduling_policy.this[0].tags["ManagedBy"] == "Terraform"
+    error_message = "The scheduling policy must be named and tagged (Batch.2)."
+  }
+
+  assert {
+    condition     = aws_batch_job_queue.this["default"].scheduling_policy_arn == "arn:aws:batch:eu-west-1:123456789012:scheduling-policy/core-prod-etl-fair-share" && aws_batch_job_queue.this["external"].scheduling_policy_arn == "arn:aws:batch:eu-west-1:123456789012:scheduling-policy/shared"
+    error_message = "Queues use the module policy unless they name their own."
+  }
+
+  assert {
+    condition     = [for o in aws_batch_job_queue.this["default"].compute_environment_order : o.order] == [0, 1] && aws_batch_job_queue.this["default"].compute_environment_order[1].compute_environment == "arn:aws:batch:eu-west-1:123456789012:compute-environment/shared"
+    error_message = "Compute environments keep their order; ARNs pass through."
+  }
+}
+
+run "egress_override" {
+  command   = apply
+  state_key = "egress"
+
+  variables {
+    vpc_id     = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    security_group = {
+      egress_cidr_blocks        = ["10.0.0.0/16", "2001:db8::/56"]
+      egress_prefix_list_ids    = ["pl-0123456789abcdef0"]
+      egress_security_group_ids = ["sg-0eeeeeeeeeeeeeeee"]
+    }
+    compute_environments = { fargate = { max_vcpus = 4 } }
+  }
+
+  assert {
+    condition     = keys(module.security_group[0].egress_rule_ids) == ["https-0", "https-1", "pl-0", "sg-0"]
+    error_message = "egress_cidr_blocks replace the HTTPS destinations; prefix lists and groups add destinations."
+  }
+
+  assert {
+    condition     = local.egress_rules["https-0"].cidr_ipv4 == "10.0.0.0/16" && local.egress_rules["https-0"].from_port == 443 && local.egress_rules["https-1"].cidr_ipv6 == "2001:db8::/56" && local.egress_rules["https-1"].cidr_ipv4 == null
+    error_message = "CIDR destinations get HTTPS only, IPv4 or IPv6."
+  }
+
+  assert {
+    condition     = local.egress_rules["sg-0"].ip_protocol == "-1" && local.egress_rules["sg-0"].referenced_security_group_id == "sg-0eeeeeeeeeeeeeeee" && local.egress_rules["pl-0"].prefix_list_id == "pl-0123456789abcdef0"
+    error_message = "Listed groups and prefix lists are reached on every port."
+  }
+}
+
+run "efs_volumes" {
+  command   = apply
+  state_key = "efs"
+
+  variables {
+    job_definitions = {
+      nightly = {
+        image          = "busybox:1.37"
+        writable_paths = ["/tmp"]
+        efs_volumes = {
+          shared  = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", container_path = "/mnt/shared" }
+          reports = { file_system_id = "fs-0fedcba9876543210", root_directory = "/reports", container_path = "/mnt/reports", read_only = true }
+        }
+      }
+      export = {
+        image       = "busybox:1.37"
+        efs_volumes = { shared = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-0aaaaaaaaaaaaaaaa", container_path = "/mnt/shared", read_only = true } }
+      }
+      cleanup = { image = "busybox:1.37" }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).volumes == [{ name = "scratch-0" }, { name = "reports", efsVolumeConfiguration = { fileSystemId = "fs-0fedcba9876543210", rootDirectory = "/reports", transitEncryption = "ENABLED", authorizationConfig = { iam = "DISABLED" } } }, { name = "shared", efsVolumeConfiguration = { fileSystemId = "fs-0123456789abcdef0", transitEncryption = "ENABLED", authorizationConfig = { iam = "ENABLED", accessPointId = "fsap-00000000000000001" } } }]
+    error_message = "EFS volumes always use TLS; IAM authorization with an access point."
+  }
+
+  assert {
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).mountPoints == [{ sourceVolume = "scratch-0", containerPath = "/tmp", readOnly = false }, { sourceVolume = "reports", containerPath = "/mnt/reports", readOnly = true }, { sourceVolume = "shared", containerPath = "/mnt/shared", readOnly = false }]
+    error_message = "Each EFS volume is mounted at container_path, read-only when asked."
+  }
+
+  assert {
+    condition     = !can(jsondecode(aws_batch_job_definition.this["cleanup"].container_properties).volumes) && !can(jsondecode(aws_batch_job_definition.this["cleanup"].container_properties).mountPoints)
+    error_message = "Jobs without volumes render none."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.job_role[0].policy_json).Statement : s.Sid] == ["MountEfs0", "MountEfs1", "MountEfs2"]
+    error_message = "The job role gets one mount statement per EFS volume of every job."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].policy_json).Statement[0].Action == ["elasticfilesystem:ClientMount"] && jsondecode(module.job_role[0].policy_json).Statement[0].Resource == ["arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-0123456789abcdef0"] && jsondecode(module.job_role[0].policy_json).Statement[0].Condition.StringEquals["elasticfilesystem:AccessPointArn"] == "arn:aws:elasticfilesystem:eu-west-1:123456789012:access-point/fsap-0aaaaaaaaaaaaaaaa"
+    error_message = "A read-only access point mount gets ClientMount on that access point only."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].policy_json).Statement[1].Action == ["elasticfilesystem:ClientMount"] && jsondecode(module.job_role[0].policy_json).Statement[1].Resource == ["arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-0fedcba9876543210"] && !can(jsondecode(module.job_role[0].policy_json).Statement[1].Condition)
+    error_message = "A read-only mount without an access point gets ClientMount on the file system."
+  }
+
+  assert {
+    condition     = jsondecode(module.job_role[0].policy_json).Statement[2].Action == ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"] && jsondecode(module.job_role[0].policy_json).Statement[2].Condition.StringEquals["elasticfilesystem:AccessPointArn"] == "arn:aws:elasticfilesystem:eu-west-1:123456789012:access-point/fsap-00000000000000001"
+    error_message = "A writable access point mount adds ClientWrite."
+  }
+
+  assert {
+    condition     = jsondecode(aws_batch_job_definition.this["nightly"].container_properties).jobRoleArn == output.role_arn && output.role_arn == "arn:aws:iam::123456789012:role/core-prod-etl-job-eu-west-1"
+    error_message = "Jobs run as the role that carries the mount permissions."
+  }
+}
+
+run "efs_with_module_key_is_planned_safely" {
+  command = plan
+
+  variables {
+    vpc_id               = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids           = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    kms                  = { create = true }
+    compute_environments = { fargate = { max_vcpus = 4 } }
+    job_definitions = {
+      nightly = { image = "busybox:1.37", efs_volumes = { shared = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", container_path = "/mnt/shared" } } }
+    }
+  }
+
+  assert {
+    condition     = module.encryption.created && length(module.job_role) == 1 && length(aws_batch_job_definition.this) == 1
+    error_message = "EFS volumes and mount permissions must plan without knowing the key ARN."
+  }
+
+  assert {
+    condition     = keys(local.egress_rules) == ["https-0", "nfs"] && local.egress_rules["nfs"].ip_protocol == "tcp" && local.egress_rules["nfs"].from_port == 2049 && local.egress_rules["nfs"].to_port == 2049 && local.egress_rules["nfs"].cidr_ipv4 == "10.0.0.0/16" && length(data.aws_vpc.this) == 1
+    error_message = "EFS volumes add NFS egress to the VPC CIDR only."
+  }
+}
+
+run "bring_your_own_job_role" {
+  command = plan
+
+  variables {
+    iam_role = { create = false, arn = "arn:aws:iam::123456789012:role/shared-batch-job" }
+    job_definitions = {
+      nightly = { image = "busybox:1.37" }
+    }
+  }
+
+  assert {
+    condition     = length(module.job_role) == 0 && output.role_arn == "arn:aws:iam::123456789012:role/shared-batch-job" && output.role_name == null
+    error_message = "A caller role must replace the job role."
+  }
+}
+
+run "extend_the_job_role" {
+  command = plan
+
+  variables {
+    iam_role = {
+      managed_policy_arns      = ["arn:aws:iam::123456789012:policy/etl-read"]
+      permissions_boundary_arn = "arn:aws:iam::123456789012:policy/boundary"
+      policy_statements        = [{ sid = "ReadInput", actions = ["s3:GetObject"], resources = ["arn:aws:s3:::core-prod-input/*"] }]
+    }
+    job_definitions = {
+      nightly = { image = "busybox:1.37" }
+    }
+  }
+
+  assert {
+    condition     = [for s in jsondecode(module.job_role[0].policy_json).Statement : s.Sid] == ["ReadInput"]
+    error_message = "Caller statements go to the job role."
+  }
+}
+
+run "external_security_groups_only" {
+  command = plan
+
+  variables {
+    subnet_ids           = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    security_group       = { create = false, additional_security_group_ids = ["sg-0aaaaaaaaaaaaaaaa"] }
+    compute_environments = { fargate = { max_vcpus = 4 } }
+  }
+
+  assert {
+    condition     = length(module.security_group) == 0 && aws_batch_compute_environment.this["fargate"].compute_resources[0].security_group_ids == toset(["sg-0aaaaaaaaaaaaaaaa"])
+    error_message = "create = false uses only the caller groups."
+  }
+}
+
+run "rejects_invalid_name" {
+  command = plan
+
+  variables {
+    name = "ETL_Jobs"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "rejects_invalid_application" {
+  command = plan
+
+  variables {
+    application = "Core"
+  }
+
+  expect_failures = [var.application]
+}
+
+run "rejects_invalid_environment" {
+  command = plan
+
+  variables {
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
+}
+
+run "rejects_missing_vpc" {
+  command = plan
+
+  variables {
+    subnet_ids           = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+    compute_environments = { fargate = { max_vcpus = 4 } }
+  }
+
+  expect_failures = [var.vpc_id]
+}
+
+run "rejects_single_subnet" {
+  command = plan
+
+  variables {
+    vpc_id               = "vpc-0a1b2c3d4e5f67890"
+    subnet_ids           = ["subnet-0123456789abcdef0"]
+    compute_environments = { fargate = { max_vcpus = 4 } }
+  }
+
+  expect_failures = [var.subnet_ids]
+}
+
+run "rejects_no_security_group" {
+  command = plan
+
+  variables {
+    security_group = { create = false }
+  }
+
+  expect_failures = [var.security_group]
+}
+
+run "rejects_create_and_key_id" {
+  command = plan
+
+  variables {
+    kms = { create = true, key_id = "11111111-2222-3333-4444-555555555555" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_key_id" {
+  command = plan
+
+  variables {
+    kms = { key_id = "alias/batch" }
+  }
+
+  expect_failures = [var.kms]
+}
+
+run "rejects_invalid_compute_environment_key" {
+  command = plan
+
+  variables {
+    compute_environments = { Fargate_1 = { max_vcpus = 4 } }
+  }
+
+  expect_failures = [var.compute_environments]
+}
+
+run "rejects_unknown_compute_type" {
+  command = plan
+
+  variables {
+    compute_environments = { x = { type = "EKS", max_vcpus = 4 } }
+  }
+
+  expect_failures = [var.compute_environments]
+}
+
+run "rejects_invalid_vcpus" {
+  command = plan
+
+  variables {
+    compute_environments = { x = { type = "EC2", max_vcpus = 4, min_vcpus = 8 } }
+  }
+
+  expect_failures = [var.compute_environments]
+}
+
+run "rejects_invalid_compute_state" {
+  command = plan
+
+  variables {
+    compute_environments = { x = { max_vcpus = 4, state = "OFF" } }
+  }
+
+  expect_failures = [var.compute_environments]
+}
+
+run "rejects_invalid_queue_key" {
+  command = plan
+
+  variables {
+    job_queues = { High_Priority = { priority = 1, compute_environments = ["x"] } }
+  }
+
+  expect_failures = [var.job_queues]
+}
+
+run "rejects_queue_without_environment" {
+  command = plan
+
+  variables {
+    job_queues = { default = { priority = 1, compute_environments = [] } }
+  }
+
+  expect_failures = [var.job_queues]
+}
+
+run "rejects_invalid_queue_state" {
+  command = plan
+
+  variables {
+    job_queues = { default = { priority = 1, compute_environments = ["x"], state = "PAUSED" } }
+  }
+
+  expect_failures = [var.job_queues]
+}
+
+run "rejects_invalid_job_key" {
+  command = plan
+
+  variables {
+    job_definitions = { Nightly_Job = { image = "busybox:1.37" } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_unknown_platform" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", platform = "EKS" } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_credentials_in_environment" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", environment = { DB_PASSWORD = "x" } } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_root_user" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", user = "0:0" } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_invalid_retry_and_timeout" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", timeout_seconds = 30 } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_efs_volume_named_like_scratch" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", efs_volumes = { scratch-0 = { file_system_id = "fs-0123456789abcdef0", container_path = "/mnt/data" } } } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_invalid_efs_ids_and_path" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", efs_volumes = { data = { file_system_id = "fs-0123456789abcdef0", access_point_id = "ap-1", container_path = "mnt/data" } } } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_root_directory_with_access_point" {
+  command = plan
+
+  variables {
+    job_definitions = { nightly = { image = "busybox:1.37", efs_volumes = { data = { file_system_id = "fs-0123456789abcdef0", access_point_id = "fsap-00000000000000001", root_directory = "/data", container_path = "/mnt/data" } } } }
+  }
+
+  expect_failures = [var.job_definitions]
+}
+
+run "rejects_role_without_arn" {
+  command = plan
+
+  variables {
+    iam_role = { create = false }
+  }
+
+  expect_failures = [var.iam_role]
 }

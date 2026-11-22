@@ -11,8 +11,8 @@ repository tag is the version, and every module moves with it.
 
 Anything at MAJOR — and any MINOR that changes observable behaviour — requires an entry in
 [MIGRATION.md](../MIGRATION.md) before release. Release notes go in
-[CHANGELOG.md](../CHANGELOG.md). Moving a resource address, and the plan review that gates a
-risky release, are in [State migration](state-migration.md).
+[CHANGELOG.md](../CHANGELOG.md). While the library has no consumers, a MAJOR
+release carries no `moved` blocks and no deprecated inputs.
 
 Consumers pin an exact release tag (or Registry version); a branch is never a release
 reference. A deprecated variable, output or behaviour is announced in the changelog and the

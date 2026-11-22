@@ -22,9 +22,10 @@ component its own timings and leaves the rest on the stack-wide ones:
 on_call_overrides = {
   "security" = { escalate_after_in_minutes = 5 }
 }
-``` `on_call_routing` decides
-which records start the policy (incidents by default; see
-[incidents](../incidents/README.md) and [alerts](../alerts/README.md)).
+```
+
+`on_call_routing` decides which records start the policy (incidents by default;
+see [incidents](../incidents/README.md) and [alerts](../alerts/README.md)).
 
 | Output | Contents |
 | --- | --- |

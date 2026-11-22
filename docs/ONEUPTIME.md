@@ -21,7 +21,7 @@ internal submodule per area. Call the root module, not the submodules; the
 | Area | Module Directory | Primary OneUptime Resources Managed | One Per |
 | --- | --- | --- | --- |
 | **Root** | [`modules/oneuptime`](../modules/oneuptime) | `oneuptime_label`, `oneuptime_team` | label name, `rbac_team_mapping` group |
-| **Monitors** | [`modules/oneuptime/monitors`](../modules/oneuptime/monitors) | `oneuptime_monitor`, `oneuptime_monitor_group`, `oneuptime_monitor_owner_rule`, `oneuptime_monitor_label_rule` | mapped monitor slug; component |
+| **Monitors** | [`modules/oneuptime/monitors`](../modules/oneuptime/monitors) | `oneuptime_monitor`, `oneuptime_monitor_group_resource`, `oneuptime_monitor_group`, `oneuptime_monitor_owner_rule`, `oneuptime_monitor_label_rule` | mapped monitor slug; component |
 | **Alerts** | [`modules/oneuptime/alerts`](../modules/oneuptime/alerts) | `oneuptime_alert_owner_rule`, `oneuptime_alert_label_rule`, `oneuptime_alert_grouping_rule` | component |
 | **Incidents** | [`modules/oneuptime/incidents`](../modules/oneuptime/incidents) | `oneuptime_incident_owner_rule`, `oneuptime_incident_label_rule`, `oneuptime_incident_grouping_rule` | component |
 | **On-call** | [`modules/oneuptime/oncall`](../modules/oneuptime/oncall) | `oneuptime_on_call_policy`, `oneuptime_escalation_rule`, `oneuptime_on_call_policy_schedule`, `oneuptime_on_call_schedule_layer` | component |
@@ -53,6 +53,9 @@ Nothing the module needs to authenticate or to reach a target is written into Te
    created with a placeholder.
 5. **Sensitive Webhooks**: the Teams template takes `teams_webhook_url` as a sensitive input and
    emits it only through the sensitive `workflow_variable_contents` output.
+6. **Heartbeat and Agent Keys**: the secret keys a job or agent reports with are sensitive
+   outputs by monitor slug: `incoming_request_secret_keys`, `incoming_email_secret_keys` and
+   `server_monitor_secret_keys`. OneUptime generates them, so they are in state.
 
 `status_page_configs` is not sensitive: a status page `master_password` or private user
 `password` set there appears in plan output and in state. Prefer SSO for private pages, or set
@@ -76,13 +79,15 @@ Every value below is a module default. A stack overrides it once in `monitor_def
      over 10% packet loss or 50 ms jitter, a certificate within 21 days of expiry, a domain within
      30 days, or a server over 90% CPU or memory, 85% disk or 50% swap.
    - **Operational** returns the monitor to green on its own.
+   - Hand-written `extra_criteria` run between Degraded and Operational, unless their `order`
+     moves them: `10` or less runs before Offline.
    - Generated incidents and alerts auto-resolve, are not private, and incidents show on status
      pages.
 3. **Noise Control**: alerts and incidents are grouped per component by labels and severity, with
    a 15-minute reopen window.
 4. **On-Call**:
-   - Each component's policy repeats 3 times if nobody acknowledges, and escalates after
-     30 minutes.
+   - Each component's escalation rule pages its owning teams again every 10 minutes, and the
+     policy repeats up to 10 times while nobody acknowledges.
    - The one schedule layer rotates weekly and covers the whole clock. Restricting it to business
      hours is opt-in, because it leaves the rest of the day uncovered.
 5. **Status Pages**:
@@ -244,6 +249,9 @@ module "oneuptime" {
   workflow_variable_contents = module.teams_notifications.workflow_variable_contents
 }
 ```
+
+[`examples/oneuptime/platform`](../examples/oneuptime/platform) is a runnable stack covering every area of the module
+in one configuration; `make verify` plans it with a mocked provider.
 
 ---
 

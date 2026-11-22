@@ -8,8 +8,8 @@ without touching the hand-written narrative around them.
 # <Provider> <Resource> Module
 <what it provisions, its operational role — no marketing, no project names>
 
-### Architecture & Managed Resources     hand-written
-### Security & Compliance Guardrails     hand-written
+## Architecture & Managed Resources      hand-written
+## Security & Compliance Guardrails      hand-written
 ## Requirements & Providers              generated from versions.tf
 ## Usage Examples                        hand-written
 ### Minimal Working Example
@@ -32,8 +32,5 @@ Every usage example references the public Git source with `?ref=<version>`, whic
 syntax: a consumer pins the release their stack uses, so an example needs no change at a
 release. `tests/verify_modules.py` rejects a module README whose examples use a relative
 path, a branch or a pre-release; it also accepts a stable SemVer tag.
-
-Start the architecture diagram from [docs/assets/architecture-template.svg](assets/architecture-template.svg)
-(a PNG export sits beside it).
 
 [Documentation index](../README.md#documentation)

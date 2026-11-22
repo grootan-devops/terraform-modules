@@ -1,30 +1,45 @@
 # AWS ElastiCache Valkey Module
 
-The `elasticache/valkey` module manages Valkey replication groups for low-latency caching and session persistence with mandatory in-transit TLS and at-rest KMS encryption.
+Scope: `workload`
+
+A Valkey replication group (cluster mode disabled) in private subnets: two nodes with automatic failover and Multi-AZ,
+encryption at rest (AWS managed key, module key or your key) and TLS required, daily snapshots, slow and engine logs
+in CloudWatch Logs, a security group that admits only the listed sources on the Valkey port, and optional RBAC or a
+write-only AUTH token.
 
 ## Architecture & Managed Resources
 
-- `aws_elasticache_replication_group.this`: Valkey cluster instances.
-- `aws_elasticache_subnet_group.this`: VPC cache subnet placement.
-- `aws_elasticache_parameter_group.this`: Engine parameter tuning.
-- `aws_security_group.this`: Firewall controlling ingress to port 6379.
+- `aws_elasticache_replication_group.this`: ID `<application>-<environment>-<name>`, cut to 40 characters with a hash.
+- `aws_elasticache_subnet_group.this`, `aws_elasticache_parameter_group.this` (`<name>-valkey<major>`, replaced
+  before the old one is removed on a major upgrade).
+- `module.security_group` ([`network/security-group`](../../../network/security-group)): ingress on `port` from
+  `security_group.ingress_*`; no egress (nodes start no connections).
+- `module.log_group` ([`observability/log-group`](../../../observability/log-group)):
+  `/aws/elasticache/<id>/slow-log` and `/engine-log`.
+- `module.encryption` ([`core/encryption`](../../../core/encryption)): AWS managed key, module key or your key.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **Mandatory In-Transit & At-Rest Encryption**: `transit_encryption_enabled = true` and `at_rest_encryption_enabled = true` enforced.
-- **Mandatory KMS CMK**: Data at rest encrypted via Customer Managed Key (`kms_key_id`).
-- **Isolated Network Placement**: Subnet group deployed exclusively across internal subnets.
+- **Encryption (ElastiCache.4, ElastiCache.5):** at rest always on; TLS `required`.
+- **High availability (ElastiCache.3):** two nodes by default; failover and Multi-AZ follow `num_cache_clusters > 1`.
+- **Backups (ElastiCache.1):** 7-day snapshots by default (1-35), final snapshot on deletion.
+- **Patching (ElastiCache.2):** automatic minor version upgrades.
+- **Network (ElastiCache.7):** dedicated subnet group; `/0` ingress rejected; no egress rule.
+- **Authentication:** an RBAC user group (`user_group_id`) or a write-only AUTH token (`auth_token_wo` with
+  `auth_token_wo_version`) that never reaches state. Without either, only the network rules guard the port.
+- **Logs:** slow and engine logs on by default, 365 days, deletion protection, the module key when one is set.
 
----
+The module key (`kms.create = true`) lets principals of this account use it through ElastiCache in this Region
+(`kms:CallerAccount`, `kms:ViaService`) and lets CloudWatch Logs use it for this group's log groups. A key passed in
+`kms.key_id` needs the same grants. The deploying role needs the CloudWatch Logs log delivery permissions
+(`logs:CreateLogDelivery` and related).
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
@@ -37,10 +52,8 @@ module "valkey" {
   application = "core"
   environment = "prod"
   name        = "cache"
-
-  vpc_id     = "vpc-0a1b2c3d4e5f67890"
-  subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_id = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  vpc_id      = "vpc-0a1b2c3d4e5f67890"
+  subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
 }
 ```
 
@@ -50,58 +63,60 @@ module "valkey" {
 module "valkey" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/database/elasticache/valkey?ref=<version>"
 
-  application = "session"
-  environment = "prod"
-  name        = "cluster"
+  application        = "core"
+  environment        = "prod"
+  name               = "sessions"
+  node_type          = "cache.r8g.large"
+  num_cache_clusters = 3
+  kms                = { create = true }
+  parameters         = { "maxmemory-policy" = "allkeys-lru" }
 
-  vpc_id              = "vpc-0a1b2c3d4e5f67890"
-  subnet_ids          = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_id          = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  node_type           = "cache.r7g.large"
-  num_cache_clusters  = 3
-  allowed_cidr_blocks = ["10.0.0.0/16"]
-
-  parameters = [
-    {
-      name  = "maxmemory-policy"
-      value = "allkeys-lru"
-    }
-  ]
-
-  tags = {
-    CacheTier = "DistributedSession"
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnet_ids
+  security_group = {
+    ingress_security_group_ids = [module.api.security_group_id]
   }
+
+  auth_token_wo         = ephemeral.aws_secretsmanager_secret_version.valkey_token.secret_string
+  auth_token_wo_version = 1
 }
 ```
-
----
 
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `name` | The name of the Valkey cluster | `string` | `null` | No |
-| `application` | The name of the product/application | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
-| `tags` | A mapping of tags to assign to the resources | `map(string)` | `{}` | No |
-| `engine_version` | The version number of the cache engine to be used | `string` | `"9.0"` | No |
-| `node_type` | The compute and memory capacity of the nodes | `string` | `"cache.t4g.micro"` | No |
-| `num_cache_clusters` | The number of cache clusters (primary and replicas) this replication group will have | `number` | `1` | No |
-| `parameter_group_family` | The family of the ElastiCache parameter group | `string` | `"valkey9"` | No |
-| `parameters` | A list of ElastiCache parameters to apply to the parameter group | `list(object({...}))` | `[]` | No |
-| `subnet_ids` | A list of VPC subnet IDs for the cache subnet group | `list(string)` | **Required** | Yes |
-| `vpc_id` | The VPC ID where the security group should be created | `string` | **Required** | Yes |
-| `allowed_cidr_blocks` | List of CIDR blocks allowed to access the Valkey cluster | `list(string)` | `[]` | No |
-| `egress_cidr_blocks` | List of CIDR blocks allowed for outbound traffic from the Valkey cluster | `list(string)` | `["0.0.0.0/0"]` | No |
-| `port` | The port number on which each of the cache nodes accepts connections | `number` | `6379` | No |
-| `kms_key_id` | The ARN of the KMS key to use for encrypting data at rest | `string` | **Required** | Yes |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | Replication group name. | `string` | **Required** | Yes |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `engine_version` | Valkey version (major.minor). | `string` | `"9.1"` | No |
+| `node_type` | Node type. | `string` | `"cache.t4g.micro"` | No |
+| `num_cache_clusters` | Nodes: primary plus replicas (1-6). | `number` | `2` | No |
+| `port` | Port the nodes listen on. | `number` | `6379` | No |
+| `parameters` | Parameter group values by name. | `map(string)` | `{}` | No |
+| `snapshot_retention_limit` | Automatic snapshot retention in days. | `number` | `7` | No |
+| `snapshot_window` | Daily UTC snapshot window (hh:mm-hh:mm). Null: AWS picks. | `string` | `null` | No |
+| `user_group_id` | RBAC user group ID. | `string` | `null` | No |
+| `auth_token_wo` | Write-only AUTH token. | `string` | `null` | No |
+| `auth_token_wo_version` | AUTH token version; change it to send a new token. | `number` | `null` | No |
+| `auth_token_update_strategy` | Token change: SET, ROTATE or DELETE. Null: ROTATE. | `string` | `null` | No |
+| `kms` | Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `vpc_id` | VPC ID. | `string` | **Required** | Yes |
+| `subnet_ids` | Private subnet IDs. | `list(string)` | **Required** | Yes |
+| `security_group` | Security group: ingress sources and extra groups. | `object({...})` | `{}` | No |
+| `cloudwatch_logs` | Slow and engine log delivery to CloudWatch Logs. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `primary_endpoint_address` | The DNS endpoint of the primary node in the replication group | No |
-| `reader_endpoint_address` | The DNS endpoint of the reader node(s) in the replication group | No |
-| `configuration_endpoint_address` | The configuration endpoint address for cluster mode | No |
+| --- | --- | --- |
+| `id` | Replication group ID (ReplicationGroupId dimension). | No |
+| `arn` | Replication group ARN. | No |
+| `primary_endpoint_address` | Primary endpoint address. | No |
+| `reader_endpoint_address` | Reader endpoint address. | No |
+| `port` | Port. | No |
+| `member_clusters` | Cache cluster IDs (CacheClusterId dimension). | No |
+| `security_group_id` | Module security group ID; null when not created. | No |
+| `log_group_names` | Log group names by log type. | No |
+| `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |

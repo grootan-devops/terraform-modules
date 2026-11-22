@@ -1,23 +1,43 @@
-resource "aws_wafv2_api_key" "this" {
-  count         = length(var.token_domains) > 0 ? 1 : 0
-  scope         = var.scope
-  token_domains = var.token_domains
+module "naming" {
+  source = "../../core/naming"
+
+  application = var.application
+  environment = var.environment
+  name        = var.name
+  tags        = var.tags
+}
+
+module "encryption" {
+  source = "../../core/encryption"
+
+  application        = var.application
+  environment        = var.environment
+  name               = var.name
+  purpose            = "waf"
+  tags               = var.tags
+  region             = local.region
+  kms                = var.kms
+  service_statements = local.kms_service_statements
 }
 
 resource "aws_wafv2_ip_set" "this" {
-  for_each           = var.ip_sets
-  name               = "${local.name_prefix}-${each.value.name}"
+  for_each = var.ip_sets
+
+  region             = local.region
+  name               = "${local.base}-${each.key}"
   description        = each.value.description
   scope              = var.scope
   ip_address_version = each.value.ip_address_version
   addresses          = each.value.addresses
 
-  tags = merge(local.tags, { Name = "${local.name_prefix}-${each.value.name}" })
+  tags = merge(module.naming.tags, { Name = "${local.base}-${each.key}" })
 }
 
 resource "aws_wafv2_regex_pattern_set" "this" {
-  for_each    = var.regex_pattern_sets
-  name        = "${local.name_prefix}-${each.value.name}"
+  for_each = var.regex_pattern_sets
+
+  region      = local.region
+  name        = "${local.base}-${each.key}"
   description = each.value.description
   scope       = var.scope
 
@@ -28,19 +48,22 @@ resource "aws_wafv2_regex_pattern_set" "this" {
     }
   }
 
-  tags = merge(local.tags, { Name = "${local.name_prefix}-${each.value.name}" })
+  tags = merge(module.naming.tags, { Name = "${local.base}-${each.key}" })
 }
 
 resource "aws_wafv2_web_acl" "this" {
-  name        = "${local.name_prefix}-acl"
-  description = "WAF for ${local.name_prefix}"
-  scope       = var.scope
+  region        = local.region
+  name          = local.base
+  description   = "${local.base} web ACL"
+  scope         = var.scope
+  token_domains = length(var.token_domains) > 0 ? var.token_domains : null
 
   default_action {
     dynamic "allow" {
       for_each = var.default_action == "allow" ? [1] : []
       content {}
     }
+
     dynamic "block" {
       for_each = var.default_action == "block" ? [1] : []
       content {}
@@ -49,15 +72,14 @@ resource "aws_wafv2_web_acl" "this" {
 
   visibility_config {
     cloudwatch_metrics_enabled = true
-    metric_name                = "${local.name_prefix}-acl-metric"
+    metric_name                = local.metric_name
     sampled_requests_enabled   = true
   }
 
-  # MANAGED RULES
   dynamic "rule" {
     for_each = var.managed_rules
     content {
-      name     = "${local.name_prefix}-${rule.key}"
+      name     = "managed-${rule.key}"
       priority = index(keys(var.managed_rules), rule.key) + 10
 
       override_action {
@@ -65,6 +87,7 @@ resource "aws_wafv2_web_acl" "this" {
           for_each = rule.value.override_action == "none" ? [1] : []
           content {}
         }
+
         dynamic "count" {
           for_each = rule.value.override_action == "count" ? [1] : []
           content {}
@@ -75,22 +98,22 @@ resource "aws_wafv2_web_acl" "this" {
         managed_rule_group_statement {
           name        = rule.value.name
           vendor_name = rule.value.vendor_name
+          version     = rule.value.version
         }
       }
 
       visibility_config {
         cloudwatch_metrics_enabled = true
-        metric_name                = "${local.name_prefix}-${rule.key}-metric"
+        metric_name                = local.rule_metric_names["managed-${rule.key}"]
         sampled_requests_enabled   = true
       }
     }
   }
 
-  # RATE LIMIT RULES
   dynamic "rule" {
     for_each = var.rate_limit_rules
     content {
-      name     = "${local.name_prefix}-${rule.key}"
+      name     = "rate-${rule.key}"
       priority = index(keys(var.rate_limit_rules), rule.key) + 100
 
       action {
@@ -98,12 +121,19 @@ resource "aws_wafv2_web_acl" "this" {
           for_each = rule.value.action == "block" ? [1] : []
           content {}
         }
+
         dynamic "count" {
           for_each = rule.value.action == "count" ? [1] : []
           content {}
         }
+
         dynamic "captcha" {
           for_each = rule.value.action == "captcha" ? [1] : []
+          content {}
+        }
+
+        dynamic "challenge" {
+          for_each = rule.value.action == "challenge" ? [1] : []
           content {}
         }
       }
@@ -117,17 +147,16 @@ resource "aws_wafv2_web_acl" "this" {
 
       visibility_config {
         cloudwatch_metrics_enabled = true
-        metric_name                = "${local.name_prefix}-${rule.key}-metric"
+        metric_name                = local.rule_metric_names["rate-${rule.key}"]
         sampled_requests_enabled   = true
       }
     }
   }
 
-  # IP BLOCK RULES
   dynamic "rule" {
     for_each = var.ip_block_rules
     content {
-      name     = "${local.name_prefix}-${rule.key}"
+      name     = "ip-${rule.key}"
       priority = index(keys(var.ip_block_rules), rule.key) + 200
 
       action {
@@ -135,6 +164,7 @@ resource "aws_wafv2_web_acl" "this" {
           for_each = rule.value.action == "block" ? [1] : []
           content {}
         }
+
         dynamic "count" {
           for_each = rule.value.action == "count" ? [1] : []
           content {}
@@ -149,17 +179,16 @@ resource "aws_wafv2_web_acl" "this" {
 
       visibility_config {
         cloudwatch_metrics_enabled = true
-        metric_name                = "${local.name_prefix}-${rule.key}-metric"
+        metric_name                = local.rule_metric_names["ip-${rule.key}"]
         sampled_requests_enabled   = true
       }
     }
   }
 
-  # GEO BLOCK RULES
   dynamic "rule" {
     for_each = var.geo_block_rules
     content {
-      name     = "${local.name_prefix}-${rule.key}"
+      name     = "geo-${rule.key}"
       priority = index(keys(var.geo_block_rules), rule.key) + 300
 
       action {
@@ -167,6 +196,7 @@ resource "aws_wafv2_web_acl" "this" {
           for_each = rule.value.action == "block" ? [1] : []
           content {}
         }
+
         dynamic "count" {
           for_each = rule.value.action == "count" ? [1] : []
           content {}
@@ -181,54 +211,67 @@ resource "aws_wafv2_web_acl" "this" {
 
       visibility_config {
         cloudwatch_metrics_enabled = true
-        metric_name                = "${local.name_prefix}-${rule.key}-metric"
+        metric_name                = local.rule_metric_names["geo-${rule.key}"]
         sampled_requests_enabled   = true
       }
     }
   }
 
-  tags = merge(local.tags, { Name = "${local.name_prefix}-acl" })
-}
-
-resource "aws_wafv2_web_acl_association" "this" {
-  count        = length(var.association_arns)
-  resource_arn = var.association_arns[count.index]
-  web_acl_arn  = aws_wafv2_web_acl.this.arn
-}
-
-resource "aws_cloudwatch_log_group" "this" {
-  name              = "aws-waf-logs-${local.name_prefix}"
-  retention_in_days = var.cloudwatch_logs.retention_in_days
-  kms_key_id        = coalesce(var.cloudwatch_logs.kms_key_arn, var.kms_key_arn)
-  log_group_class   = "STANDARD"
-
-  tags = merge(local.tags, { Name = "aws-waf-logs-${local.name_prefix}" })
-}
-
-resource "aws_wafv2_web_acl_logging_configuration" "this" {
-  log_destination_configs = [aws_cloudwatch_log_group.this.arn]
-  resource_arn            = aws_wafv2_web_acl.this.arn
-
-  dynamic "redacted_fields" {
-    for_each = var.redacted_fields.headers
+  dynamic "rule" {
+    for_each = var.regex_match_rules
     content {
-      single_header {
-        name = lower(redacted_fields.value)
+      name     = "regex-${rule.key}"
+      priority = index(keys(var.regex_match_rules), rule.key) + 400
+
+      action {
+        dynamic "block" {
+          for_each = rule.value.action == "block" ? [1] : []
+          content {}
+        }
+
+        dynamic "count" {
+          for_each = rule.value.action == "count" ? [1] : []
+          content {}
+        }
+      }
+
+      statement {
+        regex_pattern_set_reference_statement {
+          arn = aws_wafv2_regex_pattern_set.this[rule.value.regex_pattern_set_key].arn
+
+          field_to_match {
+            dynamic "uri_path" {
+              for_each = rule.value.field_to_match == "uri_path" ? [1] : []
+              content {}
+            }
+
+            dynamic "query_string" {
+              for_each = rule.value.field_to_match == "query_string" ? [1] : []
+              content {}
+            }
+
+            dynamic "single_header" {
+              for_each = rule.value.field_to_match == "single_header" ? [1] : []
+              content {
+                name = lower(rule.value.header_name)
+              }
+            }
+          }
+
+          text_transformation {
+            priority = 0
+            type     = rule.value.text_transformation
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = local.rule_metric_names["regex-${rule.key}"]
+        sampled_requests_enabled   = true
       }
     }
   }
 
-  dynamic "redacted_fields" {
-    for_each = var.redacted_fields.query_string ? [1] : []
-    content {
-      query_string {}
-    }
-  }
-
-  dynamic "redacted_fields" {
-    for_each = var.redacted_fields.uri_path ? [1] : []
-    content {
-      uri_path {}
-    }
-  }
+  tags = module.naming.tags
 }

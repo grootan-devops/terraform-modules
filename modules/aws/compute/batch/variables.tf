@@ -1,189 +1,312 @@
 variable "application" {
-  description = "The name of the application."
+  description = "Application name."
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,23}$", var.application))
+    error_message = "application: 2-24 chars, a-z 0-9 -, starts with a letter."
+  }
 }
 
 variable "environment" {
-  description = "Deployment environment name (e.g. dev, staging, prod)."
+  description = "Environment name."
   type        = string
+
   validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.environment))
-    error_message = "The environment name must contain only lowercase alphanumeric characters and hyphens."
+    condition     = can(regex("^[a-z][a-z0-9-]{1,11}$", var.environment))
+    error_message = "environment: 2-12 chars, a-z 0-9 -, starts with a letter."
   }
 }
 
 variable "name" {
-  description = "The name suffix for AWS Batch resources."
+  description = "Instance name."
   type        = string
-  default     = ""
+  default     = null
+
+  validation {
+    condition     = var.name == null || can(regex("^[a-z0-9][a-z0-9-]{0,31}$", var.name))
+    error_message = "name: 1-32 chars, a-z 0-9 -."
+  }
 }
 
 variable "tags" {
-  description = "Common tags to apply to all resources."
+  description = "Extra tags; governance tags win."
   type        = map(string)
   default     = {}
+  nullable    = false
 }
 
-# ------------------------------------------------------------------------------
-# Scheduling Policy Configuration
-# ------------------------------------------------------------------------------
-variable "create_scheduling_policy" {
-  description = "Whether to create an AWS Batch scheduling policy."
-  type        = bool
-  default     = false
-}
-
-variable "scheduling_policy_name" {
-  description = "Custom name for the scheduling policy. If not provided, a rendered name will be used."
+variable "vpc_id" {
+  description = "VPC ID for the compute environments."
   type        = string
   default     = null
+
+  validation {
+    condition     = length(var.compute_environments) == 0 || !var.security_group.create || var.vpc_id != null
+    error_message = "vpc_id: required with compute_environments."
+  }
 }
 
-variable "scheduling_policy_fair_share_policy" {
-  description = "The fair share policy block for the scheduling policy."
+variable "subnet_ids" {
+  description = "Private subnet IDs for the compute environments."
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition     = length(var.compute_environments) == 0 || length(distinct(var.subnet_ids)) >= 2
+    error_message = "subnet_ids: at least two subnets with compute_environments."
+  }
+}
+
+variable "security_group" {
+  description = "Compute environment security group: HTTPS egress CIDRs, other destinations, extra groups."
   type = object({
-    share_decay_seconds = optional(number, 0)
-    share_distribution = optional(list(object({
-      share_identifier = string
-      weight_factor    = optional(number, 0)
+    create                        = optional(bool, true)
+    egress_cidr_blocks            = optional(list(string), ["0.0.0.0/0"])
+    egress_prefix_list_ids        = optional(list(string), [])
+    egress_security_group_ids     = optional(list(string), [])
+    additional_security_group_ids = optional(list(string), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.security_group.create || length(var.security_group.additional_security_group_ids) > 0
+    error_message = "security_group: set additional_security_group_ids when create = false."
+  }
+}
+
+variable "kms" {
+  description = "Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID)."
+  type = object({
+    key_id                  = optional(string)
+    create                  = optional(bool, false)
+    deletion_window_in_days = optional(number, 30)
+    policy_statements = optional(list(object({
+      sid        = optional(string)
+      effect     = optional(string, "Allow")
+      actions    = list(string)
+      resources  = optional(list(string))
+      principals = optional(map(list(string)), {})
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
     })), [])
   })
-  default = null
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = !(var.kms.create && var.kms.key_id != null)
+    error_message = "kms: set create or key_id, not both."
+  }
+
+  validation {
+    condition     = var.kms.key_id == null || can(regex("^(arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/)?(mrk-[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$", var.kms.key_id))
+    error_message = "kms.key_id: a KMS key ARN or key ID."
+  }
 }
 
-# ------------------------------------------------------------------------------
-# Compute Environment Configuration
-# ------------------------------------------------------------------------------
 variable "compute_environments" {
-  description = "Map of compute environments to create."
+  description = "Managed compute environments by key: FARGATE, FARGATE_SPOT, EC2 or SPOT."
   type = map(object({
-    type             = optional(string, "MANAGED")
-    state            = optional(string, "ENABLED")
-    service_role_arn = optional(string, null)
-
-    # Compute resources configuration
-    compute_resources = object({
-      type               = optional(string, "FARGATE") # FARGATE or FARGATE_SPOT
-      max_vcpus          = number
-      security_group_ids = list(string)
-      subnets            = list(string)
-    })
-  }))
-  default = {}
-}
-
-# ------------------------------------------------------------------------------
-# Job Queue Configuration
-# ------------------------------------------------------------------------------
-variable "job_queues" {
-  description = "Map of job queues to create."
-  type = map(object({
-    state                 = optional(string, "ENABLED")
-    priority              = number
-    scheduling_policy_arn = optional(string, null)
-    # List of compute environment keys (created by this module) or direct ARNs
-    compute_environments = list(string)
-  }))
-  default = {}
-}
-
-# ------------------------------------------------------------------------------
-# ECS Task IAM Configurations
-# ------------------------------------------------------------------------------
-variable "custom_ecs_execution_policies" {
-  description = "List of additional IAM policy ARNs to attach to the ECS Task Execution Role."
-  type        = list(string)
-  default     = []
-}
-
-variable "custom_ecs_job_role_policies" {
-  description = "List of IAM policy ARNs to attach to the ECS Task Job Role."
-  type        = list(string)
-  default     = []
-}
-
-# ------------------------------------------------------------------------------
-# Job Definition Configuration
-# ------------------------------------------------------------------------------
-variable "job_definitions" {
-  description = "Map of job definitions to create."
-  type = map(object({
-    type                  = string                 # container or multinode
-    container_properties  = optional(string, null) # JSON string
-    parameters            = optional(map(string), {})
-    platform_capabilities = optional(list(string), ["FARGATE"]) # FARGATE or EC2
-
-    retry_strategy = optional(object({
-      attempts = optional(number, 1)
-      evaluate_on_exit = optional(list(object({
-        action           = string
-        on_exit_code     = optional(string, null)
-        on_reason        = optional(string, null)
-        on_status_reason = optional(string, null)
-      })), [])
-    }), null)
-
-    timeout = optional(object({
-      attempt_duration_seconds = optional(number, null)
-    }), null)
-  }))
-  default = {}
-}
-
-# ------------------------------------------------------------------------------
-# EventBridge Rules & Targets for scheduling jobs
-# ------------------------------------------------------------------------------
-variable "custom_eventbridge_policies" {
-  description = "List of additional IAM policy ARNs to attach to the automatically created EventBridge execution role."
-  type        = list(string)
-  default     = []
-}
-
-variable "eventbridge_rules" {
-  description = "Map of EventBridge rules for scheduling or triggering jobs."
-  type = map(object({
-    description         = optional(string, null)
-    schedule_expression = optional(string, null) # e.g. cron(0 12 * * ? *) or rate(1 hour)
-    event_pattern       = optional(string, null) # JSON pattern
+    type                = optional(string, "FARGATE")
+    max_vcpus           = number
+    min_vcpus           = optional(number, 0)
+    instance_types      = optional(list(string), ["default_x86_64"])
+    allocation_strategy = optional(string)
+    root_volume_size    = optional(number, 30)
     state               = optional(string, "ENABLED")
-    tags                = optional(map(string), {})
   }))
-  default = {}
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for k in keys(var.compute_environments) : can(regex("^[a-z0-9][a-z0-9-]{0,31}$", k))])
+    error_message = "compute_environments keys: 1-32 chars, a-z 0-9 -."
+  }
+
+  validation {
+    condition     = alltrue([for c in values(var.compute_environments) : contains(["FARGATE", "FARGATE_SPOT", "EC2", "SPOT"], c.type)])
+    error_message = "compute_environments[*].type: FARGATE, FARGATE_SPOT, EC2 or SPOT."
+  }
+
+  validation {
+    condition     = alltrue([for c in values(var.compute_environments) : c.max_vcpus >= 1 && c.min_vcpus >= 0 && c.min_vcpus <= c.max_vcpus])
+    error_message = "compute_environments: 0 <= min_vcpus <= max_vcpus, max_vcpus >= 1."
+  }
+
+  validation {
+    condition     = alltrue([for c in values(var.compute_environments) : contains(["ENABLED", "DISABLED"], c.state)])
+    error_message = "compute_environments[*].state: ENABLED or DISABLED."
+  }
 }
 
-variable "eventbridge_targets" {
-  description = "Map of EventBridge targets pointing to the AWS Batch queues and job definitions."
+variable "job_queues" {
+  description = "Job queues by key: priority and compute environment keys or ARNs in order."
   type = map(object({
-    rule_name          = string # Key matching a rule in the 'eventbridge_rules' map
-    job_queue_key      = string # Key in 'job_queues' map or direct ARN
-    job_definition_key = string # Key in 'job_definitions' map or direct ARN
-    job_name           = string
-
-    # Optional parameters to override at runtime
-    attempts            = optional(number, null)
-    container_overrides = optional(string, null) # JSON string representing ContainerOverrides
-
-    # Retry and DLQ configuration for the EventBridge target itself
-    dead_letter_arn = optional(string, null)
-    retry_policy = optional(object({
-      maximum_event_age_in_seconds = optional(number, null)
-      maximum_retry_attempts       = optional(number, null)
-    }), null)
+    priority              = number
+    compute_environments  = list(string)
+    state                 = optional(string, "ENABLED")
+    scheduling_policy_arn = optional(string)
   }))
-  default = {}
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for k in keys(var.job_queues) : can(regex("^[a-z0-9][a-z0-9-]{0,31}$", k))])
+    error_message = "job_queues keys: 1-32 chars, a-z 0-9 -."
+  }
+
+  validation {
+    condition     = alltrue([for q in values(var.job_queues) : length(q.compute_environments) >= 1 && length(q.compute_environments) <= 3])
+    error_message = "job_queues[*].compute_environments: 1-3."
+  }
+
+  validation {
+    condition     = alltrue([for q in values(var.job_queues) : contains(["ENABLED", "DISABLED"], q.state)])
+    error_message = "job_queues[*].state: ENABLED or DISABLED."
+  }
+}
+
+variable "scheduling_policy" {
+  description = "Fair-share scheduling policy for every module queue."
+  type = object({
+    enabled             = optional(bool, false)
+    share_decay_seconds = optional(number, 0)
+    compute_reservation = optional(number, 0)
+    share_distribution = optional(list(object({
+      share_identifier = string
+      weight_factor    = optional(number, 1)
+    })), [])
+  })
+  default  = {}
+  nullable = false
+}
+
+variable "readonly_root_filesystem" {
+  description = "Read-only root filesystem for job containers."
+  type        = bool
+  nullable    = false
+}
+
+variable "job_definitions" {
+  description = "Container job definitions by key."
+  type = map(object({
+    image                    = string
+    platform                 = optional(string, "FARGATE")
+    command                  = optional(list(string), [])
+    vcpu                     = optional(number, 1)
+    memory                   = optional(number, 2048)
+    environment              = optional(map(string), {})
+    secrets                  = optional(map(string), {})
+    user                     = optional(string)
+    readonly_root_filesystem = optional(bool)
+    writable_paths           = optional(list(string), [])
+    parameters               = optional(map(string), {})
+    attempts                 = optional(number, 1)
+    timeout_seconds          = optional(number)
+    evaluate_on_exit = optional(list(object({
+      action           = string
+      on_exit_code     = optional(string)
+      on_reason        = optional(string)
+      on_status_reason = optional(string)
+    })), [])
+    efs_volumes = optional(map(object({
+      file_system_id  = string
+      access_point_id = optional(string)
+      root_directory  = optional(string)
+      container_path  = string
+      read_only       = optional(bool, false)
+    })), {})
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for k in keys(var.job_definitions) : can(regex("^[a-z0-9][a-z0-9-]{0,31}$", k))])
+    error_message = "job_definitions keys: 1-32 chars, a-z 0-9 -."
+  }
+
+  validation {
+    condition     = alltrue([for j in values(var.job_definitions) : contains(["FARGATE", "EC2"], j.platform)])
+    error_message = "job_definitions[*].platform: FARGATE or EC2."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for k in keys(j.environment) : !can(regex("(?i)(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIAL|AUTH_DATA)", k))]]))
+    error_message = "job_definitions[*].environment: no credential names; use secrets."
+  }
+
+  validation {
+    condition     = alltrue([for j in values(var.job_definitions) : j.user == null || !can(regex("^(root|0)(:.*)?$", j.user))])
+    error_message = "job_definitions[*].user: not root or 0."
+  }
+
+  validation {
+    condition     = alltrue([for j in values(var.job_definitions) : j.attempts >= 1 && j.attempts <= 10 && (j.timeout_seconds == null || j.timeout_seconds >= 60)])
+    error_message = "job_definitions: attempts 1-10, timeout_seconds 60 or more."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for k in keys(j.efs_volumes) : can(regex("^[a-z][a-z0-9-]{0,31}$", k)) && !can(regex("^scratch-[0-9]+$", k))]]))
+    error_message = "job_definitions[*].efs_volumes keys: 1-32 chars, a-z 0-9 -, not scratch-<n>."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for v in values(j.efs_volumes) : can(regex("^fs-[0-9a-f]{8,40}$", v.file_system_id)) && (v.access_point_id == null || can(regex("^fsap-[0-9a-f]{8,40}$", v.access_point_id))) && startswith(v.container_path, "/")]]))
+    error_message = "job_definitions[*].efs_volumes: fs- and fsap- IDs, absolute container_path."
+  }
+
+  validation {
+    condition     = alltrue(flatten([for j in values(var.job_definitions) : [for v in values(j.efs_volumes) : v.root_directory == null || (v.access_point_id == null && startswith(coalesce(v.root_directory, "/"), "/"))]]))
+    error_message = "job_definitions[*].efs_volumes: absolute root_directory, only without access_point_id."
+  }
+}
+
+variable "iam_role" {
+  description = "Job role: extend it or bring your own."
+  type = object({
+    create                   = optional(bool, true)
+    arn                      = optional(string)
+    name                     = optional(string)
+    path                     = optional(string, "/")
+    permissions_boundary_arn = optional(string)
+    managed_policy_arns      = optional(list(string), [])
+    policy_statements = optional(list(object({
+      sid        = optional(string)
+      effect     = optional(string, "Allow")
+      actions    = list(string)
+      resources  = optional(list(string))
+      principals = optional(map(list(string)), {})
+      conditions = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
+    })), [])
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = var.iam_role.create || var.iam_role.arn != null
+    error_message = "iam_role: set arn when create = false."
+  }
 }
 
 variable "cloudwatch_logs" {
-  description = "CloudWatch logs configuration for AWS Batch containers."
+  description = "CloudWatch log group for job output."
   type = object({
-    retention_in_days           = number
-    kms_key_arn                 = optional(string, null)
-    deletion_protection_enabled = optional(bool, false)
+    enabled                     = optional(bool, true)
+    retention_in_days           = optional(number, 365)
+    log_group_class             = optional(string, "STANDARD")
+    deletion_protection_enabled = optional(bool, true)
+    kms_key_arn                 = optional(string)
   })
-  default = null
-}
-
-variable "kms_key_arn" {
-  description = "KMS Key ARN used for encrypting AWS Batch CloudWatch logs and compute storage. Strictly required."
-  type        = string
+  default  = {}
+  nullable = false
 }

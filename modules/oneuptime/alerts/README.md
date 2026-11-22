@@ -16,6 +16,7 @@ Inputs are set on the parent module (`alert_grouping_rule_config` in
 [../variables-alerts.tf](../variables-alerts.tf)); this submodule receives
 them already normalized, along with resolved label and team ids.
 
-The grouping rule's `on_call_duty_policies` is still `[]`. To page the rota when
-an episode opens, pass `module.oncall.on_call_policy_ids` in from
-[../main.tf](../main.tf) and index it by `each.key`.
+The grouping rule's `on_call_duty_policies` is still `[]`: alerts reach on-call
+only through `oneuptime_alert_on_call_rule`. [../main.tf](../main.tf) already
+passes `on_call_policy_ids` in; to also page when an episode opens, index it by
+`each.key` in the grouping rule.

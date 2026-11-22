@@ -150,6 +150,94 @@ run "no_status_pages_means_no_status_page" {
   }
 }
 
+run "monitors_join_their_component_group" {
+  command = apply
+
+  assert {
+    condition = output.monitor_group_memberships == {
+      "api"  = output.monitor_group_ids["application"]
+      "edge" = output.monitor_group_ids["platform"]
+    }
+    error_message = "Each monitor must be a member of its component's monitor group."
+  }
+}
+
+run "exposes_schedules_and_status_page_groups" {
+  command = apply
+
+  variables {
+    on_call_overrides = { "platform" = { schedule_enabled = true } }
+    status_page_configs = {
+      "core" = { groups = { "services" = {}, "infrastructure" = {} } }
+    }
+  }
+
+  assert {
+    condition     = keys(output.on_call_schedule_ids) == ["platform"] && alltrue([for id in values(output.on_call_schedule_ids) : id != ""])
+    error_message = "on_call_schedule_ids must list the components with a schedule."
+  }
+
+  assert {
+    condition     = toset(keys(output.status_page_group_ids)) == toset(["core.services", "core.infrastructure"]) && alltrue([for id in values(output.status_page_group_ids) : id != ""])
+    error_message = "status_page_group_ids must list every \"<page>.<group>\" key."
+  }
+}
+
+run "exposes_heartbeat_and_agent_keys_by_monitor" {
+  command = apply
+
+  variables {
+    monitors_component_mapping = {
+      "platform"    = ["edge", "backup", "mailbox", "runner"]
+      "application" = ["api"]
+    }
+    monitor_configs = {
+      "api"     = { display_name = "Core API", monitor_type = "API", target = "https://api.example.com/health" }
+      "edge"    = { display_name = "Edge gateway", monitor_type = "Ping", target = "10.0.0.1" }
+      "backup"  = { display_name = "Nightly backup", monitor_type = "Incoming Request" }
+      "mailbox" = { display_name = "Backup report mailbox", monitor_type = "Incoming Email" }
+      "runner"  = { display_name = "Build runner", monitor_type = "Server" }
+    }
+  }
+
+  assert {
+    condition = (
+      keys(nonsensitive(output.incoming_request_secret_keys)) == ["backup"]
+      && keys(nonsensitive(output.incoming_email_secret_keys)) == ["mailbox"]
+      && keys(nonsensitive(output.server_monitor_secret_keys)) == ["runner"]
+    )
+    error_message = "Each secret key output must list only the monitors of its type, by slug."
+  }
+
+  assert {
+    condition = alltrue([
+      for keys_by_slug in [output.incoming_request_secret_keys, output.incoming_email_secret_keys, output.server_monitor_secret_keys] :
+      alltrue([for key in values(nonsensitive(keys_by_slug)) : key != ""])
+    ])
+    error_message = "Every secret key must be read from the created monitor."
+  }
+}
+
+run "plans_with_stack_wide_custom_fields" {
+  command = plan
+
+  variables {
+    custom_fields = jsonencode({ team = "core" })
+    monitor_configs = {
+      "api"  = { display_name = "Core API", monitor_type = "API", target = "https://api.example.com/health", custom_fields = jsonencode({ tier = "1" }) }
+      "edge" = { display_name = "Edge gateway", monitor_type = "Ping", target = "10.0.0.1" }
+    }
+    status_page_configs = {
+      "core" = { custom_fields = jsonencode({ audience = "customers" }) }
+    }
+  }
+
+  assert {
+    condition     = toset(keys(output.monitor_ids)) == toset(["api", "edge"]) && keys(output.status_page_ids) == ["core"]
+    error_message = "Stack-wide custom_fields must merge with monitor and page custom_fields without failing the plan."
+  }
+}
+
 run "workflows_get_the_project_and_monitor_status_ids" {
   command = apply
 
@@ -287,6 +375,83 @@ run "rejects_an_unknown_criteria_presets_entry" {
   }
 
   expect_failures = [var.monitor_configs]
+}
+
+run "rejects_an_extra_criterion_order_out_of_range" {
+  command = plan
+
+  variables {
+    monitor_configs = {
+      "api" = {
+        display_name   = "Core API"
+        monitor_type   = "API"
+        target         = "https://api.example.com"
+        extra_criteria = [{ name = "Rate limited", order = 1000, filters = [] }]
+      }
+      "edge" = { display_name = "Edge gateway", monitor_type = "Ping", target = "10.0.0.1" }
+    }
+  }
+
+  expect_failures = [var.monitor_configs]
+}
+
+run "rejects_a_fractional_extra_criterion_order" {
+  command = plan
+
+  variables {
+    monitor_configs = {
+      "api" = {
+        display_name   = "Core API"
+        monitor_type   = "API"
+        target         = "https://api.example.com"
+        extra_criteria = [{ name = "Rate limited", order = 5.5, filters = [] }]
+      }
+      "edge" = { display_name = "Edge gateway", monitor_type = "Ping", target = "10.0.0.1" }
+    }
+  }
+
+  expect_failures = [var.monitor_configs]
+}
+
+// -----------------------------------------------------------------------------
+// custom_fields
+// -----------------------------------------------------------------------------
+
+run "rejects_custom_fields_that_are_not_an_object" {
+  command = plan
+
+  variables {
+    custom_fields = jsonencode(["core"])
+  }
+
+  expect_failures = [var.custom_fields]
+}
+
+run "rejects_monitor_custom_fields_that_are_not_an_object" {
+  command = plan
+
+  variables {
+    custom_fields = jsonencode({ team = "core" })
+    monitor_configs = {
+      "api"  = { display_name = "Core API", monitor_type = "API", target = "https://api.example.com", custom_fields = "not json" }
+      "edge" = { display_name = "Edge gateway", monitor_type = "Ping", target = "10.0.0.1" }
+    }
+  }
+
+  expect_failures = [var.monitor_configs]
+}
+
+run "rejects_status_page_custom_fields_that_are_not_an_object" {
+  command = plan
+
+  variables {
+    custom_fields = jsonencode({ team = "core" })
+    status_page_configs = {
+      "core" = { custom_fields = jsonencode("core") }
+    }
+  }
+
+  expect_failures = [var.status_page_configs]
 }
 
 // -----------------------------------------------------------------------------

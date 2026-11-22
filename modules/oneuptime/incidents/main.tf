@@ -45,7 +45,7 @@ resource "oneuptime_incident_label_rule" "this" {
 resource "oneuptime_incident_grouping_rule" "this" {
   for_each                     = var.component_definitions
   name                         = each.key
-  description                  = "incident grouping rule label rule for component ${each.key}"
+  description                  = "incident grouping rule for component ${each.key}"
   priority                     = (index(sort(keys(var.component_definitions)), each.key) + 1) * 10
   is_enabled                   = true
   monitor_labels               = toset([var.label_ids[each.key]])

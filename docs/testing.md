@@ -3,15 +3,16 @@
 ## Verify a change
 
 ```bash
-make verify      # contract checks + fmt + init + validate + terraform test
-make contracts   # contract checks only, no Terraform binary required
-make validate    # full run (same as verify's second half)
+make verify      # unit tests + contract checks + fmt + init + validate + terraform test
+make contracts   # unit tests + contract checks, no Terraform binary required
+make validate    # contract checks + Terraform checks only
+make verify MODULES="modules/aws/compute/lambda modules/aws/security/kms"   # a subset
 ```
 
 `tests/verify_modules.py` is the gate. For every module it asserts:
 
-- `required_version >= 1.9.0`, and the provider of its family (`hashicorp/aws`,
-  `oneuptime/oneuptime`) wherever it declares a resource or data source.
+- `required_version`: exactly `>= 1.17.0` on AWS, at least `>= 1.9.0` on OneUptime; and the provider of its family
+  (`hashicorp/aws`, `oneuptime/oneuptime`) wherever it declares a resource or data source.
 - The family's governance variables are declared: `application` and `environment` on AWS,
   `application` on OneUptime.
 - A `locals` block carrying naming and tag governance (AWS) or label governance (OneUptime)
@@ -24,6 +25,7 @@ make validate    # full run (same as verify's second half)
   examples from the parent.
 - No Markdown anywhere in the repository points a module `source` at a relative path.
 - A native test suite exists under `tests/*.tftest.hcl`.
+- Every `#trivy:ignore:<check>` in the module names a check its README explains.
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, and
   `terraform validate` all pass, and `terraform test` passes.
 
@@ -36,102 +38,121 @@ terraform validate
 terraform test          # tests/*.tftest.hcl; the suites need Terraform >= 1.10 (state_key)
 ```
 
+## Repository checks beside the module gate
+
+`make contracts` also runs this unit test:
+
+- `tests/test_cloudwatch_alarms_contract.py`: the alarms module creates no destination resources and turns actions on
+  only through `var.notifications` (off by default, caller-supplied topic ARNs only); the alarm-routing module creates
+  only KMS-encrypted SNS topics, topic policies and email/HTTPS subscriptions; no example or test names a real endpoint.
+
+## CI
+
+`.github/workflows/pr.yml` runs, through github-ci-library:
+
+- `terraform` (`terraform.yml`): `terraform fmt -check`, `validate` and TFLint over every module.
+- `iac-scan` (`scan.yml`): Trivy IaC scan of `modules/`.
+- `lint`, `check`, `secret-scan`: Markdown, changelog and release guards, secret scanning.
+
+and, in the repository, `verify` (`make verify` in `grootantech/toolkit:2.1.0`): the Python unit tests, the contract
+checks and every module's `terraform test`. A scanner finding is fixed in the module; when the provider or the
+service leaves no fix, it is suppressed inline on that one resource and the module README's Security & Compliance
+Guardrails section says why. There is no repository-wide skip list.
+
 ## Test levels
 
 | Level | What it covers | State today |
 | :---: | --- | --- |
-| 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on all 32 module directories |
-| 1 | Static security and secret scanning | Not wired into this repository |
+| 0 | `fmt`, `validate`, contract checks | Enforced by `make verify` on every module directory |
+| 1 | Static security and secret scanning | The PR jobs `terraform` (TFLint) and `iac-scan` (Trivy); secret scanning by the shared `secret-scanning.yml` workflow |
 | 2 | `terraform test` with `mock_provider`, no credentials | Every module directory, required by the gate: naming, tags, security defaults, parameters, validation |
-| 3 | Plan analysis for unexpected `delete` actions | Not wired in; no `examples/` fixtures exist |
+| 3 | Cross-module wiring | `examples/aws/*` planned under mocks by `make verify` |
 | 4 | Terratest apply/idempotency/destroy against real cloud | Not wired in |
-| 5 | Upgrade tests across a `moved` block | Not wired in |
-| 6 | Terraform core and provider version matrix | Not wired in |
+| 5 | Terraform core and provider version matrix | Not wired in |
 
 Level 2 runs offline in seconds, and `make verify` fails a module without it. What a suite
 covers and the test shapes are below.
 
 ## Native test — `tests/unit.tftest.hcl`
 
-Every module ships one, and `tests/verify_modules.py` fails a module without it. `mock_provider`
-needs no cloud credentials or live API calls; provider installation may still need network
-access. `make verify` runs `terraform test` in every module directory. A test file does not
-raise the module's `required_version`: it loads only under `terraform test`, in the CI toolkit
-image.
+Every module ships one, and `tests/verify_modules.py` fails a module without it. `mock_provider` needs no cloud
+credentials; `make verify` runs `terraform test` in every module directory.
+[`modules/aws/compute/lambda/tests/unit.tftest.hcl`](../modules/aws/compute/lambda/tests/unit.tftest.hcl) is the
+reference suite. A suite covers:
 
-A suite covers, for every resource the module manages:
-
-1. **Naming** — `<application>-<environment>-<name>`, the fallback when `name` is null or empty,
-   and any truncation or override the module implements.
-2. **Tags** — `Application`, `Environment` and `Name` on every taggable resource, caller tags
-   kept, and sub-resource `Name` overrides. Assert governance precedence only on a module that
-   merges governance tags last ([governance tags](naming-and-tagging.md#governance-tags-and-merge-precedence)), and never assert the overwrite.
-3. **Security defaults** — KMS wiring, encryption, TLS, public access, deletion protection,
-   logging and retention: whatever the module enforces.
-4. **Parameters** — the shipped defaults, a run that overrides several optional inputs, and
-   optional features off by default and created when enabled.
-5. **Validation** — one `expect_failures` run per `validation` block.
+1. **Names**: the base name, Region and account suffixes on IAM and S3 names, truncation at each limit.
+2. **Tags**: caller tags kept, governance tags win, `Name` overrides on sub-resources.
+3. **Secure defaults**: encryption, TLS, public access, deletion protection, logging and retention.
+4. **Encryption modes**: no `kms` input (AWS managed key), `kms = { create = true }` in a `command = plan` run (the key
+   ARN is unknown, so this proves the module plans) and in an `apply` run, and `kms = { key_id = ... }`.
+5. **Wiring**: security group rules, IAM statements (through `module.role[0].policy_json`), log group settings.
+6. **Switches**: every optional feature off by default and on when enabled.
+7. **Validation**: one `expect_failures` run per `validation` block.
 
 ```hcl
-mock_provider "aws" {}
+mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "123456789012" }
+  }
+
+  mock_data "aws_region" {
+    defaults = { region = "eu-west-1" }
+  }
+
+  mock_data "aws_partition" {
+    defaults = { partition = "aws", dns_suffix = "amazonaws.com" }
+  }
+}
 
 variables {
   application = "core"
   environment = "prod"
-  name        = "test-resource"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+  name        = "orders"
 }
 
-run "verify_security_defaults" {
-  command = plan
-
-  assert {
-    condition     = aws_s3_bucket.this.bucket == "core-prod-test-resource"
-    error_message = "Bucket name did not match the expected rendered name."
-  }
-
-  assert {
-    condition     = one(one(aws_s3_bucket_server_side_encryption_configuration.this.rule).apply_server_side_encryption_by_default).kms_master_key_id == var.kms_key_arn
-    error_message = "KMS encryption key was not assigned."
-  }
-}
-
-run "verify_invalid_environment_fails" {
+run "module_key_is_planned_safely" {
   command = plan
 
   variables {
-    environment = "INVALID_UPPERCASE"
+    kms = { create = true }
+  }
+
+  assert {
+    condition     = module.encryption.created
+    error_message = "kms.create must plan without knowing the key ARN."
+  }
+}
+
+run "rejects_invalid_environment" {
+  command = plan
+
+  variables {
+    environment = "PROD"
   }
 
   expect_failures = [var.environment]
 }
 ```
 
-Cover both shapes, the happy path and a rejected input: a suite that only asserts the happy
-path still passes after someone deletes a `validation` block. Prove a suite bites by breaking
-the module in a scratch copy and watching a run fail.
-
 ### Mock mechanics
 
-- A run sees the module's own resources, its outputs and its child modules' **outputs** — not
-  resources inside a child module. An internal submodule is tested in its own directory with
-  the normalized inputs its parent would pass.
-- The mock returns random strings for computed values, which are unknown at `plan`. Use
-  `command = apply` to read them; it builds state in memory only.
-- The provider still validates arguments under the mock. Give computed ARNs and names that feed
-  another resource a valid shape with `mock_resource "<type>" { defaults = { ... } }`, and data
-  sources whose output is parsed with `mock_data` (`aws_iam_policy_document.json`,
-  `aws_caller_identity.account_id`, `aws_region`).
-- A module with `configuration_aliases` needs one `mock_provider` per alias.
-- Give each `command = apply` run its own `state_key`, so its state cannot leak into a later
-  `plan` run.
-- Locally, share one provider download across modules with `TF_PLUGIN_CACHE_DIR` and
-  `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`; without the second, an init with no
-  lock file downloads the provider again.
+- A run sees the module's own resources, its outputs and its child modules' **outputs**, not resources inside a
+  child module. That is why the building blocks output their rendered policies, rule IDs and effective settings.
+- Computed values are unknown at `plan`. Use `command = apply` (mocked, in memory) to read them, and give ARNs that
+  are parsed or asserted a valid shape with `mock_resource "<type>" { defaults = { ... } }`.
+- Runs share state. A run that must create fresh resources after an `apply` run sets its own `state_key`; otherwise
+  `ignore_changes` keeps the earlier values.
+- Locally, share one provider download with `TF_PLUGIN_CACHE_DIR` and
+  `TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true`.
 
-[`modules/oneuptime/tests/unit.tftest.hcl`](../modules/oneuptime/tests/unit.tftest.hcl) is the
-same shape against `mock_provider "oneuptime"`; each OneUptime submodule has its own suite
-under `modules/oneuptime/<area>/tests/`.
+[`modules/oneuptime/tests/unit.tftest.hcl`](../modules/oneuptime/tests/unit.tftest.hcl) is the same shape against
+`mock_provider "oneuptime"`.
+
+## Cross-module examples — `examples/`
+
+`examples/aws/<scenario>/` are root configurations that wire several modules together with relative sources, each
+with a `tests/*.tftest.hcl` that plans the whole scenario under mocks. They prove that one module's outputs fit the
+next module's inputs; `make verify` runs them with the modules.
 
 ## Terratest — `test/<module>_test.go`
 

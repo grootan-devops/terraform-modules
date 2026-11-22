@@ -1,5 +1,8 @@
 name: CI · PR Verification
-run-name: "CI · PR Verification · ${{ github.event_name }} · ${{ github.sha }}"
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('PR #{0}: {1} -> {2} ({3})', github.event.pull_request.number, github.head_ref, github.base_ref, github.sha)
+      || format('Verify · {0}', github.ref_name) }}
 
 on:
   pull_request:
@@ -14,7 +17,7 @@ permissions:
 
 jobs:
   init:
-    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@1.9.1
+    uses: grootan-devops/github-ci-library/.github/workflows/init.yml@1.9.4
     permissions:
       contents: read
       actions: read
@@ -25,7 +28,7 @@ jobs:
       ignore-chart: "true"
 
   lint:
-    uses: grootan-devops/github-ci-library/.github/workflows/lint.yml@1.9.1
+    uses: grootan-devops/github-ci-library/.github/workflows/lint.yml@1.9.4
     permissions:
       contents: read
     secrets: inherit
@@ -34,33 +37,55 @@ jobs:
 
   check:
     needs: init
-    uses: grootan-devops/github-ci-library/.github/workflows/check.yml@1.9.1
+    uses: grootan-devops/github-ci-library/.github/workflows/check.yml@1.9.4
     permissions:
       contents: read
     secrets: inherit
     with:
       tag: ${{ needs.init.outputs.tag }}
+
   secret-scan:
-    uses: grootan-devops/github-ci-library/.github/workflows/secret-scanning.yml@1.9.1
+    uses: grootan-devops/github-ci-library/.github/workflows/secret-scanning.yml@1.9.4
     permissions:
       contents: read
     secrets: inherit
     with:
       full-history: false
 
+  terraform:
+    uses: grootan-devops/github-ci-library/.github/workflows/terraform.yml@1.9.4
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      state-name: modules
+      check-docs: false
+      test: false
+
+  iac-scan:
+    uses: grootan-devops/github-ci-library/.github/workflows/scan.yml@1.9.4
+    permissions:
+      contents: read
+      checks: write
+    secrets: inherit
+    with:
+      scan-type: config
+      config-type: terraform
+      scan-path: modules
+
   verify:
-    name: Repository Verification
+    name: Module Tests
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 60
     permissions:
       contents: read
     container:
-      image: grootantech/toolkit:2.0.1
+      image: grootantech/toolkit:2.1.0
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Verify Terraform Modules
+      - name: Contract Checks And Module Tests
         run: make verify

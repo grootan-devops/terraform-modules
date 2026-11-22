@@ -1,29 +1,62 @@
-# AWS EKS Unified Module
+# AWS EKS Module
 
-The `eks` module provides an enterprise-grade Kubernetes control plane orchestrating managed node groups, Pod Identity add-ons, and KMS envelope encryption.
+Scope: `workload`
+
+An EKS cluster with managed node groups, optional Fargate profiles, access entries, EKS Pod Identity for workloads,
+the default add-ons with their own Pod Identity roles, a Load Balancer Controller role and a control plane log group.
+Kubernetes resources (Helm releases, namespaces, the Load Balancer Controller itself) are deployed outside this module.
 
 ## Architecture & Managed Resources
 
-- Invokes `modules/eks/cluster` for the hardened control plane.
-- Invokes `modules/eks/node_group` for launch template-backed worker pools.
-- Integrates VPC CNI, EBS CSI Driver, EFS CSI Driver, and CoreDNS.
+- `aws_eks_cluster.this`: `<application>-<environment>[-<name>]`, private endpoint, `API` authentication mode,
+  deletion protection, `bootstrap_self_managed_addons = false`.
+- `module.cluster_role` ([`security/iam-role`](../../security/iam-role)): trusted by EKS for this cluster only.
+- `aws_launch_template.this`, `aws_eks_node_group.this`: one per `node_groups` key, `<base>-<key>-<suffix>`
+  (create before destroy), shared `module.node_role` (`<base>-node-<region>`).
+- `aws_eks_fargate_profile.this` and `module.fargate_role`: only with `fargate_profiles`.
+- `aws_eks_access_entry.this`, `aws_eks_access_policy_association.this`: `access_entries`; a policy is an access
+  policy name (`AmazonEKSClusterAdminPolicy`) or ARN, scoped to `namespaces` when given.
+- `aws_eks_pod_identity_association.this`, `module.workload_role`: `pod_identities`; `policy_statements` or
+  `managed_policy_arns` create `<base>-<key>-pod-<region>`, `role_arn` uses your role.
+- `aws_eks_addon.before_compute` (vpc-cni, kube-proxy, eks-pod-identity-agent) and `aws_eks_addon.this` (coredns,
+  EBS CSI, EFS CSI, snapshot controller, S3 CSI with bucket ARNs), `module.addon_role`, `module.lb_controller_role`
+  and `aws_eks_pod_identity_association.lb_controller`: only with `addons.enabled` (default).
+- `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/aws/eks/<cluster>/cluster`, only
+  with `cloudwatch_logs.log_types`.
+- `module.security_group` ([`network/security-group`](../../network/security-group)): extra control plane group with
+  HTTPS (443) ingress from the listed sources; EKS also creates its own cluster security group.
+- `module.encryption` ([`core/encryption`](../../core/encryption)): secrets, node volumes and logs.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **KMS Secrets Envelope Encryption**: Kubernetes secrets encrypted with `kms_key_arn`.
-- **IMDSv2 Enforced**: Node groups enforce `http_tokens = "required"`.
-- **Private API Endpoints**: Supports private-only or restricted CIDR public access.
+- **Endpoint (EKS.1):** private only; `endpoint_public_access_cidrs` opens the public endpoint to those CIDRs, and
+  `/0` is rejected.
+- **Version (EKS.2, EKS.9):** `cluster_version` is required; node groups follow it unless `release_version` is set.
+- **Audit logging (EKS.8):** all five control plane log types by default, kept 365 days with deletion protection.
+- **Secrets:** with `kms.create` or `kms.key_id`, Kubernetes secrets are envelope-encrypted with that key; without
+  it, EKS encrypts all Kubernetes API data with an AWS owned key (Kubernetes 1.28+), the reason for the Trivy
+  suppression `AVD-AWS-0039`.
+- **Nodes:** IMDSv2 with hop limit 2, encrypted gp3 volumes (module key or the AWS managed EBS key), governance tags
+  on instances and volumes. The node role has `AmazonEKSWorkerNodePolicy` and `AmazonEC2ContainerRegistryPullOnly`;
+  `AmazonEKS_CNI_Policy` moves to the VPC CNI Pod Identity role when add-ons are on.
+- **Access:** access entries only; `bootstrap_cluster_creator_admin_permissions` (default `true`) gives the creating
+  principal admin access so the cluster is usable; set it to `false` with an admin access entry.
+- **Pod Identity:** every add-on, controller and workload role trusts `pods.eks.amazonaws.com` (`sts:AssumeRole`,
+  `sts:TagSession`). The S3 CSI role reads and writes only the listed buckets and decrypts only through S3; the EFS
+  node role mounts only through mount targets. Fargate pods cannot use Pod Identity.
+- **Tags (EKS.6):** caller tags first, governance tags last, on every taggable resource.
 
----
+A key passed in `kms.key_id` must allow the cluster role (`kms:Encrypt`, `kms:Decrypt`, `kms:ListGrants`,
+`kms:DescribeKey`, `kms:CreateGrant`), `logs.<region>.amazonaws.com` (encryption context `aws:logs:arn`) and EBS use
+through `ec2.<region>.amazonaws.com` by the account's principals (the Auto Scaling service-linked role launches
+nodes).
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
@@ -33,14 +66,15 @@ The `eks` module provides an enterprise-grade Kubernetes control plane orchestra
 module "eks" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks?ref=<version>"
 
-  application = "core"
-  environment = "prod"
-  name        = "k8s"
+  application     = "core"
+  environment     = "prod"
+  cluster_version = "1.37"
+  vpc_id          = module.vpc.vpc_id
+  subnet_ids      = module.vpc.private_subnet_ids
 
-  cluster_version           = "1.30"
-  vpc_id                    = "vpc-0a1b2c3d4e5f67890"
-  control_plane_subnet_ids  = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_arn               = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  node_groups = {
+    general = { instance_types = ["m7i.large"], min_size = 2, max_size = 6 }
+  }
 }
 ```
 
@@ -50,76 +84,89 @@ module "eks" {
 module "eks" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/compute/eks?ref=<version>"
 
-  application = "platform"
-  environment = "prod"
-  name        = "production-cluster"
+  application     = "core"
+  environment     = "prod"
+  name            = "apps"
+  cluster_version = "1.37"
+  kms             = { create = true }
+  vpc_id          = module.vpc.vpc_id
+  subnet_ids      = module.vpc.private_subnet_ids
 
-  cluster_version          = "1.30"
-  vpc_id                   = "vpc-0a1b2c3d4e5f67890"
-  control_plane_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  kms_key_arn              = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  bootstrap_cluster_creator_admin_permissions = false
+  security_group = { ingress_security_group_ids = [module.ci_runners.security_group_id] }
 
-  endpoint_private_access = true
-  endpoint_public_access  = false
-
-  node_groups = {
-    system = {
-      subnet_ids     = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-      instance_types = ["m7g.large"]
-      min_size       = 3
-      max_size       = 6
-      desired_size   = 3
-      disk_size      = 50
-    },
-    workload = {
-      subnet_ids     = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-      instance_types = ["m7g.xlarge"]
-      min_size       = 3
-      max_size       = 15
-      desired_size   = 5
-      disk_size      = 100
-      labels = {
-        tier = "apps"
-      }
+  access_entries = {
+    admins = {
+      principal_arn       = module.platform_admin_role.arn
+      policy_associations = { admin = { policy = "AmazonEKSClusterAdminPolicy" } }
+    }
+    orders = {
+      principal_arn       = module.orders_team_role.arn
+      policy_associations = { edit = { policy = "AmazonEKSEditPolicy", namespaces = ["orders"] } }
     }
   }
 
-  tags = {
-    ClusterRole = "PrimaryWorkload"
+  node_groups = {
+    general = { instance_types = ["m7i.large"], min_size = 3, max_size = 9 }
+    spot    = { instance_types = ["c7i.large", "c6i.large"], capacity_type = "SPOT", max_size = 20, taints = [{ key = "spot", value = "true", effect = "NO_SCHEDULE" }] }
+  }
+
+  addons = { s3_csi_bucket_arns = [module.models_bucket.arn] }
+
+  pod_identities = {
+    orders = {
+      namespace         = "orders"
+      service_account   = "orders-api"
+      policy_statements = [{ sid = "ReadOrders", actions = ["dynamodb:GetItem", "dynamodb:Query"], resources = [module.orders_table.arn] }]
+    }
   }
 }
 ```
 
----
-
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `application` | Logical application or product name used for resource naming and tagging. | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod) used for isolation and tagging. | `string` | **Required** | Yes |
-| `name` | Optional additional identifier appended to the cluster name. | `string` | `null` | No |
-| `tags` | A map of additional tags to apply to all resources created by this module. | `map(string)` | `{}` | No |
-| `kms_key_arn` | ARN of the customer-managed KMS key used for Kubernetes secrets envelope encryption and EBS root volume encryption. | `string` | **Required** | Yes |
-| `cluster_version` | Kubernetes version for the EKS cluster control plane. | `string` | `"1.30"` | No |
-| `control_plane_subnet_ids` | List of private subnet IDs for the EKS control plane ENIs. | `list(string)` | **Required** | Yes |
-| `security_group_ids` | Additional security group IDs to associate with the cluster control plane. | `list(string)` | `[]` | No |
-| `endpoint_public_access` | Whether the Amazon EKS public API server endpoint is enabled. Defaults to false for enterprise security baseline. | `bool` | `false` | No |
-| `public_access_cidrs` | List of CIDR blocks permitted to access the public API server endpoint when endpoint_public_access is true. | `list(string)` | `[]` | No |
-| `node_groups` | Configuration map of managed node groups to create. | `map(object({...}))` | `{}` | No |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | Cluster name. | `string` | `null` | No |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `cluster_version` | Kubernetes minor version, e.g. 1.37. | `string` | **Required** | Yes |
+| `upgrade_support_type` | STANDARD or EXTENDED support. | `string` | `"STANDARD"` | No |
+| `deletion_protection` | Block cluster deletion. | `bool` | `true` | No |
+| `vpc_id` | VPC ID. | `string` | **Required** | Yes |
+| `subnet_ids` | Private subnet IDs for the control plane and, by default, the nodes. | `list(string)` | **Required** | Yes |
+| `endpoint_public_access_cidrs` | CIDRs allowed to the public API endpoint. Empty: private endpoint only. | `list(string)` | `[]` | No |
+| `security_group` | Extra control plane security group: API (443) ingress sources and extra groups. | `object({...})` | `{}` | No |
+| `bootstrap_cluster_creator_admin_permissions` | Admin access entry for the cluster creator. | `bool` | `true` | No |
+| `access_entries` | Access entries by key: principal, Kubernetes groups and access policies. | `map(object({...}))` | `{}` | No |
+| `kms` | Encryption: {} AWS managed key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `cloudwatch_logs` | Control plane log types and their log group. | `object({...})` | `{}` | No |
+| `iam_role` | Node role: extend it or bring your own. | `object({...})` | `{}` | No |
+| `node_groups` | Managed node groups by key. | `map(object({...}))` | `{}` | No |
+| `fargate_profiles` | Fargate profiles by key: selectors and optional subnets. | `map(object({...}))` | `{}` | No |
+| `addons` | Default add-ons with Pod Identity roles, Load Balancer Controller role and S3 CSI driver. | `object({...})` | `{}` | No |
+| `pod_identities` | Workload Pod Identity associations by key: role_arn, or statements for a module role. | `map(object({...}))` | `{}` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `cluster_name` | Name of the EKS cluster. | No |
-| `cluster_arn` | ARN of the EKS cluster. | No |
-| `cluster_endpoint` | Endpoint URL for the Kubernetes API server. | No |
-| `cluster_certificate_authority_data` | Base64-encoded certificate data required to communicate with the cluster. | No |
-| `cluster_security_group_id` | Security group ID created by AWS EKS for cluster-to-node communication. | No |
-| `cluster_role_arn` | IAM role ARN used by the EKS control plane. | No |
-| `node_group_arns` | Map of node group keys to their resource ARNs. | No |
-| `node_group_ids` | Map of node group keys to their resource IDs. | No |
-| `node_role_arn` | ARN of the IAM role used by the worker nodes. | No |
+| --- | --- | --- |
+| `name` | Cluster name. | No |
+| `arn` | Cluster ARN. | No |
+| `endpoint` | Kubernetes API endpoint. | No |
+| `certificate_authority_data` | Base64 cluster CA certificate. | No |
+| `oidc_issuer_url` | OIDC issuer URL. | No |
+| `cluster_security_group_id` | EKS-managed cluster security group ID. | No |
+| `security_group_id` | Module API security group ID; null without one. | No |
+| `cluster_role_arn` | Cluster role ARN. | No |
+| `node_role_arn` | Node role ARN; null without node groups. | No |
+| `node_role_name` | Node role name; null for a role brought by the caller. | No |
+| `node_group_names` | Node group names by key. | No |
+| `autoscaling_group_names` | Auto Scaling group names by node group key. | No |
+| `launch_template_ids` | Launch template IDs by node group key. | No |
+| `fargate_role_arn` | Fargate pod execution role ARN; null without profiles. | No |
+| `pod_identity_role_arns` | Workload Pod Identity role ARNs by key. | No |
+| `log_group_name` | Control plane log group name; null without log types. | No |
+| `log_group_arn` | Control plane log group ARN; null without log types. | No |
+| `kms_key_arn` | Key ARN in use; null for the AWS managed key. | No |

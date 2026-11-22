@@ -1,51 +1,54 @@
 # AWS Step Functions Module
 
-The `step-functions` module manages AWS Step Functions state machines with Customer Managed KMS Key encryption for execution data, CloudWatch execution logs, and automated least-privilege IAM execution roles.
+Scope: `workload`
+
+A Step Functions state machine with its execution role, execution log group and optional customer managed key. The
+functions it calls are other modules; pass their ARNs in `lambda_function_arns`.
 
 ## Architecture & Managed Resources
 
-- `aws_sfn_state_machine.this`: Core state machine definition.
-- `aws_cloudwatch_log_group.this`: KMS-encrypted execution log group.
-- `aws_iam_role.this`: IAM execution role with CloudWatch and KMS permissions.
+- `aws_sfn_state_machine.this`: `<application>-<environment>-<name>`, `STANDARD` or `EXPRESS`.
+- `module.role` ([`security/iam-role`](../../security/iam-role)): execution role `<...>-sfn-<region>`, trusted by
+  Step Functions for this state machine in this account only.
+- `module.log_group` ([`observability/log-group`](../../observability/log-group)): `/aws/vendedlogs/states/<name>`
+  (the `/aws/vendedlogs/` prefix keeps the CloudWatch Logs resource policy small).
+- `module.encryption` ([`core/encryption`](../../core/encryption)): AWS owned key, module key or your key.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **Mandatory KMS CMK**: Execution history encrypted via Customer Managed KMS Key (`kms_key_id = var.kms_key_arn`).
-- **Encrypted Logging**: CloudWatch log group requires `kms_key_arn` and customizable retention.
+- **Logging (StepFunctions.1):** always on; `cloudwatch_logs.level` is `ALL`, `ERROR` (default) or `FATAL`;
+  `include_execution_data = false` keeps payloads out of the logs.
+- **Least privilege:** `lambda:InvokeFunction` only on `lambda_function_arns` and their versions and aliases; log
+  delivery actions on `*` (they have no resource-level permissions); X-Ray actions only when `tracing.enabled`.
+- **Encryption:** execution history uses the AWS owned key by default; with a key the role may use it only for this
+  state machine's encryption context and for log delivery. Logs follow the module key.
+- **Tracing:** X-Ray on by default.
 
----
+A key passed in `kms.key_id` must allow the execution role (`kms:Decrypt`, `kms:GenerateDataKey`),
+`delivery.logs.amazonaws.com` (`kms:Decrypt`) and, for logs, `logs.<region>.amazonaws.com` (encryption context
+`aws:logs:arn = <log group ARN>`).
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
 ### Minimal Working Example
 
 ```hcl
-module "state_machine" {
+module "order_flow" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=<version>"
 
   application = "core"
   environment = "prod"
-  name        = "order-pipeline"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-
+  name        = "order-flow"
   definition = jsonencode({
-    Comment = "Order processing state machine"
-    StartAt = "Validate"
-    States = {
-      Validate = {
-        Type = "Pass"
-        End  = true
-      }
-    }
+    StartAt = "Done"
+    States  = { Done = { Type = "Pass", End = true } }
   })
 }
 ```
@@ -53,63 +56,54 @@ module "state_machine" {
 ### Complete Production Example
 
 ```hcl
-module "state_machine" {
+module "order_flow" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/integration/step-functions?ref=<version>"
 
-  application = "fulfillment"
-  environment = "prod"
-  name        = "order-workflow"
-  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  application          = "core"
+  environment          = "prod"
+  name                 = "order-flow"
+  kms                  = { create = true }
+  lambda_function_arns = [module.validate.arn, module.charge.arn]
+  cloudwatch_logs      = { level = "ALL" }
 
   definition = jsonencode({
-    Comment = "Production order fulfillment pipeline"
-    StartAt = "ProcessPayment"
+    StartAt = "Validate"
     States = {
-      ProcessPayment = {
-        Type     = "Task"
-        Resource = "arn:aws:lambda:us-west-2:123456789012:function:process-payment"
-        End      = true
-      }
+      Validate = { Type = "Task", Resource = "arn:aws:states:::lambda:invoke", Parameters = { FunctionName = module.validate.alias_arn, "Payload.$" = "$" }, Next = "Charge" }
+      Charge   = { Type = "Task", Resource = "arn:aws:states:::lambda:invoke", Parameters = { FunctionName = module.charge.alias_arn, "Payload.$" = "$" }, End = true }
     }
   })
 
-  cloudwatch_logs = {
-    retention_in_days           = 90
-    level                       = "ALL"
-    include_execution_data      = true
-    deletion_protection_enabled = true
-    kms_key_arn                 = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  }
-
-  tags = {
-    WorkflowTier = "OrderOrchestration"
+  iam_role = {
+    policy_statements = [{ sid = "PublishEvents", actions = ["events:PutEvents"], resources = [module.events.bus_arn] }]
   }
 }
 ```
 
----
-
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `application` | The name of the application. | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
-| `name` | Name suffix for the state machine (e.g. document-pipeline). | `string` | **Required** | Yes |
-| `definition` | Amazon States Language definition (JSON string). | `string` | **Required** | Yes |
-| `type` | State machine type: STANDARD or EXPRESS. | `string` | `"STANDARD"` | No |
-| `lambda_function_arns` | Lambda function ARNs the state machine may invoke (lambda task targets). | `list(string)` | `[]` | No |
-| `tracing_enabled` | Enable AWS X-Ray tracing for the state machine. | `bool` | `true` | No |
-| `cloudwatch_logs` | CloudWatch logging configuration for the state machine. | `object({...})` | **Required** | Yes |
-| `tags` | Common tags to apply to all resources. | `map(string)` | `{}` | No |
-| `kms_key_arn` | KMS Key ARN used for encrypting State Machine execution history and CloudWatch logs. Strictly required. | `string` | **Required** | Yes |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | State machine name. | `string` | **Required** | Yes |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `definition` | Amazon States Language definition (JSON). | `string` | **Required** | Yes |
+| `type` | STANDARD or EXPRESS. | `string` | `"STANDARD"` | No |
+| `lambda_function_arns` | Function ARNs the state machine may invoke (with versions and aliases). | `list(string)` | `[]` | No |
+| `kms` | Encryption: {} AWS owned key, create = true module key, key_id your key (ARN or ID). | `object({...})` | `{}` | No |
+| `iam_role` | Execution role: extend it or bring your own. | `object({...})` | `{}` | No |
+| `cloudwatch_logs` | CloudWatch log group and execution log level. | `object({...})` | `{}` | No |
+| `tracing` | X-Ray tracing. | `object({...})` | `{}` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `state_machine_arn` | ARN of the created state machine. | No |
-| `state_machine_name` | Name of the created state machine. | No |
-| `role_arn` | ARN of the state machine execution role. | No |
+| --- | --- | --- |
+| `arn` | State machine ARN. | No |
+| `name` | State machine name. | No |
+| `role_arn` | Execution role ARN. | No |
+| `role_name` | Execution role name; null for a role brought by the caller. | No |
+| `log_group_name` | Log group name. | No |
+| `log_group_arn` | Log group ARN. | No |
+| `kms_key_arn` | Key ARN in use; null for the AWS owned key. | No |

@@ -28,5 +28,10 @@ variable "rbac_team_mapping" {
 variable "custom_fields" {
   type        = string
   default     = null
-  description = "Custom Fields on this resource"
+  description = "Stack-wide custom fields JSON, merged under each monitor's and status page's own"
+
+  validation {
+    condition     = var.custom_fields == null || can(keys(jsondecode(var.custom_fields)))
+    error_message = "custom_fields must be a JSON object."
+  }
 }

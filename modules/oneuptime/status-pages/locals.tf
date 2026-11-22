@@ -59,6 +59,14 @@ locals {
     }
   }
 
+  status_page_custom_fields = {
+    for key, page in var.status_page_configs : key => (
+      var.custom_fields == null ? page.custom_fields :
+      page.custom_fields == null ? var.custom_fields :
+      jsonencode(merge(jsondecode(var.custom_fields), jsondecode(page.custom_fields)))
+    )
+  }
+
   // Nested page configuration flattened to "<page key>.<child key>" maps, so
   // every child resource is driven by a single for_each. `order` falls back to
   // the child's position in the map (keys are sorted, so it is stable) and a

@@ -1,16 +1,6 @@
 locals {
-  rendered_name = var.name_prefix != null ? null : (
-    var.name != null && var.name != "" ? (
-      startswith(var.name, "${var.application}-${var.environment}") ? var.name : "${var.application}-${var.environment}-${var.name}"
-    ) : "${var.application}-${var.environment}"
-  )
-
-  governance_tags = {
-    Application = var.application
-    Environment = var.environment
-    Name        = coalesce(local.rendered_name, var.name_prefix, "${var.application}-${var.environment}")
-    ManagedBy   = "Terraform"
-  }
-
-  tags = merge(var.tags, local.governance_tags)
+  secret_name      = module.naming.names.secret
+  multi_region_key = var.kms.create && length(var.replica_regions) > 0
+  kms_key_arn      = local.multi_region_key ? module.key[0].arn : module.encryption.key_arn
+  replica_key_arns = local.multi_region_key ? module.key[0].replica_arns : {}
 }

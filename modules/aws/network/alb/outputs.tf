@@ -1,29 +1,58 @@
-output "default_target_group_arn" {
-  description = "The ARN of the default target group"
-  value       = aws_lb_target_group.default.arn
+output "id" {
+  description = "Load balancer ID."
+  value       = aws_lb.this.id
 }
 
-output "extra_target_group_arns" {
-  description = "Map of extra route names to target group ARNs"
-  value       = { for k, v in aws_lb_target_group.extra : k => v.arn }
+output "arn" {
+  description = "Load balancer ARN, once its listeners exist."
+  value       = aws_lb.this.arn
+
+  depends_on = [aws_lb_listener.https, aws_lb_listener.http]
 }
 
-output "lb_dns" {
-  description = "DNS endpoint of load balancer"
+output "arn_suffix" {
+  description = "ARN suffix for CloudWatch metrics."
+  value       = aws_lb.this.arn_suffix
+}
+
+output "name" {
+  description = "Load balancer name."
+  value       = aws_lb.this.name
+}
+
+output "dns_name" {
+  description = "DNS name."
   value       = aws_lb.this.dns_name
 }
 
+output "zone_id" {
+  description = "Route 53 zone ID for alias records."
+  value       = aws_lb.this.zone_id
+}
+
 output "security_group_id" {
-  description = "Security group ID of the ALB (managed or first external)"
-  value       = length(var.security_groups) > 0 ? var.security_groups[0] : aws_security_group.alb[0].id
+  description = "Load balancer security group ID; null when not created."
+  value       = one(module.security_group[*].id)
 }
 
-output "lb_arn" {
-  description = "The ARN of the load balancer"
-  value       = aws_lb.this.arn
+output "https_listener_arn" {
+  description = "HTTPS listener ARN; null when disabled."
+  value       = local.listener_arns.https
 }
 
-output "listener_arn" {
-  description = "The ARN of the primary load balancer listener"
-  value       = var.certificate_arn != null ? aws_lb_listener.https[0].arn : aws_lb_listener.http[0].arn
+output "http_listener_arn" {
+  description = "HTTP listener ARN; null when disabled."
+  value       = local.listener_arns.http
+}
+
+output "target_group_arns" {
+  description = "Target group ARNs by key, once a listener uses them."
+  value       = { for k, t in aws_lb_target_group.this : k => t.arn }
+
+  depends_on = [aws_lb_listener.https, aws_lb_listener.http, aws_lb_listener_rule.this]
+}
+
+output "target_group_arn_suffixes" {
+  description = "Target group ARN suffixes by key, for CloudWatch metrics."
+  value       = { for k, t in aws_lb_target_group.this : k => t.arn_suffix }
 }

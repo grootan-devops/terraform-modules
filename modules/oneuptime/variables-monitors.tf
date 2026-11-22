@@ -142,6 +142,41 @@ variable "monitor_configs" {
 
     error_message = "criteria_presets must be drawn from \"offline\", \"degraded\" and \"operational\"."
   }
+
+  validation {
+    condition = alltrue(flatten([
+      for key, config in var.monitor_configs : [
+        for criterion in try(config.extra_criteria, []) :
+        try(criterion.order, null) == null || try(criterion.order >= 0 && criterion.order <= 999 && floor(criterion.order) == criterion.order, false)
+      ]
+    ]))
+
+    error_message = format(
+      "extra_criteria order must be a whole number from 0 to 999: %s.",
+      join(", ", [
+        for key, config in var.monitor_configs : key
+        if !alltrue([
+          for criterion in try(config.extra_criteria, []) :
+          try(criterion.order, null) == null || try(criterion.order >= 0 && criterion.order <= 999 && floor(criterion.order) == criterion.order, false)
+        ])
+      ]),
+    )
+  }
+
+  validation {
+    condition = var.custom_fields == null || alltrue([
+      for key, config in var.monitor_configs :
+      try(config.custom_fields, null) == null || can(keys(jsondecode(config.custom_fields)))
+    ])
+
+    error_message = format(
+      "custom_fields must be a JSON object: %s.",
+      join(", ", [
+        for key, config in var.monitor_configs : key
+        if try(config.custom_fields, null) != null && !can(keys(jsondecode(config.custom_fields)))
+      ]),
+    )
+  }
 }
 
 

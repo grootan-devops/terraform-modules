@@ -1,33 +1,50 @@
 # AWS Application Load Balancer Module
 
-The `alb` module provisions external or internal AWS Application Load Balancers (ALBs) with HTTP-to-HTTPS automated redirection, path-based routing rules, health checks, and HTTP smuggling protections.
+Scope: `workload`
+
+An Application Load Balancer with its security group, HTTPS and HTTP listeners, target groups, listener rules, extra
+SNI certificates, S3 access and connection logs and an optional WAF web ACL association. Certificates, web ACLs and
+log buckets are other modules; pass their ARNs and names in.
 
 ## Architecture & Managed Resources
 
-- `aws_lb.this`: Application Load Balancer.
-- `aws_lb_target_group.default`: Primary baseline target group.
-- `aws_lb_target_group.extra`: Path-routed secondary service target groups.
-- `aws_lb_listener.http_redirect`: Port 80 listener issuing 301 redirects to HTTPS 443.
-- `aws_lb_listener.https`: Port 443 listener with TLS 1.3/1.2 security policy.
-- `aws_security_group.alb`: Load balancer security group controlling inbound traffic.
+- `aws_lb.this`: `<application>-<environment>[-<name>]`, cut to 32 characters with a hash suffix when longer.
+  `internal` is required: exposure is always an explicit decision.
+- `module.security_group` ([`network/security-group`](../../network/security-group)): the listener ports open to
+  `ingress_cidr_blocks`, `ingress_security_group_ids` and `ingress_prefix_list_ids`; egress only on the target and
+  health check ports, to `egress_cidr_blocks` and `egress_security_group_ids`, or to the VPC CIDR when both are empty.
+- `aws_lb_listener.https`: `https_listener.certificate_arn` and `ssl_policy`; `aws_lb_listener_certificate.this` adds
+  `additional_certificate_arns` for SNI.
+- `aws_lb_listener.http`: a 301 redirect to HTTPS; it forwards plain HTTP only with `http_listener.forward = true`.
+- `aws_lb_target_group.this` (`target_groups`, named `<base>-<key>`), `aws_lb_listener_rule.this` (`listener_rules`,
+  on every forwarding listener). Listeners forward to `default_target_group`, or answer 404 without one.
+- `aws_wafv2_web_acl_association.this`: with `waf = { enabled = true, web_acl_arn = ... }`.
 
-### Security & Compliance Guardrails
+## Security & Compliance Guardrails
 
-- **HTTP Desync Protection**: `drop_invalid_header_fields = true` hardcoded to mitigate HTTP request smuggling attacks.
-- **TLS 1.2+ Enforced**: Listener uses `ELBSecurityPolicy-TLS13-1-2-2021-06`.
-- **Accidental Deletion Protection**: `deletion_protection_enabled` defaults to `true`.
-- **Mandatory KMS Logging**: Access logs CloudWatch group requires `kms_key_arn`.
-
----
+- **TLS (ELB.1, ELB.17, ELB.18):** HTTP redirects to HTTPS; `ssl_policy` must be on the ELB.17 list (default
+  `ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09`, TLS 1.2 and 1.3 with restricted ciphers and post-quantum key exchange,
+  the AWS console default).
+- **Headers and desync (ELB.4, ELB.12):** invalid header fields are dropped; desync mitigation is `defensive` or
+  `strictest`.
+- **Deletion protection (ELB.6), multi-AZ (ELB.13):** on by default; at least two subnets.
+- **Exposure:** no ingress until sources are listed; `0.0.0.0/0` and `::/0` are rejected unless `internal = false`.
+  `internal` has no default, so an internet-facing load balancer is always an explicit choice (Trivy suppression
+  `AVD-AWS-0053`).
+- **WAF (ELB.16):** the module owns the association; `waf.fail_open = false` keeps requests blocked when WAF is
+  unreachable.
+- **Logs (ELB.5):** `access_logs` writes access and connection logs to a bucket in the load balancer's Region. ALB log
+  delivery supports SSE-S3 only, so the bucket must not use SSE-KMS and its policy must allow
+  `logdelivery.elasticloadbalancing.amazonaws.com`.
+- **Targets (ELB.21, ELB.22):** target groups default to HTTP because most targets do not serve TLS; set
+  `protocol = "HTTPS"` where they do and the health check follows.
 
 ## Requirements & Providers
 
 | Requirement | Version |
 | --- | --- |
-| `terraform` | `>= 1.9.0` |
-| `aws` | `>= 6.0.0, < 7.0.0` |
-
----
+| `terraform` | `>= 1.17.0` |
+| `aws` | `>= 6.73.0` |
 
 ## Usage Examples
 
@@ -37,14 +54,12 @@ The `alb` module provisions external or internal AWS Application Load Balancers 
 module "alb" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=<version>"
 
-  application = "core"
-  environment = "prod"
-  name        = "gateway"
-
-  vpc_id          = "vpc-0a1b2c3d4e5f67890"
-  subnets         = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/12345678-1234-1234-1234-123456789012"
-  kms_key_arn     = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
+  application    = "core"
+  environment    = "prod"
+  internal       = true
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  https_listener = { certificate_arn = module.certificate.arn }
 }
 ```
 
@@ -54,87 +69,69 @@ module "alb" {
 module "alb" {
   source = "git::https://github.com/grootan-devops/terraform-modules.git//modules/aws/network/alb?ref=<version>"
 
-  application = "enterprise"
+  application = "core"
   environment = "prod"
-  name        = "public-alb"
+  name        = "web"
+  internal    = false
+  vpc_id      = module.vpc.vpc_id
+  subnet_ids  = module.vpc.public_subnet_ids
 
-  vpc_id                      = "vpc-0a1b2c3d4e5f67890"
-  subnets                     = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
-  certificate_arn             = "arn:aws:acm:us-west-2:123456789012:certificate/12345678-1234-1234-1234-123456789012"
-  kms_key_arn                 = "arn:aws:kms:us-west-2:123456789012:key/bc4465aa-1234-5678-abcd-0123456789ab"
-  internal                    = false
-  idle_timeout                = 120
-  deletion_protection_enabled = true
-
-  default_target_group_name   = "api"
-  default_target_group_port   = 8000
-  default_health_check_path   = "/healthz"
-  default_health_check_matcher = "200"
-
-  extra_routes = {
-    auth = {
-      port              = 8001
-      priority          = 10
-      paths             = ["/auth/*", "/oauth/*"]
-      health_check_path = "/auth/health"
-    },
-    billing = {
-      port              = 8002
-      priority          = 20
-      paths             = ["/billing/*", "/webhooks/*"]
-      health_check_path = "/billing/health"
-    }
+  security_group = {
+    ingress_cidr_blocks       = ["0.0.0.0/0"]
+    egress_security_group_ids = [module.ecs_service.security_group_id]
   }
-
-  tags = {
-    IngressRole = "PublicEdge"
+  https_listener = {
+    certificate_arn             = module.certificate.arn
+    additional_certificate_arns = [module.legacy_certificate.arn]
   }
+  target_groups = {
+    app = { port = 8080 }
+    api = { port = 9090, health_check = { path = "/ready" } }
+  }
+  default_target_group = "app"
+  listener_rules = {
+    api = { priority = 10, target_group = "api", path_patterns = ["/api/*"] }
+  }
+  waf         = { enabled = true, web_acl_arn = module.waf.arn }
+  access_logs = { enabled = true, bucket = module.log_bucket.name, prefix = "alb/web" }
 }
 ```
-
----
 
 ## Inputs Specification
 
 | Name | Description | Type | Default | Required |
-| --- | --- | --- | --- | :---: |
-| `name` | Name prefix for the ALB. If not provided, will be derived from application and environment. | `string` | `null` | No |
-| `application` | Logical application or product name used for resource naming and tagging | `string` | **Required** | Yes |
-| `environment` | Deployment environment name (e.g. dev, staging, prod). | `string` | **Required** | Yes |
-| `tags` | Additional tags to apply to all resources | `map(string)` | `{}` | No |
-| `vpc_id` | VPC ID where the ALB and Target Groups will be deployed | `string` | **Required** | Yes |
-| `subnets` | List of public subnets for the ALB | `list(string)` | **Required** | Yes |
-| `internal` | If true, the ALB will be internal | `bool` | `false` | No |
-| `idle_timeout` | ALB idle timeout in seconds (how long a request can stay open). AWS default is 60. | `number` | `60` | No |
-| `security_groups` | A list of security group IDs to assign to the ALB. If empty, a default security group will be created. | `list(string)` | `[]` | No |
-| `allowed_cidr_blocks` | Allowed CIDR blocks for ingress to the ALB (only used if default security group is created) | `list(string)` | `["0.0.0.0/0"]` | No |
-| `listener_port` | The port for the default HTTP/HTTPS listener | `number` | `80` | No |
-| `listener_protocol` | The protocol for the default HTTP/HTTPS listener | `string` | `"HTTP"` | No |
-| `default_target_group_name` | The name suffix of the default target group | `string` | `"gateway"` | No |
-| `default_target_group_port` | The port of the default target group | `number` | `8000` | No |
-| `default_target_group_protocol` | The protocol of the default target group | `string` | `"HTTP"` | No |
-| `default_target_group_target_type` | The target type of the default target group (instance, ip, or lambda) | `string` | `"ip"` | No |
-| `default_health_check_path` | Health check path for the default target group | `string` | `"/health"` | No |
-| `default_health_check_matcher` | HTTP status code matcher for the default target group health check | `string` | `"200"` | No |
-| `default_health_check_interval` | Health check interval in seconds for the default target group | `number` | `30` | No |
-| `default_health_check_timeout` | Health check timeout in seconds for the default target group | `number` | `5` | No |
-| `default_health_check_healthy_threshold` | Healthy threshold count for the default target group health check | `number` | `2` | No |
-| `default_health_check_unhealthy_threshold` | Unhealthy threshold count for the default target group health check | `number` | `3` | No |
-| `certificate_arn` | ACM certificate ARN for HTTPS listener. When set, HTTP listener redirects to HTTPS. | `string` | `null` | No |
-| `extra_routes` | A map of additional routes/services to configure target groups and listener rules for | `map(object({...}))` | `{}` | No |
-| `deletion_protection_enabled` | Enable deletion protection on the ALB | `bool` | `true` | No |
-| `cloudwatch_logs` | CloudWatch logs configuration for the ALB log group. | `object({...})` | `null` | No |
-| `kms_key_arn` | KMS Key ARN used for encrypting ALB access logs and CloudWatch logs. Strictly required. | `string` | **Required** | Yes |
-
----
+| --- | --- | --- | --- | --- |
+| `application` | Application name. | `string` | **Required** | Yes |
+| `environment` | Environment name. | `string` | **Required** | Yes |
+| `name` | Load balancer name. | `string` | `null` | No |
+| `tags` | Extra tags; governance tags win. | `map(string)` | `{}` | No |
+| `internal` | Internal (true) or internet-facing (false). | `bool` | **Required** | Yes |
+| `vpc_id` | VPC ID. | `string` | **Required** | Yes |
+| `subnet_ids` | Subnet IDs in at least two AZs. | `list(string)` | **Required** | Yes |
+| `security_group` | Security group: listener sources, target destinations, extra groups. | `object({...})` | `{}` | No |
+| `https_listener` | HTTPS listener: port, certificate, extra SNI certificates, TLS policy. | `object({...})` | `{}` | No |
+| `http_listener` | HTTP listener: redirects to HTTPS; forward = true serves plain HTTP. | `object({...})` | `{}` | No |
+| `target_groups` | Target groups by key: port, protocol, target type, health check. | `map(object({...}))` | `{}` | No |
+| `default_target_group` | Target group key for the listener default action. Null: fixed 404. | `string` | `null` | No |
+| `listener_rules` | Listener rules by key: priority, target group, path and host conditions. | `map(object({...}))` | `{}` | No |
+| `access_logs` | Access and connection logs to an S3 bucket. | `object({...})` | `{}` | No |
+| `waf` | REGIONAL WAF web ACL association. | `object({...})` | `{}` | No |
+| `idle_timeout` | Idle timeout in seconds (1-4000). | `number` | `60` | No |
+| `desync_mitigation_mode` | Desync mitigation: defensive or strictest. | `string` | `"defensive"` | No |
+| `deletion_protection` | Block deletion of the load balancer. | `bool` | `true` | No |
 
 ## Outputs Specification
 
 | Name | Description | Sensitive |
-| --- | --- | :---: |
-| `default_target_group_arn` | The ARN of the default target group | No |
-| `extra_target_group_arns` | Map of extra route names to target group ARNs | No |
-| `lb_dns` | DNS endpoint of load balancer | No |
-| `security_group_id` | Security group ID of the ALB (managed or first external) | No |
-| `lb_arn` | The ARN of the load balancer | No |
-| `listener_arn` | The ARN of the primary load balancer listener | No |
+| --- | --- | --- |
+| `id` | Load balancer ID. | No |
+| `arn` | Load balancer ARN, once its listeners exist. | No |
+| `arn_suffix` | ARN suffix for CloudWatch metrics. | No |
+| `name` | Load balancer name. | No |
+| `dns_name` | DNS name. | No |
+| `zone_id` | Route 53 zone ID for alias records. | No |
+| `security_group_id` | Load balancer security group ID; null when not created. | No |
+| `https_listener_arn` | HTTPS listener ARN; null when disabled. | No |
+| `http_listener_arn` | HTTP listener ARN; null when disabled. | No |
+| `target_group_arns` | Target group ARNs by key, once a listener uses them. | No |
+| `target_group_arn_suffixes` | Target group ARN suffixes by key, for CloudWatch metrics. | No |

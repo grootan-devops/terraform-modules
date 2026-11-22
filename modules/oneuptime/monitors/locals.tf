@@ -84,6 +84,19 @@ locals {
     }
   }
 
+  monitor_group_members = {
+    for key, entry in local.monitor_definitions : key => entry.component
+    if contains(keys(var.component_definitions), entry.component)
+  }
+
+  monitor_custom_fields = {
+    for key, entry in local.monitor_definitions : key => (
+      var.custom_fields == null ? try(entry.config.custom_fields, null) :
+      try(entry.config.custom_fields, null) == null ? var.custom_fields :
+      jsonencode(merge(jsondecode(var.custom_fields), jsondecode(entry.config.custom_fields)))
+    )
+  }
+
   // Everything the step and criteria generators need, read out of the raw
   // config once with the defaults already applied, so the generators below can
   // use plain attribute access instead of try() on every line.
