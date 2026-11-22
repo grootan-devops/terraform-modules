@@ -217,15 +217,13 @@ order.
 
 ## Validation and offline plans
 
-```bash
-terragrunt hcl fmt --check
-terragrunt hcl validate --inputs
-terragrunt run --all -- init -backend=false
-terragrunt run --all -- validate
-```
+`terragrunt hcl fmt --check` and `terragrunt hcl validate --inputs` need no credentials. Everything that runs Terraform
+does: a unit reads its `dependency` outputs from the dependency's S3 state, and Terragrunt's auto-init configures the
+S3 backend before each command. Without credentials, skip the dependency outputs (their mocks stand in) and turn
+auto-init off, so the `-backend=false` init is the one that stays.
 
-A plan without AWS credentials runs as a `terraform test` under a mocked provider. Add one test file to each
-composition root, give the data sources the modules read real-looking values, and skip the dependency outputs:
+A plan without credentials runs as a `terraform test` under a mocked provider. Add one test file to each composition
+root and give the data sources the modules read real-looking values:
 
 ```hcl
 # resources/tests/offline.tftest.hcl
@@ -256,7 +254,12 @@ mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "test"]
 ```
 
 ```bash
-OFFLINE_PLAN=true terragrunt run --all -- test -verbose
+terragrunt hcl fmt --check
+terragrunt hcl validate --inputs
+export OFFLINE_PLAN=true TG_NO_AUTO_INIT=true
+terragrunt run --all -- init -backend=false
+terragrunt run --all -- validate
+terragrunt run --all -- test -verbose
 ```
 
 The test prints the full plan of every unit. Mocked values are not AWS's: unknown ARNs and IDs stay unknown, and
